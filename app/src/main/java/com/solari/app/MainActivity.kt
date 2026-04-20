@@ -16,6 +16,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.solari.app.data.di.AppContainer
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.screens.*
 import com.solari.app.ui.theme.SolariTheme
@@ -28,6 +29,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
+            val appContainer = (application as SolariApplication).appContainer
             val settingsViewModel: SettingsViewModel = viewModel()
             val isSystemDark = isSystemInDarkTheme()
             
@@ -38,14 +40,20 @@ class MainActivity : ComponentActivity() {
             SolariTheme(
                 variant = settingsViewModel.activeThemeVariant
             ) {
-                SolariApp(settingsViewModel)
+                SolariApp(
+                    settingsViewModel = settingsViewModel,
+                    appContainer = appContainer
+                )
             }
         }
     }
 }
 
 @Composable
-fun SolariApp(settingsViewModel: SettingsViewModel) {
+fun SolariApp(
+    settingsViewModel: SettingsViewModel,
+    appContainer: AppContainer
+) {
     val navController = rememberNavController()
 
     NavHost(
@@ -83,7 +91,7 @@ fun SolariApp(settingsViewModel: SettingsViewModel) {
             )
         }
         composable(SolariRoute.Screen.SignIn.name) {
-            val viewModel: SignInViewModel = viewModel()
+            val viewModel: SignInViewModel = viewModel(factory = appContainer.viewModelFactory)
             SignInScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
@@ -148,6 +156,7 @@ fun SolariApp(settingsViewModel: SettingsViewModel) {
             MainScreen(
                 initialPage = page,
                 settingsViewModel = settingsViewModel,
+                viewModelFactory = appContainer.viewModelFactory,
                 onNavigateToChat = { chatId -> navController.navigate(SolariRoute.Screen.Chat.name + "/$chatId") },
                 onNavigateToManageFriends = { navController.navigate(SolariRoute.Screen.FriendManagement.name) },
                 onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
@@ -167,6 +176,7 @@ fun SolariApp(settingsViewModel: SettingsViewModel) {
                 initialPage = page,
                 initialFeedPostId = postId,
                 settingsViewModel = settingsViewModel,
+                viewModelFactory = appContainer.viewModelFactory,
                 onNavigateToChat = { chatId -> navController.navigate(SolariRoute.Screen.Chat.name + "/$chatId") },
                 onNavigateToManageFriends = { navController.navigate(SolariRoute.Screen.FriendManagement.name) },
                 onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
@@ -180,7 +190,7 @@ fun SolariApp(settingsViewModel: SettingsViewModel) {
             )
         }
         composable(SolariRoute.Screen.CameraAfter.name) {
-            val viewModel: HomepageAfterCapturingViewModel = viewModel()
+            val viewModel: HomepageAfterCapturingViewModel = viewModel(factory = appContainer.viewModelFactory)
             HomepageAfterCapturingScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
@@ -192,7 +202,7 @@ fun SolariApp(settingsViewModel: SettingsViewModel) {
             )
         }
         composable(SolariRoute.Screen.FeedBrowse.name) {
-            val viewModel: FeedBrowseViewModel = viewModel()
+            val viewModel: FeedBrowseViewModel = viewModel(factory = appContainer.viewModelFactory)
             FeedBrowseScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
@@ -204,7 +214,7 @@ fun SolariApp(settingsViewModel: SettingsViewModel) {
         }
         composable(SolariRoute.Screen.Chat.name + "/{chatId}") { backStackEntry ->
             val chatId = backStackEntry.arguments?.getString("chatId") ?: ""
-            val viewModel: ChatViewModel = viewModel()
+            val viewModel: ChatViewModel = viewModel(factory = appContainer.viewModelFactory)
             LaunchedEffect(chatId) {
                 viewModel.loadConversation(chatId)
             }

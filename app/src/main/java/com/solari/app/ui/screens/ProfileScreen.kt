@@ -56,6 +56,23 @@ fun ProfileScreen(
     var deletePassword by remember { mutableStateOf("") }
     var deleteError by remember { mutableStateOf<String?>(null) }
 
+    if (user == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SolariTheme.colors.background),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = viewModel.errorMessage ?: "Loading profile",
+                color = SolariTheme.colors.onBackground,
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        return
+    }
+
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
@@ -143,10 +160,9 @@ fun ProfileScreen(
                     value = tempValue,
                     onValueChange = { tempValue = it },
                     onDone = {
-                        if (viewModel.updateEmail(tempValue)) {
-                            editingField = null
-                            focusManager.clearFocus()
-                        }
+                        viewModel.updateEmail(tempValue)
+                        editingField = null
+                        focusManager.clearFocus()
                     }
                 )
             } else {
@@ -303,11 +319,10 @@ fun ProfileScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    if (viewModel.deleteAccount(deletePassword)) {
-                        onLogout()
-                    } else {
-                        deleteError = "Incorrect password"
-                    }
+                    viewModel.deleteAccount(
+                        onSuccess = onLogout,
+                        onFailure = { message -> deleteError = message }
+                    )
                 }) {
                     Text("Delete", color = Color.Red, fontFamily = PlusJakartaSans)
                 }

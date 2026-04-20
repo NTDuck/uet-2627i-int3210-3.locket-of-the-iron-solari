@@ -1,0 +1,17 @@
+package com.solari.app.data.auth
+
+import com.solari.app.data.network.ApiResult
+import kotlinx.coroutines.flow.Flow
+
+interface AuthRepository {
+    val currentSession: Flow<AuthSession?>
+
+    suspend fun signIn(
+        identifier: String,
+        password: String
+    ): ApiResult<AuthSession>
+
+    suspend fun getCurrentSession(): AuthSession?
+
+    suspend fun clearSession()
+}

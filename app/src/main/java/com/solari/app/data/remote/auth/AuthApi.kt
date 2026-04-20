@@ -1,0 +1,12 @@
+package com.solari.app.data.remote.auth
+
+import retrofit2.Response
+import retrofit2.http.Body
+import retrofit2.http.POST
+
+interface AuthApi {
+    @POST("signin")
+    suspend fun signIn(
+        @Body request: SignInRequestDto
+    ): Response<SignInResponseDto>
+}

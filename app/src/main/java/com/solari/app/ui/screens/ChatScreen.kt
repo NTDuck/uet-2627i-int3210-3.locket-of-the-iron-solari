@@ -28,10 +28,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -45,14 +42,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.solari.app.data.ServiceLocator
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.models.Message
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.viewmodels.ChatViewModel
-import java.util.Calendar
 
 private val ChatBackground = Color(0xFF111316)
 private val ChatHeader = Color(0xFF1B1C21)
@@ -80,19 +75,15 @@ fun ChatScreen(
     onNavigateToFeed: () -> Unit,
     onNavigateToProfile: () -> Unit
 ) {
-    val currentUser = ServiceLocator.mockDataProvider.currentUser
+    val currentUser = viewModel.currentUser
     val partner = viewModel.conversation?.otherUser ?: User(
         id = "partner",
-        displayName = "John Netanyahu",
-        username = "john_netanyahu",
-        email = "john@example.com"
+        displayName = "Conversation",
+        username = "conversation",
+        email = ""
     )
     val focusManager = LocalFocusManager.current
-    val mockMessages = remember(chatId, currentUser.id, partner.id) {
-        buildMockChatMessages(currentUserId = currentUser.id, partnerId = partner.id)
-    }
-    var localMessages by remember(chatId) { mutableStateOf<List<Message>>(emptyList()) }
-    val allMessages = mockMessages + localMessages
+    val allMessages = viewModel.conversation?.messages.orEmpty()
     val messageBlocks = remember(allMessages) { groupConsecutiveMessages(allMessages) }
     val lastMessage = allMessages.lastOrNull()
 
@@ -136,7 +127,7 @@ fun ChatScreen(
                 }
 
                 items(messageBlocks) { block ->
-                    val isFromMe = block.senderId == currentUser.id
+                    val isFromMe = block.senderId == currentUser?.id
                     val lastBlockMessage = block.messages.last()
 
                     ChatMessageBlockRow(
@@ -157,13 +148,7 @@ fun ChatScreen(
                 onSend = {
                     val trimmedMessage = viewModel.messageText.trim()
                     if (trimmedMessage.isNotEmpty()) {
-                        localMessages = localMessages + Message(
-                            senderId = currentUser.id,
-                            text = trimmedMessage,
-                            timestamp = System.currentTimeMillis(),
-                            isRead = true
-                        )
-                        viewModel.messageText = ""
+                        viewModel.sendMessage(chatId)
                         focusManager.clearFocus()
                     }
                 }
@@ -429,77 +414,6 @@ private fun ChatInputBar(
             )
         }
     }
-}
-
-private fun buildMockChatMessages(
-    currentUserId: String,
-    partnerId: String
-): List<Message> {
-    val today = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 9)
-        set(Calendar.MINUTE, 35)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-    }
-
-    fun minutesAfter(minutes: Int): Long {
-        return today.timeInMillis + minutes * 60_000L
-    }
-
-    return listOf(
-        Message(
-            senderId = partnerId,
-            text = "Lorem ipsum dolor sit amet,\nconsectetur adipiscing elit,\nsed do eiusmod tempor\nincididunt ut labore et\ndolore magna aliqua.",
-            timestamp = minutesAfter(1)
-        ),
-        Message(
-            senderId = partnerId,
-            text = "Lorem ipsum dolor sit\namet, consectetur.",
-            timestamp = minutesAfter(6)
-        ),
-        Message(
-            senderId = partnerId,
-            text = "Sed ut perspiciatis unde\nomnis iste natus error.",
-            timestamp = minutesAfter(7)
-        ),
-        Message(
-            senderId = currentUserId,
-            text = "Lorem ipsum dolor sit amet,\nconsectetur adipiscing elit, sed\ndo eiusmod tempor incididunt.",
-            timestamp = minutesAfter(8)
-        ),
-        Message(
-            senderId = currentUserId,
-            text = "Lorem ipsum dolor sit amet,\nconsectetur adipiscing elit, sed\ndo eiusmod tempor incididunt ut\nlabore et dolore magna aliqua.",
-            timestamp = minutesAfter(9),
-            isRead = true
-        ),
-        Message(
-            senderId = partnerId,
-            text = "Lorem ipsum dolor sit amet,\nsed do eiusmod tempor.",
-            timestamp = minutesAfter(11)
-        ),
-        Message(
-            senderId = currentUserId,
-            text = "Consectetur adipiscing elit,\nsed do eiusmod.",
-            timestamp = minutesAfter(12)
-        ),
-        Message(
-            senderId = partnerId,
-            text = "Dolore magna aliqua.",
-            timestamp = minutesAfter(13)
-        ),
-        Message(
-            senderId = currentUserId,
-            text = "Ut enim ad minim veniam,\nquis nostrud exercitation.",
-            timestamp = minutesAfter(14)
-        ),
-        Message(
-            senderId = currentUserId,
-            text = "Duis aute irure dolor in\nreprehenderit.",
-            timestamp = minutesAfter(15),
-            isRead = true
-        )
-    )
 }
 
 private fun groupConsecutiveMessages(messages: List<Message>): List<ChatMessageBlock> {

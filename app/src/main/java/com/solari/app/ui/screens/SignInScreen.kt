@@ -4,6 +4,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -15,9 +18,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solari.app.ui.components.SolariButton
 import com.solari.app.ui.components.SolariTextField
+import com.solari.app.data.auth.AuthRepository
+import com.solari.app.data.auth.AuthSession
+import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.SignInViewModel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 
 @Composable
 fun SignInScreen(
@@ -27,6 +35,15 @@ fun SignInScreen(
     onNavigateToForgotPassword: () -> Unit,
     onSignInComplete: () -> Unit
 ) {
+    val uiState by viewModel.uiState.collectAsState()
+
+    LaunchedEffect(uiState.isSignedIn) {
+        if (uiState.isSignedIn) {
+            viewModel.consumeSignedIn()
+            onSignInComplete()
+        }
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = SolariTheme.colors.background
@@ -39,8 +56,8 @@ fun SignInScreen(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             SolariTextField(
-                value = viewModel.emailOrUsername,
-                onValueChange = { viewModel.emailOrUsername = it },
+                value = uiState.emailOrUsername,
+                onValueChange = viewModel::onEmailOrUsernameChanged,
                 label = "Username or Email",
                 placeholder = "Email or username",
                 labelFontSize = 17.sp,
@@ -50,8 +67,8 @@ fun SignInScreen(
             )
 
             SolariTextField(
-                value = viewModel.password,
-                onValueChange = { viewModel.password = it },
+                value = uiState.password,
+                onValueChange = viewModel::onPasswordChanged,
                 label = "Password",
                 placeholder = "••••••••",
                 isPassword = true,
@@ -73,11 +90,23 @@ fun SignInScreen(
                     .clickable { onNavigateToForgotPassword() }
             )
 
+            uiState.errorMessage?.let { errorMessage ->
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    fontFamily = PlusJakartaSans,
+                    fontSize = 14.sp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp, start = 8.dp, end = 8.dp)
+                )
+            }
+
             Spacer(modifier = Modifier.height(48.dp))
 
             SolariButton(
-                text = "Sign In",
-                onClick = onSignInComplete,
+                text = if (uiState.isLoading) "Signing In" else "Sign In",
+                onClick = viewModel::signIn,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .fillMaxWidth(0.7f)
@@ -118,9 +147,9 @@ fun SignInScreen(
 @Composable
 private fun SignInScreenPreview() {
     val previewViewModel = remember {
-        SignInViewModel().apply {
-            emailOrUsername = "alex@solari.app"
-            password = "password"
+        SignInViewModel(PreviewAuthRepository()).apply {
+            onEmailOrUsernameChanged("alex@solari.app")
+            onPasswordChanged("password")
         }
     }
 
@@ -133,4 +162,23 @@ private fun SignInScreenPreview() {
             onSignInComplete = {}
         )
     }
+}
+
+private class PreviewAuthRepository : AuthRepository {
+    override val currentSession: Flow<AuthSession?> = flowOf(null)
+
+    override suspend fun signIn(
+        identifier: String,
+        password: String
+    ): ApiResult<AuthSession> {
+        return ApiResult.Failure(
+            statusCode = null,
+            type = "PREVIEW",
+            message = "Preview mode does not sign in."
+        )
+    }
+
+    override suspend fun getCurrentSession(): AuthSession? = null
+
+    override suspend fun clearSession() = Unit
 }

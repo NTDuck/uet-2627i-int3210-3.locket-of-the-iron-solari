@@ -1,6 +1,38 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+}
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.isFile) {
+        file.inputStream().use { stream -> load(stream) }
+    }
+}
+
+fun androidStringLiteral(value: String): String {
+    val escapedValue = value
+        .replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+    return "\"$escapedValue\""
+}
+
+fun requireTrailingSlash(value: String): String {
+    return if (value.endsWith("/")) value else "$value/"
+}
+
+val backendUrl = requireTrailingSlash(
+    providers.gradleProperty("SOLARI_BACKEND_URL").orNull
+        ?: providers.environmentVariable("SOLARI_BACKEND_URL").orNull
+        ?: localProperties.getProperty("SOLARI_BACKEND_URL")
+        ?: "http://10.0.2.2:3000/"
+)
+require(backendUrl.startsWith("http://") || backendUrl.startsWith("https://")) {
+    "SOLARI_BACKEND_URL must start with http:// or https://"
 }
 
 android {
@@ -19,6 +51,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "SOLARI_BACKEND_URL", androidStringLiteral(backendUrl))
     }
 
     buildTypes {
@@ -36,12 +69,19 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+    arg("room.incremental", "true")
 }
 
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(platform(libs.androidx.compose.bom))
@@ -62,7 +102,14 @@ dependencies {
 
     // Networking & Serialization
     implementation(libs.okhttp)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.kotlinx.serialization)
     implementation(libs.kotlinx.serialization.json)
+
+    // Local persistence
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.room.ktx)
+    ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

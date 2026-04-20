@@ -20,6 +20,7 @@ fun MainScreen(
     initialPage: Int = 0,
     initialFeedPostId: String? = null,
     settingsViewModel: SettingsViewModel,
+    viewModelFactory: SolariViewModelFactory,
     onNavigateToChat: (String) -> Unit,
     onNavigateToManageFriends: () -> Unit,
     onNavigateToBlockedAccounts: () -> Unit,
@@ -82,7 +83,7 @@ fun MainScreen(
                     )
                 }
                 1 -> {
-                    val viewModel: FeedViewModel = viewModel()
+                    val viewModel: FeedViewModel = viewModel(factory = viewModelFactory)
                     FeedScreen(
                         viewModel = viewModel,
                         initialPostId = initialFeedPostId,
@@ -94,7 +95,7 @@ fun MainScreen(
                     )
                 }
                 2 -> {
-                    val viewModel: ConversationViewModel = viewModel()
+                    val viewModel: ConversationViewModel = viewModel(factory = viewModelFactory)
                     ConversationScreen(
                         viewModel = viewModel,
                         onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
@@ -106,7 +107,7 @@ fun MainScreen(
                     )
                 }
                 3 -> {
-                    val viewModel: ProfileViewModel = viewModel()
+                    val viewModel: ProfileViewModel = viewModel(factory = viewModelFactory)
                     ProfileScreen(
                         viewModel = viewModel,
                         settingsViewModel = settingsViewModel,

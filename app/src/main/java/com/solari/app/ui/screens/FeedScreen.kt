@@ -41,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.solari.app.R
-import com.solari.app.data.ServiceLocator
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
@@ -67,7 +66,9 @@ fun FeedScreen(
     var showMenuForPost by remember { mutableStateOf<Post?>(null) }
     var isActivitySheetVisible by remember { mutableStateOf(false) }
     var activitySheetEntries by remember { mutableStateOf<List<FeedActivityEntry>>(emptyList()) }
-    val posts = remember { ServiceLocator.mockDataProvider.posts }
+    val posts = viewModel.posts
+    val currentUser = viewModel.currentUser
+    val users = viewModel.users
     val initialPostPage = remember(initialPostId, posts) {
         posts.indexOfFirst { it.id == initialPostId }.takeIf { it >= 0 } ?: 0
     }
@@ -78,21 +79,37 @@ fun FeedScreen(
             .fillMaxSize()
             .background(SolariTheme.colors.background)
     ) {
-        VerticalPager(
-            state = pagerState,
-            modifier = Modifier.fillMaxSize(),
-            userScrollEnabled = !isActivitySheetVisible
-        ) { page ->
-            FeedPost(
-                post = posts[page],
-                onLongPress = { showMenuForPost = posts[page] },
-                onMoreClick = { showMenuForPost = posts[page] },
-                onShowActivity = { activities ->
-                    activitySheetEntries = activities
-                    isActivitySheetVisible = true
-                },
-                onNavigateToBrowse = onNavigateToBrowse
-            )
+        if (posts.isEmpty()) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = viewModel.errorMessage ?: if (viewModel.isLoading) "Loading feed" else "No posts yet",
+                    color = SolariTheme.colors.onBackground,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        } else {
+            VerticalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = !isActivitySheetVisible
+            ) { page ->
+                FeedPost(
+                    post = posts[page],
+                    onLongPress = { showMenuForPost = posts[page] },
+                    onMoreClick = { showMenuForPost = posts[page] },
+                    onShowActivity = { activities ->
+                        activitySheetEntries = activities
+                        isActivitySheetVisible = true
+                    },
+                    onNavigateToBrowse = onNavigateToBrowse,
+                    currentUser = currentUser,
+                    users = users
+                )
+            }
         }
 
         FeedActivitySheet(
@@ -117,7 +134,7 @@ fun FeedScreen(
                         ) {
                             Text("Download", color = SolariTheme.colors.onSurface, fontSize = 18.sp)
                         }
-                        if (post.author.id == ServiceLocator.mockDataProvider.currentUser.id) {
+                        if (currentUser != null && post.author.id == currentUser.id) {
                             TextButton(
                                 onClick = {
                                     viewModel.deletePost(post.id)
@@ -142,19 +159,24 @@ private fun FeedPost(
     onLongPress: () -> Unit,
     onMoreClick: () -> Unit,
     onShowActivity: (List<FeedActivityEntry>) -> Unit,
-    onNavigateToBrowse: () -> Unit
+    onNavigateToBrowse: () -> Unit,
+    currentUser: User?,
+    users: List<User>
 ) {
     val focusManager = LocalFocusManager.current
     var messageText by remember { mutableStateOf("") }
-    val currentUser = ServiceLocator.mockDataProvider.currentUser
-    val isCurrentUserPost = post.author.id == currentUser.id
-    val activityUsers = remember {
-        ServiceLocator.mockDataProvider.users
-            .filter { it.id != currentUser.id }
+    val currentUserId = currentUser?.id
+    val isCurrentUserPost = post.author.id == currentUserId
+    val activityUsers = remember(users, currentUserId) {
+        users
+            .filter { it.id != currentUserId }
             .take(3)
     }
-    val activityEntries = remember(post.id, currentUser.id) {
-        buildFeedActivityEntries(currentUserId = currentUser.id)
+    val activityEntries = remember(post.id, currentUserId, users) {
+        buildFeedActivityEntries(
+            currentUserId = currentUserId,
+            users = users
+        )
     }
 
     Box(
@@ -544,7 +566,10 @@ private fun FeedActivityItem(activity: FeedActivityEntry) {
     }
 }
 
-private fun buildFeedActivityEntries(currentUserId: String): List<FeedActivityEntry> {
+private fun buildFeedActivityEntries(
+    currentUserId: String?,
+    users: List<User>
+): List<FeedActivityEntry> {
     val reactions = listOf(
         "🫶" to "Loved this",
         "🍊" to null,
@@ -558,7 +583,7 @@ private fun buildFeedActivityEntries(currentUserId: String): List<FeedActivityEn
         "💫" to "Great mood"
     )
 
-    return ServiceLocator.mockDataProvider.users
+    return users
         .filter { it.id != currentUserId }
         .take(10)
         .mapIndexed { index, user ->

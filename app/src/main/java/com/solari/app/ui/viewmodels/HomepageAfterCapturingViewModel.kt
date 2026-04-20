@@ -4,16 +4,35 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.solari.app.data.friend.FriendRepository
+import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.models.User
+import kotlinx.coroutines.launch
 
-class HomepageAfterCapturingViewModel : ViewModel() {
-    var friends by mutableStateOf(
-        listOf(
-            User("2", "Alice", "alice", "alice@solari.app"),
-            User("3", "Benjamin", "ben", "ben@solari.app"),
-            User("4", "Charlie", "charlie", "charlie@solari.app"),
-            User("1", "John", "john_n", "john@solari.app")
-        )
-    )
+class HomepageAfterCapturingViewModel(
+    private val friendRepository: FriendRepository
+) : ViewModel() {
+    var friends by mutableStateOf<List<User>>(emptyList())
         private set
+
+    var errorMessage by mutableStateOf<String?>(null)
+        private set
+
+    init {
+        loadFriends()
+    }
+
+    fun loadFriends() {
+        viewModelScope.launch {
+            when (val result = friendRepository.getFriends()) {
+                is ApiResult.Success -> {
+                    friends = result.data
+                    errorMessage = null
+                }
+
+                is ApiResult.Failure -> errorMessage = result.message
+            }
+        }
+    }
 }

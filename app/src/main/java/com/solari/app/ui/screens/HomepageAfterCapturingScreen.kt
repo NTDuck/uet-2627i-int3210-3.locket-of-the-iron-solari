@@ -44,7 +44,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.solari.app.data.ServiceLocator
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.theme.PlusJakartaSans
@@ -66,11 +65,7 @@ fun HomepageAfterCapturingScreen(
 ) {
     var selectedFriends by remember { mutableStateOf(setOf<String>()) }
     var isPublic by remember { mutableStateOf(true) }
-    val friends = remember {
-        ServiceLocator.mockDataProvider.users.filter {
-            it.id != ServiceLocator.mockDataProvider.currentUser.id
-        }
-    }
+    val friends = viewModel.friends
 
     Scaffold(
         containerColor = SolariTheme.colors.background,

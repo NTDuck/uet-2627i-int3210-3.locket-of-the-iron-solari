@@ -24,7 +24,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.solari.app.data.ServiceLocator
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.theme.SolariTheme
@@ -39,9 +38,8 @@ fun FeedBrowseScreen(
     onNavigateToProfile: () -> Unit,
     onNavigateToPost: (String) -> Unit
 ) {
-    val posts = remember { ServiceLocator.mockDataProvider.posts }
-    val users = remember { ServiceLocator.mockDataProvider.users }
-    val friends = remember { users.filter { it.id != ServiceLocator.mockDataProvider.currentUser.id } }
+    val posts = viewModel.posts
+    val friends = viewModel.friends
     var selectedSort by remember { mutableStateOf("default") }
     var selectedFriendIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     

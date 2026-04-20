@@ -4,47 +4,66 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
-import com.solari.app.data.ServiceLocator
+import androidx.lifecycle.viewModelScope
+import com.solari.app.data.auth.AuthRepository
+import com.solari.app.data.network.ApiResult
+import com.solari.app.data.user.UserRepository
 import com.solari.app.ui.models.User
+import kotlinx.coroutines.launch
 
-class ProfileViewModel : ViewModel() {
-    var user by mutableStateOf(ServiceLocator.mockDataProvider.currentUser)
+class ProfileViewModel(
+    private val userRepository: UserRepository,
+    private val authRepository: AuthRepository
+) : ViewModel() {
+    var user by mutableStateOf<User?>(null)
         private set
 
     var successMessage by mutableStateOf<String?>(null)
     var errorMessage by mutableStateOf<String?>(null)
 
+    init {
+        loadMe()
+    }
+
+    fun loadMe() {
+        viewModelScope.launch {
+            when (val result = userRepository.getMe()) {
+                is ApiResult.Success -> {
+                    user = result.data
+                    errorMessage = null
+                }
+
+                is ApiResult.Failure -> errorMessage = result.message
+            }
+        }
+    }
+
     fun updateDisplayName(newName: String) {
-        user = user.copy(displayName = newName)
-        ServiceLocator.mockDataProvider.currentUser = user
+        viewModelScope.launch {
+            when (val result = userRepository.updateProfile(displayName = newName)) {
+                is ApiResult.Success -> {
+                    user = result.data
+                    successMessage = "Display name updated successfully"
+                    errorMessage = null
+                }
+
+                is ApiResult.Failure -> errorMessage = result.message
+            }
+        }
     }
 
-    fun updateUsername(newUsername: String): Boolean {
-        if (newUsername == user.username) return true
-        val exists = ServiceLocator.mockDataProvider.users.any { it.username == newUsername && it.id != user.id }
-        if (exists) {
-            errorMessage = "Username already exists"
-            return false
-        }
-        user = user.copy(username = newUsername)
-        ServiceLocator.mockDataProvider.currentUser = user
-        successMessage = "Username updated successfully"
-        errorMessage = null
-        return true
-    }
+    fun updateEmail(newEmail: String) {
+        viewModelScope.launch {
+            when (val result = userRepository.updateProfile(email = newEmail)) {
+                is ApiResult.Success -> {
+                    user = result.data
+                    successMessage = "Email updated successfully"
+                    errorMessage = null
+                }
 
-    fun updateEmail(newEmail: String): Boolean {
-        if (newEmail == user.email) return true
-        val exists = ServiceLocator.mockDataProvider.users.any { it.email == newEmail && it.id != user.id }
-        if (exists) {
-            errorMessage = "Email already exists"
-            return false
+                is ApiResult.Failure -> errorMessage = result.message
+            }
         }
-        user = user.copy(email = newEmail)
-        ServiceLocator.mockDataProvider.currentUser = user
-        successMessage = "Email updated successfully"
-        errorMessage = null
-        return true
     }
 
     fun clearMessages() {
@@ -52,12 +71,22 @@ class ProfileViewModel : ViewModel() {
         errorMessage = null
     }
 
-    fun deleteAccount(password: String): Boolean {
-        // Mock password check
-        if (password == "password") {
-            ServiceLocator.mockDataProvider.deleteAccount()
-            return true
+    fun deleteAccount(
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit
+    ) {
+        viewModelScope.launch {
+            when (val result = userRepository.deleteAccount()) {
+                is ApiResult.Success -> {
+                    authRepository.clearSession()
+                    onSuccess()
+                }
+
+                is ApiResult.Failure -> {
+                    errorMessage = result.message
+                    onFailure(result.message)
+                }
+            }
         }
-        return false
     }
 }
