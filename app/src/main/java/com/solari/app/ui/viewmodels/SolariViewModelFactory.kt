@@ -6,6 +6,7 @@ import com.solari.app.data.auth.AuthRepository
 import com.solari.app.data.conversation.ConversationRepository
 import com.solari.app.data.feed.FeedRepository
 import com.solari.app.data.friend.FriendRepository
+import com.solari.app.data.preferences.RecentEmojiStore
 import com.solari.app.data.user.UserRepository
 
 class SolariViewModelFactory(
@@ -13,10 +14,15 @@ class SolariViewModelFactory(
     private val userRepository: UserRepository,
     private val feedRepository: FeedRepository,
     private val friendRepository: FriendRepository,
-    private val conversationRepository: ConversationRepository
+    private val conversationRepository: ConversationRepository,
+    private val recentEmojiStore: RecentEmojiStore
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         val viewModel = when {
+            modelClass.isAssignableFrom(AppAuthViewModel::class.java) -> {
+                AppAuthViewModel(authRepository)
+            }
+
             modelClass.isAssignableFrom(SignInViewModel::class.java) -> {
                 SignInViewModel(authRepository)
             }
@@ -25,7 +31,8 @@ class SolariViewModelFactory(
                 FeedViewModel(
                     feedRepository = feedRepository,
                     userRepository = userRepository,
-                    friendRepository = friendRepository
+                    friendRepository = friendRepository,
+                    conversationRepository = conversationRepository
                 )
             }
 
@@ -46,6 +53,21 @@ class SolariViewModelFactory(
             modelClass.isAssignableFrom(ChatViewModel::class.java) -> {
                 ChatViewModel(
                     conversationRepository = conversationRepository,
+                    userRepository = userRepository,
+                    feedRepository = feedRepository,
+                    recentEmojiStore = recentEmojiStore
+                )
+            }
+
+            modelClass.isAssignableFrom(ChatSettingsViewModel::class.java) -> {
+                ChatSettingsViewModel(
+                    conversationRepository = conversationRepository,
+                    userRepository = userRepository
+                )
+            }
+
+            modelClass.isAssignableFrom(BlockedAccountsViewModel::class.java) -> {
+                BlockedAccountsViewModel(
                     userRepository = userRepository
                 )
             }
@@ -54,6 +76,13 @@ class SolariViewModelFactory(
                 ProfileViewModel(
                     userRepository = userRepository,
                     authRepository = authRepository
+                )
+            }
+
+            modelClass.isAssignableFrom(FriendManagementViewModel::class.java) -> {
+                FriendManagementViewModel(
+                    friendRepository = friendRepository,
+                    userRepository = userRepository
                 )
             }
 

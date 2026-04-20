@@ -15,17 +15,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
+import com.solari.app.ui.components.SolariAvatar
+import com.solari.app.ui.components.SolariConfirmationDialog
+import com.solari.app.ui.models.User
+import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.ChatSettingsViewModel
 
 @Composable
 fun ChatSettingsScreen(
+    chatId: String,
+    initialPartner: User?,
     viewModel: ChatSettingsViewModel,
     onNavigateBack: () -> Unit,
     onNavigateToCamera: () -> Unit,
@@ -33,7 +36,17 @@ fun ChatSettingsScreen(
     onNavigateToChat: () -> Unit,
     onNavigateToProfile: () -> Unit
 ) {
-    var notificationsEnabled by remember { mutableStateOf(true) }
+    val isAllLoading = viewModel.isLoading &&
+            viewModel.username == null &&
+            viewModel.isMuted == null
+    val partner = viewModel.partner ?: initialPartner
+    var showClearHistoryConfirm by remember { mutableStateOf(false) }
+    var showBlockConfirm by remember { mutableStateOf(false) }
+
+    LaunchedEffect(chatId) {
+        viewModel.setInitialPartner(initialPartner)
+        viewModel.loadSettings(chatId)
+    }
 
     Scaffold(
         topBar = {
@@ -61,6 +74,22 @@ fun ChatSettingsScreen(
             }
         }
     ) { innerPadding ->
+        if (isAllLoading) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+                    .background(SolariTheme.colors.background),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(
+                    color = SolariTheme.colors.primary,
+                    trackColor = SolariTheme.colors.surface
+                )
+            }
+            return@Scaffold
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -73,23 +102,24 @@ fun ChatSettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                AsyncImage(
-                    model = "https://picsum.photos/seed/friend/200/200",
+                SolariAvatar(
+                    imageUrl = partner?.profileImageUrl,
+                    username = partner?.username.orEmpty(),
                     contentDescription = "Friend Avatar",
                     modifier = Modifier
-                        .size(100.dp)
-                        .clip(CircleShape),
-                    contentScale = ContentScale.Crop
+                        .size(100.dp),
+                    shape = CircleShape,
+                    fontSize = 34.sp
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Aris Thorne",
+                    text = partner?.displayName.orEmpty(),
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Text(
-                    text = "@aris_t",
+                    text = "@${viewModel.username ?: partner?.username.orEmpty()}",
                     fontSize = 14.sp,
                     color = Color.Gray
                 )
@@ -110,8 +140,9 @@ fun ChatSettingsScreen(
                 title = "Mute Notifications",
                 trailing = {
                     Switch(
-                        checked = notificationsEnabled,
-                        onCheckedChange = { notificationsEnabled = it },
+                        checked = viewModel.isMuted ?: false,
+                        onCheckedChange = { viewModel.toggleMute(chatId) },
+                        enabled = !viewModel.isLoading && viewModel.isMuted != null,
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = Color.White,
                             checkedTrackColor = MaterialTheme.colorScheme.primary
@@ -133,6 +164,7 @@ fun ChatSettingsScreen(
             SettingsRow(
                 icon = Icons.Default.Delete,
                 title = "Clear Chat History",
+                onClick = { showClearHistoryConfirm = true },
                 trailing = {
                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
                 }
@@ -144,6 +176,7 @@ fun ChatSettingsScreen(
                 icon = Icons.Default.Block,
                 title = "Block User",
                 titleColor = Color(0xFFE57373),
+                onClick = { showBlockConfirm = true },
                 trailing = {
                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
                 }
@@ -151,5 +184,31 @@ fun ChatSettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+
+    if (showClearHistoryConfirm) {
+        SolariConfirmationDialog(
+            title = "Clear chat history?",
+            message = "This removes the visible message history on your side.",
+            confirmText = "Clear",
+            onConfirm = {
+                showClearHistoryConfirm = false
+                viewModel.clearChatHistory(chatId)
+            },
+            onDismiss = { showClearHistoryConfirm = false }
+        )
+    }
+
+    if (showBlockConfirm) {
+        SolariConfirmationDialog(
+            title = "Block user?",
+            message = "${partner?.displayName ?: "This user"} will no longer be able to interact with you.",
+            confirmText = "Block",
+            onConfirm = {
+                showBlockConfirm = false
+                viewModel.blockPartner(onBlocked = onNavigateBack)
+            },
+            onDismiss = { showBlockConfirm = false }
+        )
     }
 }

@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.viewmodels.*
 import kotlinx.coroutines.launch
 
@@ -21,7 +22,7 @@ fun MainScreen(
     initialFeedPostId: String? = null,
     settingsViewModel: SettingsViewModel,
     viewModelFactory: SolariViewModelFactory,
-    onNavigateToChat: (String) -> Unit,
+    onNavigateToChat: (Conversation) -> Unit,
     onNavigateToManageFriends: () -> Unit,
     onNavigateToBlockedAccounts: () -> Unit,
     onNavigateToChangePassword: () -> Unit,
@@ -32,6 +33,7 @@ fun MainScreen(
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 4 }
     val scope = rememberCoroutineScope()
+    var isFeedActivityPanelVisible by remember { mutableStateOf(false) }
 
     val routes = listOf(
         SolariRoute.Screen.CameraBefore,
@@ -68,7 +70,7 @@ fun MainScreen(
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize().padding(innerPadding),
-            userScrollEnabled = true
+            userScrollEnabled = !isFeedActivityPanelVisible
         ) { page ->
             when (page) {
                 0 -> {
@@ -91,7 +93,8 @@ fun MainScreen(
                         onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToChat = { scope.launch { pagerState.animateScrollToPage(2) } },
                         onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } },
-                        onNavigateToBrowse = onNavigateToFeedBrowse
+                        onNavigateToBrowse = onNavigateToFeedBrowse,
+                        onActivityPanelVisibilityChanged = { isFeedActivityPanelVisible = it }
                     )
                 }
                 2 -> {

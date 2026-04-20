@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -32,16 +33,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.solari.app.navigation.SolariRoute
+import com.solari.app.ui.components.SolariConfirmationDialog
+import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.ui.models.BlockedUser
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.BlockedAccountsViewModel
+import java.util.concurrent.TimeUnit
 
 private val BlockedBackground = Color(0xFF111316)
 private val BlockedSurface = Color(0xFF1B1C21)
@@ -52,12 +55,6 @@ private val BlockedText = Color(0xFFE3E2E6)
 private val BlockedMuted = Color(0xFFD7C0B2)
 private val BlockedSubtle = Color(0xFF9699A1)
 
-private data class BlockedAccountEntry(
-    val name: String,
-    val blockedAt: String,
-    val avatarUrl: String = "https://www.politicon.com/wp-content/uploads/2017/06/Charlie-Kirk-2019-1024x1024.jpg"
-)
-
 @Composable
 fun BlockedAccountsScreen(
     viewModel: BlockedAccountsViewModel,
@@ -67,16 +64,8 @@ fun BlockedAccountsScreen(
     onNavigateToChat: () -> Unit,
     onNavigateToProfile: () -> Unit
 ) {
-    var selectedSort by remember { mutableStateOf("default") }
-    val blockedAccounts = remember {
-        listOf(
-            BlockedAccountEntry("Kaelen Thorne", "Blocked 2 days ago"),
-            BlockedAccountEntry("Marcus Sterling", "Blocked 1 week ago"),
-            BlockedAccountEntry("Elena Vane", "Blocked 3 weeks ago"),
-            BlockedAccountEntry("Jasper Wu", "Blocked 1 month ago"),
-            BlockedAccountEntry("Aria Lund", "Blocked 2 months ago")
-        )
-    }
+    var pendingUnblock by remember { mutableStateOf<BlockedUser?>(null) }
+    val blockedAccounts = viewModel.blockedUsers
 
     Scaffold(
         containerColor = BlockedBackground,
@@ -102,30 +91,72 @@ fun BlockedAccountsScreen(
         ) {
             BlockedAccountsHeader(onNavigateBack = onNavigateBack)
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 32.dp)
-            ) {
-                item {
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        listOf("default", "newest", "oldest").forEach { sort ->
-                            BlockedSortChip(
-                                text = sort,
-                                selected = selectedSort == sort,
-                                onClick = { selectedSort = sort }
+            if (viewModel.isLoading && blockedAccounts.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = SolariTheme.colors.primary,
+                        trackColor = SolariTheme.colors.surface
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 32.dp)
+                ) {
+                    item {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        ) {
+                            listOf("default", "newest", "oldest").forEach { sort ->
+                                BlockedSortChip(
+                                    text = sort,
+                                    selected = viewModel.sort == sort,
+                                    onClick = { viewModel.updateSort(sort) }
+                                )
+                            }
+                        }
+                    }
+
+                    if (blockedAccounts.isEmpty()) {
+                        item {
+                            Text(
+                                text = viewModel.errorMessage ?: "No blocked accounts",
+                                color = BlockedSubtle,
+                                fontSize = 14.sp,
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Medium,
+                                modifier = Modifier.padding(top = 24.dp)
                             )
                         }
                     }
-                }
 
-                items(blockedAccounts) { account ->
-                    BlockedAccountItem(account = account)
+                    items(blockedAccounts) { account ->
+                        BlockedAccountItem(
+                            account = account,
+                            onUnblock = { pendingUnblock = account }
+                        )
+                    }
                 }
             }
         }
+    }
+
+    pendingUnblock?.let { account ->
+        SolariConfirmationDialog(
+            title = "Unblock ${account.user.displayName}?",
+            message = "They will be able to find your profile and interact with visible content again.",
+            confirmText = "Unblock",
+            onConfirm = {
+                viewModel.unblockUser(account.user.id)
+                pendingUnblock = null
+            },
+            onDismiss = { pendingUnblock = null }
+        )
     }
 }
 
@@ -185,37 +216,41 @@ private fun BlockedSortChip(
 }
 
 @Composable
-private fun BlockedAccountItem(account: BlockedAccountEntry) {
+private fun BlockedAccountItem(
+    account: BlockedUser,
+    onUnblock: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(80.dp)
-            .clip(RoundedCornerShape(6.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(BlockedSurface)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = account.avatarUrl,
-            contentDescription = "${account.name} avatar",
+        SolariAvatar(
+            imageUrl = account.user.profileImageUrl,
+            username = account.user.username,
+            contentDescription = "${account.user.displayName} avatar",
             modifier = Modifier
-                .size(width = 48.dp, height = 44.dp)
-                .clip(RoundedCornerShape(6.dp)),
-            contentScale = ContentScale.Crop
+                .size(width = 48.dp, height = 44.dp),
+            shape = RoundedCornerShape(6.dp),
+            fontSize = 16.sp
         )
 
         Spacer(modifier = Modifier.width(12.dp))
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = account.name,
+                text = account.user.displayName,
                 color = BlockedText,
                 fontSize = 14.sp,
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold
             )
             Text(
-                text = account.blockedAt,
+                text = "Blocked ${account.blockedAt.toRelativeTimeLabel()}",
                 color = BlockedSubtle,
                 fontSize = 11.sp,
                 fontFamily = PlusJakartaSans,
@@ -228,7 +263,7 @@ private fun BlockedAccountItem(account: BlockedAccountEntry) {
                 .height(36.dp)
                 .clip(RoundedCornerShape(18.dp))
                 .background(BlockedChip)
-                .clickable { }
+                .clickable(onClick = onUnblock)
                 .padding(horizontal = 16.dp),
             contentAlignment = Alignment.Center
         ) {
@@ -240,5 +275,22 @@ private fun BlockedAccountItem(account: BlockedAccountEntry) {
                 fontWeight = FontWeight.Bold
             )
         }
+    }
+}
+
+private fun Long.toRelativeTimeLabel(nowMillis: Long = System.currentTimeMillis()): String {
+    val elapsedMillis = (nowMillis - this).coerceAtLeast(0L)
+    val minutes = TimeUnit.MILLISECONDS.toMinutes(elapsedMillis)
+    val hours = TimeUnit.MILLISECONDS.toHours(elapsedMillis)
+    val days = TimeUnit.MILLISECONDS.toDays(elapsedMillis)
+
+    return when {
+        minutes < 1 -> "just now"
+        minutes < 60 -> "${minutes}m ago"
+        hours < 24 -> "${hours}h ago"
+        days < 7 -> "${days}d ago"
+        days < 30 -> "${days / 7}w ago"
+        days < 365 -> "${days / 30}mo ago"
+        else -> "${days / 365}y ago"
     }
 }

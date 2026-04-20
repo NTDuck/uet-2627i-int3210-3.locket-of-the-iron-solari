@@ -100,6 +100,10 @@ dependencies {
     // Coil
     implementation(libs.coil.compose)
 
+    // Media playback
+    implementation(libs.androidx.media3.exoplayer)
+    implementation(libs.androidx.media3.ui)
+
     // Networking & Serialization
     implementation(libs.okhttp)
     implementation(libs.retrofit)
@@ -109,6 +113,7 @@ dependencies {
     // Local persistence
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.datastore.preferences)
     ksp(libs.androidx.room.compiler)
 
     testImplementation(libs.junit)

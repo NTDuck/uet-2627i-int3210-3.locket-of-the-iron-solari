@@ -1,6 +1,8 @@
 package com.solari.app
 
+import android.os.Build
 import android.os.Bundle
+import android.view.Display
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -11,22 +13,33 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Alignment
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavController
 import com.solari.app.data.di.AppContainer
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.screens.*
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.*
+import com.solari.app.ui.models.Conversation
 
 private const val FriendManagementTransitionMillis = 360
+private const val SelectedConversationKey = "selected_conversation"
+private const val ChatSettingsPartnerKey = "chat_settings_partner"
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        preferHighestRefreshRate()
         enableEdgeToEdge()
         setContent {
             val appContainer = (application as SolariApplication).appContainer
@@ -47,6 +60,30 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    @Suppress("DEPRECATION")
+    private fun preferHighestRefreshRate() {
+        val display: Display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display ?: return
+        } else {
+            windowManager.defaultDisplay
+        }
+
+        val highestRefreshRate = display.supportedModes
+            .maxOfOrNull { it.refreshRate }
+            ?: return
+
+        window.attributes = window.attributes.apply {
+            preferredRefreshRate = highestRefreshRate
+        }
+    }
+}
+
+private fun NavController.navigateToChat(conversation: Conversation) {
+    currentBackStackEntry
+        ?.savedStateHandle
+        ?.set(SelectedConversationKey, conversation)
+    navigate(SolariRoute.Screen.Chat.name + "/${conversation.id}")
 }
 
 @Composable
@@ -55,11 +92,34 @@ fun SolariApp(
     appContainer: AppContainer
 ) {
     val navController = rememberNavController()
+    val appAuthViewModel: AppAuthViewModel = viewModel(factory = appContainer.viewModelFactory)
+    val authState by appAuthViewModel.uiState.collectAsState()
+
+    if (authState.isCheckingSession) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SolariTheme.colors.background),
+            contentAlignment = Alignment.Center
+        ) {
+            CircularProgressIndicator(
+                color = SolariTheme.colors.primary,
+                trackColor = SolariTheme.colors.surface
+            )
+        }
+        return
+    }
+
+    val startDestination = if (authState.isAuthenticated) {
+        SolariRoute.Screen.Main.name + "/0"
+    } else {
+        SolariRoute.Screen.Welcome.name
+    }
 
     NavHost(
         navController = navController, 
         modifier = Modifier.background(SolariTheme.colors.background),
-        startDestination = SolariRoute.Screen.Welcome.name,
+        startDestination = startDestination,
         enterTransition = {
             slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
         },
@@ -97,7 +157,12 @@ fun SolariApp(
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToSignUp = { navController.navigate(SolariRoute.Screen.SignUp.name) },
                 onNavigateToForgotPassword = { navController.navigate(SolariRoute.Screen.PasswordRecovery.name) },
-                onSignInComplete = { navController.navigate(SolariRoute.Screen.Main.name + "/0") }
+                onSignInComplete = {
+                    appAuthViewModel.onSignedIn()
+                    navController.navigate(SolariRoute.Screen.Main.name + "/0") {
+                        popUpTo(0)
+                    }
+                }
             )
         }
         composable(SolariRoute.Screen.OTP.name + "/{purpose}") { backStackEntry ->
@@ -157,16 +222,19 @@ fun SolariApp(
                 initialPage = page,
                 settingsViewModel = settingsViewModel,
                 viewModelFactory = appContainer.viewModelFactory,
-                onNavigateToChat = { chatId -> navController.navigate(SolariRoute.Screen.Chat.name + "/$chatId") },
+                onNavigateToChat = { conversation -> navController.navigateToChat(conversation) },
                 onNavigateToManageFriends = { navController.navigate(SolariRoute.Screen.FriendManagement.name) },
                 onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
                 onNavigateToChangePassword = { navController.navigate(SolariRoute.Screen.PasswordReset.name + "/true") },
                 onNavigateToChangeTheme = { navController.navigate(SolariRoute.Screen.ChangeTheme.name) },
                 onNavigateToFeedBrowse = { navController.navigate(SolariRoute.Screen.FeedBrowse.name) },
                 onCapture = { navController.navigate(SolariRoute.Screen.CameraAfter.name) },
-                onLogout = { navController.navigate(SolariRoute.Screen.Welcome.name) {
-                    popUpTo(0)
-                }}
+                onLogout = {
+                    appAuthViewModel.signOutLocal()
+                    navController.navigate(SolariRoute.Screen.Welcome.name) {
+                        popUpTo(0)
+                    }
+                }
             )
         }
         composable(SolariRoute.Screen.Main.name + "/{page}/{postId}") { backStackEntry ->
@@ -177,16 +245,19 @@ fun SolariApp(
                 initialFeedPostId = postId,
                 settingsViewModel = settingsViewModel,
                 viewModelFactory = appContainer.viewModelFactory,
-                onNavigateToChat = { chatId -> navController.navigate(SolariRoute.Screen.Chat.name + "/$chatId") },
+                onNavigateToChat = { conversation -> navController.navigateToChat(conversation) },
                 onNavigateToManageFriends = { navController.navigate(SolariRoute.Screen.FriendManagement.name) },
                 onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
                 onNavigateToChangePassword = { navController.navigate(SolariRoute.Screen.PasswordReset.name + "/true") },
                 onNavigateToChangeTheme = { navController.navigate(SolariRoute.Screen.ChangeTheme.name) },
                 onNavigateToFeedBrowse = { navController.navigate(SolariRoute.Screen.FeedBrowse.name) },
                 onCapture = { navController.navigate(SolariRoute.Screen.CameraAfter.name) },
-                onLogout = { navController.navigate(SolariRoute.Screen.Welcome.name) {
-                    popUpTo(0)
-                }}
+                onLogout = {
+                    appAuthViewModel.signOutLocal()
+                    navController.navigate(SolariRoute.Screen.Welcome.name) {
+                        popUpTo(0)
+                    }
+                }
             )
         }
         composable(SolariRoute.Screen.CameraAfter.name) {
@@ -215,22 +286,39 @@ fun SolariApp(
         composable(SolariRoute.Screen.Chat.name + "/{chatId}") { backStackEntry ->
             val chatId = backStackEntry.arguments?.getString("chatId") ?: ""
             val viewModel: ChatViewModel = viewModel(factory = appContainer.viewModelFactory)
+            val selectedConversation = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<Conversation>(SelectedConversationKey)
+
             LaunchedEffect(chatId) {
+                selectedConversation?.let(viewModel::setInitialConversation)
                 viewModel.loadConversation(chatId)
             }
             ChatScreen(
                 chatId = chatId,
+                initialPartner = selectedConversation?.otherUser,
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToSettings = { navController.navigate(SolariRoute.Screen.ChatSettings.name) },
+                onNavigateToSettings = { settingsChatId, partner ->
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.set(ChatSettingsPartnerKey, partner)
+                    navController.navigate(SolariRoute.Screen.ChatSettings.name + "/$settingsChatId")
+                },
                 onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
                 onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
                 onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") }
             )
         }
-        composable(SolariRoute.Screen.ChatSettings.name) {
-            val viewModel: ChatSettingsViewModel = viewModel()
+        composable(SolariRoute.Screen.ChatSettings.name + "/{chatId}") { backStackEntry ->
+            val chatId = backStackEntry.arguments?.getString("chatId").orEmpty()
+            val viewModel: ChatSettingsViewModel = viewModel(factory = appContainer.viewModelFactory)
+            val initialPartner = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<com.solari.app.ui.models.User>(ChatSettingsPartnerKey)
             ChatSettingsScreen(
+                chatId = chatId,
+                initialPartner = initialPartner,
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
@@ -276,7 +364,7 @@ fun SolariApp(
                 }
             }
         ) {
-            val viewModel: FriendManagementViewModel = viewModel()
+            val viewModel: FriendManagementViewModel = viewModel(factory = appContainer.viewModelFactory)
             FriendManagementScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
@@ -288,7 +376,7 @@ fun SolariApp(
             )
         }
         composable(SolariRoute.Screen.BlockedAccounts.name) {
-            val viewModel: BlockedAccountsViewModel = viewModel()
+            val viewModel: BlockedAccountsViewModel = viewModel(factory = appContainer.viewModelFactory)
             BlockedAccountsScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },

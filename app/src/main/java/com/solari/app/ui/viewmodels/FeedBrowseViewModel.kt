@@ -28,6 +28,8 @@ class FeedBrowseViewModel(
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
+    private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
+
     init {
         refresh()
     }
@@ -48,6 +50,23 @@ class FeedBrowseViewModel(
             }
 
             isLoading = false
+        }
+    }
+
+    fun registerPostView(postId: String) {
+        if (postId in registeredViewPostIds) {
+            return
+        }
+
+        registeredViewPostIds = registeredViewPostIds + postId
+        viewModelScope.launch {
+            when (val result = feedRepository.registerPostView(postId)) {
+                is ApiResult.Success -> Unit
+                is ApiResult.Failure -> {
+                    registeredViewPostIds = registeredViewPostIds - postId
+                    errorMessage = result.message
+                }
+            }
         }
     }
 }

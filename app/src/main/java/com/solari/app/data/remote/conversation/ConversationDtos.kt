@@ -5,6 +5,25 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
+data class CreateConversationRequestDto(
+    @SerialName("target_user_id")
+    val targetUserId: String
+)
+
+@Serializable
+data class CreateConversationResponseDto(
+    val message: String? = null,
+    val conversation: CreatedConversationDto
+)
+
+@Serializable
+data class CreatedConversationDto(
+    val id: String,
+    @SerialName("created_at")
+    val createdAt: String? = null
+)
+
+@Serializable
 data class GetConversationsResponseDto(
     val items: List<ConversationDto>,
     @SerialName("next_cursor")
@@ -31,7 +50,9 @@ data class ConversationDto(
     @SerialName("partner_last_read_at")
     val partnerLastReadAt: String? = null,
     @SerialName("is_readonly")
-    val isReadonly: Boolean = false
+    val isReadonly: Boolean = false,
+    @SerialName("is_muted")
+    val isMuted: Boolean = false
 )
 
 @Serializable
@@ -63,6 +84,10 @@ data class MessageDto(
     val content: String? = null,
     @SerialName("is_deleted")
     val isDeleted: Boolean = false,
+    @SerialName("referenced_post_id")
+    val referencedPostId: String? = null,
+    @SerialName("replied_message_id")
+    val repliedMessageId: String? = null,
     @SerialName("created_at")
     val createdAt: String,
     val reactions: List<MessageReactionDto> = emptyList()
@@ -73,6 +98,29 @@ data class MessageReactionDto(
     @SerialName("user_id")
     val userId: String,
     val emoji: String
+)
+
+@Serializable
+data class MessageReactionRequestDto(
+    val emoji: String
+)
+
+@Serializable
+data class MessageReactionResponseDto(
+    val message: String,
+    val data: MessageReactionRecordDto
+)
+
+@Serializable
+data class MessageReactionRecordDto(
+    val id: String,
+    @SerialName("message_id")
+    val messageId: String,
+    @SerialName("user_id")
+    val userId: String,
+    val emoji: String,
+    @SerialName("created_at")
+    val createdAt: String
 )
 
 @Serializable
@@ -98,6 +146,10 @@ data class SentMessageDto(
     @SerialName("sender_id")
     val senderId: String,
     val content: String,
+    @SerialName("referenced_post_id")
+    val referencedPostId: String? = null,
+    @SerialName("replied_message_id")
+    val repliedMessageId: String? = null,
     @SerialName("created_at")
     val createdAt: String
 )
@@ -115,4 +167,19 @@ data class UnsentMessageDto(
     val conversationId: String,
     @SerialName("is_deleted")
     val isDeleted: Boolean
+)
+
+@Serializable
+data class ToggleConversationMuteRequestDto(
+    @SerialName("conversation_id")
+    val conversationId: String
+)
+
+@Serializable
+data class ToggleConversationMuteResponseDto(
+    val message: String,
+    @SerialName("conversation_id")
+    val conversationId: String,
+    @SerialName("is_muted")
+    val isMuted: Boolean
 )

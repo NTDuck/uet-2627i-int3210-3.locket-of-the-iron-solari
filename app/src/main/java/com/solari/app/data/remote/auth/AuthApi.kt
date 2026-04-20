@@ -9,4 +9,9 @@ interface AuthApi {
     suspend fun signIn(
         @Body request: SignInRequestDto
     ): Response<SignInResponseDto>
+
+    @POST("sessions/refresh")
+    suspend fun refreshSession(
+        @Body request: RefreshSessionRequestDto
+    ): Response<SignInResponseDto>
 }

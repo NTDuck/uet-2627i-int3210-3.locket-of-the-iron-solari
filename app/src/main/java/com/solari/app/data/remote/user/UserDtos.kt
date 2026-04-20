@@ -22,3 +22,26 @@ data class UpdateUserProfileResponseDto(
 data class DeleteAccountResponseDto(
     val message: String
 )
+
+@Serializable
+data class GetBlockedUsersResponseDto(
+    val items: List<BlockedUserDto>,
+    @SerialName("next_cursor")
+    val nextCursor: String? = null,
+    val limit: Int? = null
+)
+
+@Serializable
+data class BlockedUserDto(
+    val id: String,
+    val username: String,
+    val email: String? = null,
+    @SerialName("display_name")
+    val displayName: String? = null,
+    @SerialName("avatar_key")
+    val avatarKey: String? = null,
+    @SerialName("avatarUrl")
+    val avatarUrl: String? = null,
+    @SerialName("blocked_at")
+    val blockedAt: String
+)

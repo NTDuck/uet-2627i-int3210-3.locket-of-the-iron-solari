@@ -11,6 +11,8 @@ interface AuthRepository {
         password: String
     ): ApiResult<AuthSession>
 
+    suspend fun restoreSession(): ApiResult<AuthSession>
+
     suspend fun getCurrentSession(): AuthSession?
 
     suspend fun clearSession()

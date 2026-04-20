@@ -10,6 +10,7 @@ import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.FriendRequest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class ConversationViewModel(
@@ -37,17 +38,22 @@ class ConversationViewModel(
             isLoading = true
             errorMessage = null
 
-            when (val requestsResult = friendRepository.getFriendRequests()) {
-                is ApiResult.Success -> friendRequests = requestsResult.data
-                is ApiResult.Failure -> errorMessage = requestsResult.message
-            }
+            try {
+                when (val requestsResult = friendRepository.getFriendRequests()) {
+                    is ApiResult.Success -> friendRequests = requestsResult.data
+                    is ApiResult.Failure -> errorMessage = requestsResult.message
+                }
 
-            when (val conversationsResult = conversationRepository.getConversations()) {
-                is ApiResult.Success -> conversations = conversationsResult.data
-                is ApiResult.Failure -> if (errorMessage == null) errorMessage = conversationsResult.message
+                when (val conversationsResult = conversationRepository.getConversations()) {
+                    is ApiResult.Success -> conversations = conversationsResult.data
+                    is ApiResult.Failure -> if (errorMessage == null) errorMessage = conversationsResult.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to load conversations"
+            } finally {
+                isLoading = false
             }
-
-            isLoading = false
         }
     }
 

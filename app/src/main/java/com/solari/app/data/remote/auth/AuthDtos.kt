@@ -10,6 +10,12 @@ data class SignInRequestDto(
 )
 
 @Serializable
+data class RefreshSessionRequestDto(
+    @SerialName("refresh_token")
+    val refreshToken: String
+)
+
+@Serializable
 data class SignInResponseDto(
     val message: String,
     @SerialName("session_id")

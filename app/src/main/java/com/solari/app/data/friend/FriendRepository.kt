@@ -5,9 +5,11 @@ import com.solari.app.ui.models.FriendRequest
 import com.solari.app.ui.models.User
 
 interface FriendRepository {
-    suspend fun getFriends(): ApiResult<List<User>>
+    suspend fun getFriends(sort: String? = null): ApiResult<List<User>>
 
     suspend fun getFriendRequests(): ApiResult<List<FriendRequest>>
+
+    suspend fun sendFriendRequest(identifier: String): ApiResult<Unit>
 
     suspend fun acceptFriendRequest(requestId: String): ApiResult<Unit>
 

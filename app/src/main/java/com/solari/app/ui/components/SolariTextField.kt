@@ -13,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,6 +50,11 @@ fun SolariTextField(
                 .height(56.dp),
             textStyle = TextStyle(fontFamily = PlusJakartaSans, fontSize = textFontSize, color = Color.White),
             placeholder = { Text(text = placeholder, color = Color.Gray, fontFamily = PlusJakartaSans) },
+            visualTransformation = if (isPassword) {
+                PasswordVisualTransformation()
+            } else {
+                VisualTransformation.None
+            },
             shape = RoundedCornerShape(28.dp),
             colors = TextFieldDefaults.colors(
                 focusedContainerColor = SolariTheme.colors.surface,

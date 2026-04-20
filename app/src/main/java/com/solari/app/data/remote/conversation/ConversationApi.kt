@@ -7,8 +7,14 @@ import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
+import com.solari.app.data.remote.common.MessageResponseDto
 
 interface ConversationApi {
+    @POST("conversations")
+    suspend fun createConversation(
+        @Body request: CreateConversationRequestDto
+    ): Response<CreateConversationResponseDto>
+
     @GET("conversations")
     suspend fun getConversations(
         @Query("limit") limit: Int = 100,
@@ -38,4 +44,30 @@ interface ConversationApi {
         @Path("conversationId") conversationId: String,
         @Path("messageId") messageId: String
     ): Response<UnsendMessageResponseDto>
+
+    @POST("conversations/mute")
+    suspend fun toggleConversationMute(
+        @Body request: ToggleConversationMuteRequestDto
+    ): Response<ToggleConversationMuteResponseDto>
+
+    @POST("messages/{messageId}/reactions")
+    suspend fun reactToMessage(
+        @Path("messageId") messageId: String,
+        @Body request: MessageReactionRequestDto
+    ): Response<MessageReactionResponseDto>
+
+    @DELETE("messages/{messageId}/reactions")
+    suspend fun removeMessageReaction(
+        @Path("messageId") messageId: String
+    ): Response<MessageResponseDto>
+
+    @POST("conversations/{conversationId}/read")
+    suspend fun markConversationRead(
+        @Path("conversationId") conversationId: String
+    ): Response<MessageResponseDto>
+
+    @DELETE("conversations/{conversationId}")
+    suspend fun clearConversationHistory(
+        @Path("conversationId") conversationId: String
+    ): Response<MessageResponseDto>
 }

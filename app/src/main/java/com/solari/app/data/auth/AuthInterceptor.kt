@@ -12,6 +12,10 @@ class AuthInterceptor(
 ) : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
+        if (request.url.encodedPath in UnauthenticatedPaths) {
+            return chain.proceed(request)
+        }
+
         val accessToken = runBlocking {
             authSessionDao.getCurrentSession()?.let { session ->
                 runCatching { tokenCipher.decrypt(session.accessTokenCiphertext) }.getOrNull()
@@ -27,5 +31,16 @@ class AuthInterceptor(
         }
 
         return chain.proceed(authenticatedRequest)
+    }
+
+    private companion object {
+        val UnauthenticatedPaths = setOf(
+            "/signin",
+            "/signup",
+            "/sessions/refresh",
+            "/password-resets",
+            "/password-resets/verify",
+            "/password-resets/complete"
+        )
     }
 }

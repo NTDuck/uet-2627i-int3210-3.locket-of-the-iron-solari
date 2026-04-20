@@ -9,6 +9,7 @@ import com.solari.app.data.auth.AuthRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.user.UserRepository
 import com.solari.app.ui.models.User
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class ProfileViewModel(
@@ -16,6 +17,9 @@ class ProfileViewModel(
     private val authRepository: AuthRepository
 ) : ViewModel() {
     var user by mutableStateOf<User?>(null)
+        private set
+
+    var isLoading by mutableStateOf(false)
         private set
 
     var successMessage by mutableStateOf<String?>(null)
@@ -27,13 +31,21 @@ class ProfileViewModel(
 
     fun loadMe() {
         viewModelScope.launch {
-            when (val result = userRepository.getMe()) {
-                is ApiResult.Success -> {
-                    user = result.data
-                    errorMessage = null
-                }
+            isLoading = true
+            try {
+                when (val result = userRepository.getMe()) {
+                    is ApiResult.Success -> {
+                        user = result.data
+                        errorMessage = null
+                    }
 
-                is ApiResult.Failure -> errorMessage = result.message
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to load profile"
+            } finally {
+                isLoading = false
             }
         }
     }

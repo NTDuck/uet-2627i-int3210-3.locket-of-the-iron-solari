@@ -14,6 +14,7 @@ import com.solari.app.data.friend.DefaultFriendRepository
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.local.SolariDatabase
 import com.solari.app.data.network.ApiExecutor
+import com.solari.app.data.preferences.RecentEmojiStore
 import com.solari.app.data.remote.conversation.ConversationApi
 import com.solari.app.data.remote.auth.AuthApi
 import com.solari.app.data.remote.feed.FeedApi
@@ -46,6 +47,7 @@ class AppContainer(
     ).build()
 
     private val tokenCipher = TokenCipher()
+    private val recentEmojiStore = RecentEmojiStore(applicationContext)
 
     private val okHttpClient = OkHttpClient.Builder()
         .addInterceptor(AuthInterceptor(database.authSessionDao(), tokenCipher))
@@ -72,7 +74,8 @@ class AppContainer(
         authApi = authApi,
         authSessionDao = database.authSessionDao(),
         apiExecutor = apiExecutor,
-        tokenCipher = tokenCipher
+        tokenCipher = tokenCipher,
+        recentEmojiStore = recentEmojiStore
     )
 
     private val userRepository: UserRepository = DefaultUserRepository(
@@ -100,6 +103,7 @@ class AppContainer(
         userRepository = userRepository,
         feedRepository = feedRepository,
         friendRepository = friendRepository,
-        conversationRepository = conversationRepository
+        conversationRepository = conversationRepository,
+        recentEmojiStore = recentEmojiStore
     )
 }

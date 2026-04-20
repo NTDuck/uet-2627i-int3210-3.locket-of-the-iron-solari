@@ -38,3 +38,48 @@ data class FeedMediaDto(
 data class DeletePostResponseDto(
     val message: String
 )
+
+@Serializable
+data class GetPostViewersResponseDto(
+    val items: List<PostViewerDto>,
+    @SerialName("next_cursor")
+    val nextCursor: String? = null
+)
+
+@Serializable
+data class PostViewerDto(
+    val id: String,
+    val username: String,
+    val email: String? = null,
+    @SerialName("display_name")
+    val displayName: String? = null,
+    @SerialName("avatar_key")
+    val avatarKey: String? = null,
+    @SerialName("avatarUrl")
+    val avatarUrl: String? = null,
+    @SerialName("viewed_at")
+    val viewedAt: String
+)
+
+@Serializable
+data class GetPostReactionsResponseDto(
+    val items: List<PostReactionDto>,
+    @SerialName("next_cursor")
+    val nextCursor: String? = null
+)
+
+@Serializable
+data class PostReactionDto(
+    val id: String,
+    val emoji: String,
+    val note: String? = null,
+    @SerialName("created_at")
+    val createdAt: String,
+    val user: ApiUserDto
+)
+
+@Serializable
+data class SendPostReactionRequestDto(
+    val emoji: String,
+    val note: String? = null
+)

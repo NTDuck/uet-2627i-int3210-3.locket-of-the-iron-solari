@@ -1,9 +1,12 @@
 package com.solari.app.data.user
 
 import com.solari.app.data.mappers.toUiUser
+import com.solari.app.data.mappers.toEpochMillisOrNow
 import com.solari.app.data.network.ApiExecutor
 import com.solari.app.data.network.ApiResult
+import com.solari.app.data.remote.user.BlockedUserDto
 import com.solari.app.data.remote.user.UserApi
+import com.solari.app.ui.models.BlockedUser
 import com.solari.app.ui.models.User
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -41,6 +44,40 @@ class DefaultUserRepository(
         }
     }
 
+    override suspend fun blockUser(userId: String): ApiResult<Unit> {
+        return when (val result = apiExecutor.execute { userApi.blockUser(userId) }) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(Unit)
+        }
+    }
+
+    override suspend fun unblockUser(userId: String): ApiResult<Unit> {
+        return when (val result = apiExecutor.execute { userApi.unblockUser(userId) }) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(Unit)
+        }
+    }
+
+    override suspend fun getBlockedUsers(sort: String): ApiResult<List<BlockedUser>> {
+        return when (val result = apiExecutor.execute { userApi.getBlockedUsers(sort = sort) }) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiBlockedUser() })
+        }
+    }
+
     private fun String.toPlainTextRequestBody() =
         toRequestBody("text/plain".toMediaType())
+
+    private fun BlockedUserDto.toUiBlockedUser(): BlockedUser {
+        return BlockedUser(
+            user = User(
+                id = id,
+                displayName = displayName ?: username,
+                username = username,
+                email = email.orEmpty(),
+                profileImageUrl = avatarUrl.orEmpty()
+            ),
+            blockedAt = blockedAt.toEpochMillisOrNow()
+        )
+    }
 }

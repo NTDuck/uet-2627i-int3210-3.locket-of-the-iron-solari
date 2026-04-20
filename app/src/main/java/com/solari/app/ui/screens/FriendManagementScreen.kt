@@ -1,6 +1,10 @@
 package com.solari.app.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,19 +21,21 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -46,10 +52,18 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import com.solari.app.navigation.SolariRoute
+import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.ui.components.SolariConfirmationDialog
+import com.solari.app.ui.components.SortDropdownButton
+import com.solari.app.ui.components.SortSelection
+import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.viewmodels.FriendManagementViewModel
 
@@ -63,13 +77,7 @@ private val FriendsMuted = Color(0xFFD7C0B2)
 private val FriendsSubtle = Color(0xFF9699A1)
 private val FriendsButton = Color(0xFF34363B)
 
-private data class FriendListEntry(
-    val name: String,
-    val handle: String,
-    val initials: String,
-    val avatarColor: Color
-)
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendManagementScreen(
     viewModel: FriendManagementViewModel,
@@ -83,14 +91,17 @@ fun FriendManagementScreen(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     var requestText by remember { mutableStateOf("") }
+    var sortSelection by remember { mutableStateOf(SortSelection.Default) }
+    var friendPendingBlock by remember { mutableStateOf<User?>(null) }
     val inviteLink = "https://solari-backend.com/usern..."
-    val friends = remember {
-        listOf(
-            FriendListEntry("Alex Rivera", "@arivera_sol", "AR", Color(0xFF79431F)),
-            FriendListEntry("Sarah Jenkins", "@sara_h_j", "SJ", Color(0xFF5B341D)),
-            FriendListEntry("Marcus Thorne", "@thor_ne", "MT", Color(0xFF6A3000)),
-            FriendListEntry("Elena Wu", "@ewu_tech", "EW", Color(0xFF4F1E00))
-        )
+    val friends = viewModel.friends
+    val feedbackMessage = viewModel.successMessage ?: viewModel.errorMessage
+
+    LaunchedEffect(feedbackMessage) {
+        if (feedbackMessage != null) {
+            Toast.makeText(context, feedbackMessage, Toast.LENGTH_SHORT).show()
+            viewModel.clearMessages()
+        }
     }
 
     Scaffold(
@@ -109,15 +120,21 @@ fun FriendManagementScreen(
             )
         }
     ) { innerPadding ->
-        LazyColumn(
+        PullToRefreshBox(
+            isRefreshing = viewModel.isLoading && friends.isNotEmpty(),
+            onRefresh = { viewModel.loadFriends(sortSelection.apiValue) },
             modifier = Modifier
                 .fillMaxSize()
                 .background(FriendsBackground)
                 .padding(innerPadding)
                 .statusBarsPadding()
-                .padding(horizontal = 19.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(top = 0.dp, bottom = 22.dp)
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 19.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                contentPadding = PaddingValues(top = 0.dp, bottom = 22.dp)
         ) {
             item {
                 FriendManagementSectionTitle(text = "PERSONAL INVITE")
@@ -191,7 +208,7 @@ fun FriendManagementScreen(
                                 imageVector = Icons.Outlined.PersonAdd,
                                 contentDescription = null,
                                 tint = FriendsMuted,
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(16.dp)
                             )
 
                             Spacer(modifier = Modifier.width(10.dp))
@@ -203,7 +220,7 @@ fun FriendManagementScreen(
                                 textStyle = TextStyle(
                                     color = FriendsText,
                                     fontFamily = PlusJakartaSans,
-                                    fontSize = 11.sp,
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 ),
                                 cursorBrush = SolidColor(FriendsText),
@@ -214,7 +231,7 @@ fun FriendManagementScreen(
                                             Text(
                                                 text = "username/email",
                                                 color = FriendsSubtle,
-                                                fontSize = 11.sp,
+                                                fontSize = 12.sp,
                                                 fontFamily = PlusJakartaSans,
                                                 fontWeight = FontWeight.Medium
                                             )
@@ -238,18 +255,20 @@ fun FriendManagementScreen(
                     Box(
                         modifier = Modifier
                             .weight(0.75f)
-                            .height(32.dp)
+                            .height(36.dp)
                             .clip(RoundedCornerShape(16.dp))
                             .background(FriendsButton)
-                            .clickable {
-                                requestText = ""
+                            .clickable(enabled = !viewModel.isSendingRequest) {
+                                viewModel.sendFriendRequest(requestText) {
+                                    requestText = ""
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Send request",
+                            text = if (viewModel.isSendingRequest) "Sending..." else "Send request",
                             color = FriendsText,
-                            fontSize = 11.sp,
+                            fontSize = 12.sp,
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold
                         )
@@ -288,24 +307,74 @@ fun FriendManagementScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FriendManagementSectionTitle(text = "FRIEND LIST")
-                    Icon(
-                        imageVector = Icons.Default.FilterList,
-                        contentDescription = "Filter friends",
-                        tint = FriendsMuted,
-                        modifier = Modifier.size(14.dp)
+                    SortDropdownButton(
+                        selected = sortSelection,
+                        onSelected = { selection ->
+                            sortSelection = selection
+                            viewModel.loadFriends(selection.apiValue)
+                        },
+                        iconTint = FriendsMuted,
+                        menuContainerColor = FriendsSurface,
+                        menuContentColor = FriendsText,
+                        modifier = Modifier.size(28.dp),
+                        iconSize = 14
                     )
                 }
             }
 
-            items(friends) { friend ->
-                FriendListItem(
-                    name = friend.name,
-                    handle = friend.handle,
-                    initials = friend.initials,
-                    avatarColor = friend.avatarColor
-                )
+            if (viewModel.isLoading && friends.isEmpty()) {
+                item {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(96.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = FriendsPrimary,
+                            trackColor = FriendsSurface
+                        )
+                    }
+                }
+            } else if (friends.isEmpty()) {
+                item {
+                    Text(
+                        text = viewModel.errorMessage ?: "No friends yet",
+                        color = FriendsSubtle,
+                        fontSize = 13.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            } else {
+                item {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        friends.forEach { friend ->
+                            FriendListItem(
+                                friend = friend,
+                                onBlock = { friendPendingBlock = it }
+                            )
+                        }
+                    }
+                }
             }
         }
+        }
+    }
+
+    friendPendingBlock?.let { friend ->
+        SolariConfirmationDialog(
+            title = "Block ${friend.displayName}?",
+            message = "They will no longer be able to find your profile or interact with your content.",
+            confirmText = "Block",
+            onConfirm = {
+                viewModel.blockFriend(friend)
+                friendPendingBlock = null
+            },
+            onDismiss = { friendPendingBlock = null }
+        )
     }
 }
 
@@ -314,7 +383,7 @@ private fun FriendManagementSectionTitle(text: String) {
     Text(
         text = text,
         color = FriendsMuted,
-        fontSize = 13.sp,
+        fontSize = 15.sp,
         fontFamily = PlusJakartaSans,
         fontWeight = FontWeight.Bold
     )
@@ -355,37 +424,29 @@ private fun FriendsPrimaryButton(
 
 @Composable
 private fun FriendListItem(
-    name: String,
-    handle: String,
-    initials: String,
-    avatarColor: Color
+    friend: User,
+    onBlock: (User) -> Unit
 ) {
     var isMenuExpanded by remember { mutableStateOf(false) }
+    val handle = "@${friend.username}"
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(64.dp)
-            .clip(RoundedCornerShape(5.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(FriendsSurface)
             .padding(horizontal = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(38.dp)
-                .clip(RoundedCornerShape(6.dp))
-                .background(avatarColor),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = initials,
-                color = FriendsMuted,
-                fontSize = 13.sp,
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Bold
-            )
-        }
+        SolariAvatar(
+            imageUrl = friend.profileImageUrl,
+            username = friend.username,
+            contentDescription = "${friend.displayName} avatar",
+            modifier = Modifier.size(40.dp),
+            shape = RoundedCornerShape(8.dp),
+            fontSize = 14.sp
+        )
 
         Spacer(modifier = Modifier.width(13.dp))
 
@@ -394,50 +455,80 @@ private fun FriendListItem(
             verticalArrangement = Arrangement.spacedBy(0.dp, Alignment.CenterVertically)
         ) {
             Text(
-                text = name,
+                text = friend.displayName,
                 color = FriendsText,
-                fontSize = 13.sp,
-                lineHeight = 13.sp,
+                fontSize = 15.sp,
+                lineHeight = 15.sp,
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold
             )
             Text(
                 text = handle,
                 color = FriendsSubtle,
-                fontSize = 11.sp,
-                lineHeight = 11.sp,
+                fontSize = 13.sp,
+                lineHeight = 13.sp,
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium
             )
         }
 
         Box {
-            Icon(
-                imageVector = Icons.Default.MoreVert,
-                contentDescription = "Friend actions",
-                tint = FriendsMuted,
+            Box(
                 modifier = Modifier
                     .size(30.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { isMenuExpanded = true }
-                    .padding(6.dp)
-            )
-
-            DropdownMenu(
-                expanded = isMenuExpanded,
-                onDismissRequest = { isMenuExpanded = false },
-                containerColor = FriendsSurface
+                    .clickable { isMenuExpanded = true },
+                contentAlignment = Alignment.Center
             ) {
-                FriendActionMenuItem(
-                    text = "Unfriend",
-                    color = FriendsText,
-                    onClick = { isMenuExpanded = false }
+                Icon(
+                    imageVector = Icons.Default.MoreVert,
+                    contentDescription = "Friend actions",
+                    tint = FriendsMuted,
+                    modifier = Modifier.size(18.dp)
                 )
-                FriendActionMenuItem(
-                    text = "Block",
-                    color = FriendsMuted,
-                    onClick = { isMenuExpanded = false }
-                )
+            }
+
+            if (isMenuExpanded) {
+                Popup(
+                    alignment = Alignment.TopEnd,
+                    offset = IntOffset(0, 30),
+                    onDismissRequest = { isMenuExpanded = false },
+                    properties = PopupProperties(focusable = true)
+                ) {
+                    var menuVisible by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) {
+                        menuVisible = true
+                    }
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = menuVisible,
+                        enter = fadeIn(animationSpec = tween(120)) +
+                                scaleIn(initialScale = 0.92f, animationSpec = tween(120))
+                    ) {
+                        Surface(
+                            color = FriendsSurface,
+                            shape = RoundedCornerShape(8.dp),
+                            shadowElevation = 8.dp
+                        ) {
+                            Column {
+                                FriendActionMenuItem(
+                                    text = "Unfriend",
+                                    color = FriendsText,
+                                    shape = FriendActionOptionTopShape,
+                                    onClick = { isMenuExpanded = false }
+                                )
+                                FriendActionMenuItem(
+                                    text = "Block",
+                                    color = FriendsMuted,
+                                    shape = FriendActionOptionBottomShape,
+                                    onClick = {
+                                        isMenuExpanded = false
+                                        onBlock(friend)
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -447,12 +538,14 @@ private fun FriendListItem(
 private fun FriendActionMenuItem(
     text: String,
     color: Color,
+    shape: RoundedCornerShape,
     onClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
-            .fillMaxWidth()
+            .width(132.dp)
             .height(40.dp)
+            .clip(shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp),
         contentAlignment = Alignment.CenterStart
@@ -467,3 +560,17 @@ private fun FriendActionMenuItem(
         )
     }
 }
+
+private val FriendActionOptionTopShape = RoundedCornerShape(
+    topStart = 8.dp,
+    topEnd = 8.dp,
+    bottomEnd = 0.dp,
+    bottomStart = 0.dp
+)
+
+private val FriendActionOptionBottomShape = RoundedCornerShape(
+    topStart = 0.dp,
+    topEnd = 0.dp,
+    bottomEnd = 8.dp,
+    bottomStart = 8.dp
+)

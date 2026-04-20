@@ -1,5 +1,6 @@
 package com.solari.app.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
@@ -48,93 +49,116 @@ fun SignInScreen(
         modifier = Modifier.fillMaxSize(),
         color = SolariTheme.colors.background
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            SolariTextField(
-                value = uiState.emailOrUsername,
-                onValueChange = viewModel::onEmailOrUsernameChanged,
-                label = "Username or Email",
-                placeholder = "Email or username",
-                labelFontSize = 17.sp,
-                textFontSize = 16.sp,
-                modifier = Modifier.padding(bottom = 24.dp),
-                color = SolariTheme.colors.tertiary
-            )
-
-            SolariTextField(
-                value = uiState.password,
-                onValueChange = viewModel::onPasswordChanged,
-                label = "Password",
-                placeholder = "••••••••",
-                isPassword = true,
-                labelFontSize = 17.sp,
-                textFontSize = 16.sp,
-                modifier = Modifier.padding(bottom = 16.dp),
-                color = SolariTheme.colors.tertiary
-            )
-
-            Text(
-                text = "Forgot password?",
-                color = SolariTheme.colors.secondary,
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp,
+        Box(modifier = Modifier.fillMaxSize()) {
+            Column(
                 modifier = Modifier
-                    .align(Alignment.Start)
-                    .padding(start = 8.dp)
-                    .clickable { onNavigateToForgotPassword() }
-            )
+                    .fillMaxSize()
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                SolariTextField(
+                    value = uiState.emailOrUsername,
+                    onValueChange = viewModel::onEmailOrUsernameChanged,
+                    label = "Username or Email",
+                    placeholder = "Email or username",
+                    labelFontSize = 17.sp,
+                    textFontSize = 16.sp,
+                    modifier = Modifier.padding(bottom = 24.dp),
+                    color = SolariTheme.colors.tertiary
+                )
 
-            uiState.errorMessage?.let { errorMessage ->
+                SolariTextField(
+                    value = uiState.password,
+                    onValueChange = viewModel::onPasswordChanged,
+                    label = "Password",
+                    placeholder = "••••••••",
+                    isPassword = true,
+                    labelFontSize = 17.sp,
+                    textFontSize = 16.sp,
+                    modifier = Modifier.padding(bottom = 16.dp),
+                    color = SolariTheme.colors.tertiary
+                )
+
                 Text(
-                    text = errorMessage,
-                    color = MaterialTheme.colorScheme.error,
+                    text = "Forgot password?",
+                    color = SolariTheme.colors.secondary,
                     fontFamily = PlusJakartaSans,
-                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp,
+                    modifier = Modifier
+                        .align(Alignment.Start)
+                        .padding(start = 8.dp)
+                        .clickable { onNavigateToForgotPassword() }
+                )
+
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp, start = 8.dp, end = 8.dp)
+                        .height(40.dp)
+                        .padding(top = 12.dp, start = 8.dp, end = 8.dp),
+                    contentAlignment = Alignment.TopStart
+                ) {
+                    uiState.errorMessage?.let { errorMessage ->
+                        Text(
+                            text = errorMessage,
+                            color = MaterialTheme.colorScheme.error,
+                            fontFamily = PlusJakartaSans,
+                            fontSize = 14.sp,
+                            maxLines = 2
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                SolariButton(
+                    text = "Sign In",
+                    onClick = viewModel::signIn,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .fillMaxWidth(0.7f)
+                        .padding(bottom = 48.dp),
+                    contentColor = Color(0xFF5F2900),
+                    fontSize = 18.sp,
+                )
+
+                Text(
+                    text = "New to Solari?",
+                    color = SolariTheme.colors.tertiary,
+                    fontFamily = PlusJakartaSans,
+                    fontSize = 17.6.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    textAlign = TextAlign.Center
+                )
+
+                SolariButton(
+                    text = "Create Account",
+                    onClick = onNavigateToSignUp,
+                    containerColor = Color(0xFF343538),
+                    contentColor = Color(0xFFE3E2E6),
+                    modifier = Modifier.fillMaxWidth(0.7f),
+                    fontSize = 16.sp,
                 )
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
-
-            SolariButton(
-                text = if (uiState.isLoading) "Signing In" else "Sign In",
-                onClick = viewModel::signIn,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .fillMaxWidth(0.7f)
-                    .padding(bottom = 48.dp),
-                contentColor = Color(0xFF5F2900),
-                fontSize = 18.sp,
-            )
-
-            Text(
-                text = "New to Solari?",
-                color = SolariTheme.colors.tertiary,
-                fontFamily = PlusJakartaSans,
-                fontSize = 17.6.sp,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                textAlign = TextAlign.Center
-            )
-
-            SolariButton(
-                text = "Create Account",
-                onClick = onNavigateToSignUp,
-                containerColor = Color(0xFF343538),
-                contentColor = Color(0xFFE3E2E6),
-                modifier = Modifier.fillMaxWidth(0.7f),
-                fontSize = 16.sp,
-            )
+            if (uiState.isLoading) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.42f))
+                        .clickable(enabled = false) {},
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = SolariTheme.colors.primary,
+                        trackColor = SolariTheme.colors.surface
+                    )
+                }
+            }
         }
     }
 }
@@ -175,6 +199,14 @@ private class PreviewAuthRepository : AuthRepository {
             statusCode = null,
             type = "PREVIEW",
             message = "Preview mode does not sign in."
+        )
+    }
+
+    override suspend fun restoreSession(): ApiResult<AuthSession> {
+        return ApiResult.Failure(
+            statusCode = null,
+            type = "PREVIEW",
+            message = "Preview mode does not restore sessions."
         )
     }
 

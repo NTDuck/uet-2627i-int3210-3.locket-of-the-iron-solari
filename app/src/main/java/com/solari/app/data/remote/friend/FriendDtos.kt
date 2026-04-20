@@ -32,6 +32,11 @@ data class GetFriendRequestsResponseDto(
 )
 
 @Serializable
+data class SendFriendRequestDto(
+    val identifier: String
+)
+
+@Serializable
 data class FriendRequestMutationResponseDto(
     val message: String,
     @SerialName("friend_request")
