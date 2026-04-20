@@ -1,0 +1,222 @@
+package com.solari.app.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Public
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
+import com.solari.app.data.ServiceLocator
+import com.solari.app.navigation.SolariRoute
+import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.viewmodels.FeedBrowseViewModel
+
+@Composable
+fun FeedBrowseScreen(
+    viewModel: FeedBrowseViewModel,
+    onNavigateBack: () -> Unit,
+    onNavigateToCamera: () -> Unit,
+    onNavigateToChat: () -> Unit,
+    onNavigateToProfile: () -> Unit,
+    onNavigateToPost: (String) -> Unit
+) {
+    val posts = remember { ServiceLocator.mockDataProvider.posts }
+    val users = remember { ServiceLocator.mockDataProvider.users }
+    val friends = remember { users.filter { it.id != ServiceLocator.mockDataProvider.currentUser.id } }
+    var selectedSort by remember { mutableStateOf("default") }
+    var selectedFriendIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    
+    val filteredSortedPosts = remember(posts, selectedSort, selectedFriendIds) {
+        val filteredPosts = if (selectedFriendIds.isEmpty()) {
+            posts
+        } else {
+            posts.filter { it.author.id in selectedFriendIds }
+        }
+
+        when (selectedSort) {
+            "newest" -> filteredPosts.sortedByDescending { it.timestamp }
+            "oldest" -> filteredPosts.sortedBy { it.timestamp }
+            else -> filteredPosts
+        }
+    }
+
+    Scaffold(
+        containerColor = SolariTheme.colors.background,
+        bottomBar = {
+            SolariBottomNavBar(
+                selectedRoute = SolariRoute.Screen.Feed.name,
+                onNavigate = { routeName ->
+                    when (routeName) {
+                        SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
+                        SolariRoute.Screen.Feed.name -> onNavigateBack()
+                        SolariRoute.Screen.Conversations.name -> onNavigateToChat()
+                        SolariRoute.Screen.Profile.name -> onNavigateToProfile()
+                    }
+                }
+            )
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(SolariTheme.colors.background)
+                .padding(innerPadding)
+                .padding(top = 24.dp, start = 24.dp, end = 24.dp)
+        ) {
+            Text(
+                text = "SORT",
+                fontSize = 12.sp * 1.4f,
+                fontWeight = FontWeight.Bold,
+                color = SolariTheme.colors.secondary,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SortChip("default", isSelected = selectedSort == "default") { selectedSort = "default" }
+                SortChip("newest", isSelected = selectedSort == "newest") { selectedSort = "newest" }
+                SortChip("oldest", isSelected = selectedSort == "oldest") { selectedSort = "oldest" }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                text = "FILTER BY FRIENDS",
+                fontSize = 12.sp * 1.4f,
+                fontWeight = FontWeight.Bold,
+                color = SolariTheme.colors.secondary,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                item {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        val isAllSelected = selectedFriendIds.isEmpty()
+                        Box(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .border(
+                                    width = 2.dp,
+                                    color = if (isAllSelected) SolariTheme.colors.primary else Color.Transparent,
+                                    shape = CircleShape
+                                )
+                                .padding(4.dp)
+                                .background(SolariTheme.colors.surface, CircleShape)
+                                .clickable { selectedFriendIds = emptySet() },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Public,
+                                contentDescription = "All",
+                                tint = if (isAllSelected) SolariTheme.colors.primary else Color.Gray
+                            )
+                        }
+                        Text(
+                            text = "All (${friends.size})",
+                            color = if (isAllSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+
+                items(friends) { friend ->
+                    val isSelected = friend.id in selectedFriendIds
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        AsyncImage(
+                            model = friend.profileImageUrl,
+                            contentDescription = friend.displayName,
+                            modifier = Modifier
+                                .size(64.dp)
+                                .border(
+                                    width = 2.dp,
+                                    color = if (isSelected) SolariTheme.colors.primary else Color.Transparent,
+                                    shape = CircleShape
+                                )
+                                .padding(4.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    selectedFriendIds = if (isSelected) {
+                                        selectedFriendIds - friend.id
+                                    } else {
+                                        selectedFriendIds + friend.id
+                                    }
+                                },
+                            contentScale = ContentScale.Crop
+                        )
+                        Text(
+                            friend.displayName,
+                            color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            LazyVerticalGrid(
+                columns = GridCells.Fixed(3),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                items(filteredSortedPosts) { post ->
+                    AsyncImage(
+                        model = post.imageUrl,
+                        contentDescription = "Browse Image",
+                        modifier = Modifier
+                            .aspectRatio(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onNavigateToPost(post.id) },
+                        contentScale = ContentScale.Crop
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun SortChip(text: String, isSelected: Boolean, onClick: () -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.surface,
+        modifier = Modifier.height(40.dp).clickable(onClick = onClick)
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 24.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = text,
+                color = if (isSelected) SolariTheme.colors.onPrimary else SolariTheme.colors.onSurface,
+                fontWeight = FontWeight.Bold,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
