@@ -65,7 +65,8 @@ class DefaultConversationRepository(
     override suspend fun sendMessage(
         conversationId: String,
         content: String,
-        referencedPostId: String?
+        referencedPostId: String?,
+        repliedMessageId: String?
     ): ApiResult<Message> {
         return when (
             val result = apiExecutor.execute {
@@ -73,7 +74,8 @@ class DefaultConversationRepository(
                     conversationId = conversationId,
                     request = SendMessageRequestDto(
                         content = content,
-                        referencedPostId = referencedPostId
+                        referencedPostId = referencedPostId,
+                        repliedMessageId = repliedMessageId
                     )
                 )
             }

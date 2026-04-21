@@ -7,6 +7,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.solari.app.data.auth.AuthRepository
 import com.solari.app.data.network.ApiResult
+import com.solari.app.data.user.ProfileAvatarUpload
 import com.solari.app.data.user.UserRepository
 import com.solari.app.ui.models.User
 import kotlinx.coroutines.CancellationException
@@ -20,6 +21,9 @@ class ProfileViewModel(
         private set
 
     var isLoading by mutableStateOf(false)
+        private set
+
+    var isUpdatingAvatar by mutableStateOf(false)
         private set
 
     var successMessage by mutableStateOf<String?>(null)
@@ -74,6 +78,39 @@ class ProfileViewModel(
                 }
 
                 is ApiResult.Failure -> errorMessage = result.message
+            }
+        }
+    }
+
+    fun updateAvatar(
+        avatar: ProfileAvatarUpload,
+        onSuccess: () -> Unit = {},
+        onFailure: () -> Unit = {}
+    ) {
+        if (isUpdatingAvatar) return
+
+        viewModelScope.launch {
+            isUpdatingAvatar = true
+            try {
+                when (val result = userRepository.updateProfile(avatar = avatar)) {
+                    is ApiResult.Success -> {
+                        user = result.data
+                        successMessage = "Avatar updated successfully"
+                        errorMessage = null
+                        onSuccess()
+                    }
+
+                    is ApiResult.Failure -> {
+                        errorMessage = result.message
+                        onFailure()
+                    }
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to update avatar"
+                onFailure()
+            } finally {
+                isUpdatingAvatar = false
             }
         }
     }

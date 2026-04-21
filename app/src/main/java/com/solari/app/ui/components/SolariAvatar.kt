@@ -29,11 +29,9 @@ fun SolariAvatar(
     contentDescription: String? = null,
     fontSize: TextUnit = 18.sp
 ) {
-    val normalizedImageUrl = imageUrl?.trim().orEmpty()
-
-    if (normalizedImageUrl.isNotEmpty()) {
+    if (imageUrl != null) {
         AsyncImage(
-            model = normalizedImageUrl,
+            model = imageUrl,
             contentDescription = contentDescription,
             modifier = modifier.clip(shape),
             contentScale = ContentScale.Crop

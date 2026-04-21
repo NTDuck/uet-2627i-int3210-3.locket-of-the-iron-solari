@@ -1,7 +1,21 @@
 package com.solari.app.data.remote.auth
 
+import com.solari.app.data.remote.common.ApiUserDto
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+
+@Serializable
+data class SignUpRequestDto(
+    val username: String,
+    val email: String,
+    val password: String
+)
+
+@Serializable
+data class SignUpResponseDto(
+    val message: String,
+    val user: ApiUserDto
+)
 
 @Serializable
 data class SignInRequestDto(

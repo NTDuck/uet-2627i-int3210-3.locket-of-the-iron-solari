@@ -27,6 +27,10 @@ class SolariViewModelFactory(
                 SignInViewModel(authRepository)
             }
 
+            modelClass.isAssignableFrom(SignUpViewModel::class.java) -> {
+                SignUpViewModel(authRepository)
+            }
+
             modelClass.isAssignableFrom(FeedViewModel::class.java) -> {
                 FeedViewModel(
                     feedRepository = feedRepository,

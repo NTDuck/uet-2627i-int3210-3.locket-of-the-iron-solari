@@ -17,8 +17,14 @@ data class Conversation(
 data class FriendRequest(
     val id: String,
     val user: User,
+    val direction: FriendRequestDirection = FriendRequestDirection.Incoming,
     val timestamp: Long = System.currentTimeMillis()
 ) : Serializable
+
+enum class FriendRequestDirection : Serializable {
+    Incoming,
+    Outgoing
+}
 
 data class Message(
     val id: String = UUID.randomUUID().toString(),
@@ -31,8 +37,14 @@ data class Message(
     val referencedPostThumbnailUrl: String? = null,
     val repliedMessageId: String? = null,
     val repliedMessagePreview: String? = null,
-    val reactions: List<MessageReaction> = emptyList()
+    val reactions: List<MessageReaction> = emptyList(),
+    val deliveryState: MessageDeliveryState = MessageDeliveryState.Sent
 ): Serializable
+
+enum class MessageDeliveryState : Serializable {
+    Sending,
+    Sent
+}
 
 data class MessageReaction(
     val userId: String,

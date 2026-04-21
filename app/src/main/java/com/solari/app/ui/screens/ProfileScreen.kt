@@ -1,5 +1,9 @@
 package com.solari.app.ui.screens
 
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -24,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -32,12 +37,16 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.solari.app.data.user.ProfileAvatarUpload
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.ProfileViewModel
 import com.solari.app.ui.viewmodels.SettingsViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -54,8 +63,10 @@ fun ProfileScreen(
     onLogout: () -> Unit
 ) {
     val user = viewModel.user
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val outsideEditClickSource = remember { MutableInteractionSource() }
+    val coroutineScope = rememberCoroutineScope()
     val feedbackMessage = viewModel.successMessage ?: viewModel.errorMessage
     val isSuccessFeedback = viewModel.successMessage != null
     var pillVisible by remember { mutableStateOf(false) }
@@ -69,6 +80,53 @@ fun ProfileScreen(
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var deletePassword by remember { mutableStateOf("") }
     var deleteError by remember { mutableStateOf<String?>(null) }
+    var selectedAvatarUri by remember { mutableStateOf<Uri?>(null) }
+    var committedAvatarPreviewUri by remember { mutableStateOf<Uri?>(null) }
+    val avatarPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            selectedAvatarUri = uri
+            viewModel.clearMessages()
+        }
+    }
+    fun openAvatarPicker() {
+        avatarPicker.launch(
+            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+        )
+    }
+    fun updateSelectedAvatar() {
+        val avatarUri = selectedAvatarUri ?: return
+        coroutineScope.launch {
+            val upload = withContext(Dispatchers.IO) {
+                runCatching {
+                    context.contentResolver.openInputStream(avatarUri)?.use { inputStream ->
+                        ProfileAvatarUpload(
+                            fileName = "avatar_${System.currentTimeMillis()}",
+                            mimeType = context.contentResolver.getType(avatarUri) ?: "image/jpeg",
+                            bytes = inputStream.readBytes()
+                        )
+                    }
+                }.getOrNull()
+            }
+
+            if (upload == null) {
+                viewModel.errorMessage = "Failed to read selected avatar"
+                return@launch
+            }
+
+            viewModel.updateAvatar(
+                avatar = upload,
+                onSuccess = {
+                    committedAvatarPreviewUri = avatarUri
+                    selectedAvatarUri = null
+                },
+                onFailure = {
+                    selectedAvatarUri = null
+                }
+            )
+        }
+    }
 
     LaunchedEffect(feedbackMessage, isSuccessFeedback) {
         if (feedbackMessage != null) {
@@ -145,13 +203,15 @@ fun ProfileScreen(
                 ) {
                     Box {
                         SolariAvatar(
-                            imageUrl = user.profileImageUrl,
+                            imageUrl = selectedAvatarUri?.toString()
+                                ?: committedAvatarPreviewUri?.toString()
+                                ?: user.profileImageUrl,
                             username = user.username,
                             contentDescription = "Profile Picture",
                             modifier = Modifier
                                 .size(120.dp)
                                 .clip(RoundedCornerShape(24.dp))
-                                .clickable { /* Select from gallery mock */ },
+                                .clickable { openAvatarPicker() },
                             shape = RoundedCornerShape(24.dp),
                             fontSize = 42.sp
                         )
@@ -162,10 +222,49 @@ fun ProfileScreen(
                                 .size(32.dp)
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(SolariTheme.colors.primary, RoundedCornerShape(8.dp))
-                                .clickable { /* Edit Avatar */ },
+                                .clickable { openAvatarPicker() },
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(Icons.Default.Edit, contentDescription = "Edit Avatar", tint = SolariTheme.colors.onPrimary, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    AnimatedVisibility(visible = selectedAvatarUri != null) {
+                        Row(
+                            modifier = Modifier.padding(top = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                onClick = { selectedAvatarUri = null },
+                                enabled = !viewModel.isUpdatingAvatar,
+                                color = SolariTheme.colors.surface,
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text(
+                                    text = "Cancel",
+                                    color = SolariTheme.colors.onSurface,
+                                    fontSize = 13.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
+
+                            Surface(
+                                onClick = ::updateSelectedAvatar,
+                                enabled = !viewModel.isUpdatingAvatar,
+                                color = SolariTheme.colors.primary,
+                                shape = RoundedCornerShape(16.dp)
+                            ) {
+                                Text(
+                                    text = if (viewModel.isUpdatingAvatar) "Updating..." else "Update avatar",
+                                    color = SolariTheme.colors.onPrimary,
+                                    fontSize = 13.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
                         }
                     }
                     Spacer(modifier = Modifier.height(16.dp))

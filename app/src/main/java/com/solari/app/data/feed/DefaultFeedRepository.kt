@@ -94,7 +94,7 @@ class DefaultFeedRepository(
                 displayName = displayName ?: username,
                 username = username,
                 email = email.orEmpty(),
-                profileImageUrl = avatarUrl.orEmpty()
+                profileImageUrl = effectiveAvatarUrl
             ),
             emoji = null,
             caption = null,

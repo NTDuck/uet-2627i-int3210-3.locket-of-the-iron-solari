@@ -53,13 +53,16 @@ data class PostViewerDto(
     val email: String? = null,
     @SerialName("display_name")
     val displayName: String? = null,
-    @SerialName("avatar_key")
-    val avatarKey: String? = null,
-    @SerialName("avatarUrl")
+    @SerialName("avatar_url")
     val avatarUrl: String? = null,
+    @SerialName("avatarUrl")
+    val legacyAvatarUrl: String? = null,
     @SerialName("viewed_at")
     val viewedAt: String
-)
+) {
+    val effectiveAvatarUrl: String?
+        get() = avatarUrl ?: legacyAvatarUrl
+}
 
 @Serializable
 data class GetPostReactionsResponseDto(

@@ -53,7 +53,7 @@ class ChatSettingsViewModel(
             when (val result = conversationRepository.getConversation(chatId)) {
                 is ApiResult.Success -> {
                     val conversation = result.data
-                    partner = partner ?: conversation.otherUser
+                    partner = conversation.otherUser
                     username = conversation.otherUser.username
                     isMuted = conversation.isMuted
                 }

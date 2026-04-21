@@ -1,12 +1,14 @@
 package com.solari.app.data.remote.user
 
 import okhttp3.RequestBody
+import okhttp3.MultipartBody
 import com.solari.app.data.remote.common.MessageResponseDto
 import retrofit2.Response
 import retrofit2.http.DELETE
 import retrofit2.http.GET
 import retrofit2.http.Multipart
 import retrofit2.http.PATCH
+import retrofit2.http.Part
 import retrofit2.http.POST
 import retrofit2.http.PartMap
 import retrofit2.http.Path
@@ -19,7 +21,8 @@ interface UserApi {
     @Multipart
     @PATCH("users/me")
     suspend fun updateProfile(
-        @PartMap fields: Map<String, @JvmSuppressWildcards RequestBody>
+        @PartMap fields: Map<String, @JvmSuppressWildcards RequestBody>,
+        @Part avatar: MultipartBody.Part? = null
     ): Response<UpdateUserProfileResponseDto>
 
     @DELETE("users/me")

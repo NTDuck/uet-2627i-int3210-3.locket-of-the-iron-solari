@@ -67,6 +67,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -358,6 +359,7 @@ private fun FeedPost(
     var showEmojiPicker by remember { mutableStateOf(false) }
     val currentUserId = currentUser?.id
     val isCurrentUserPost = post.author.id == currentUserId
+    val displayAuthor = currentUser?.takeIf { post.author.id == it.id } ?: post.author
     val activityUsers = remember(activityEntries, currentUserId) {
         activityEntries
             .map { it.user }
@@ -450,11 +452,12 @@ private fun FeedPost(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 100.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
             ) {
                 SolariAvatar(
-                    imageUrl = post.author.profileImageUrl,
-                    username = post.author.username,
+                    imageUrl = displayAuthor.profileImageUrl,
+                    username = displayAuthor.username,
                     contentDescription = "Author Avatar",
                     modifier = Modifier
                         .size(40.dp),
@@ -466,7 +469,7 @@ private fun FeedPost(
 
                 Column {
                     Text(
-                        text = if (isCurrentUserPost) "You" else post.author.displayName,
+                        text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontFamily = PlusJakartaSans,
@@ -475,7 +478,7 @@ private fun FeedPost(
                     )
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
-                        text = "2 HOURS AGO",
+                        text = post.timestamp.toFeedRelativeTimeLabel(),
                         color = Color(0xFFD7C0B2),
                         fontWeight = FontWeight.Bold,
                         fontFamily = PlusJakartaSans,
@@ -1004,6 +1007,23 @@ private fun String.toMedia3VideoMimeType(): String {
         normalized.contains("webm") -> MimeTypes.VIDEO_WEBM
         normalized.contains("quicktime") || normalized.contains("mov") -> "video/quicktime"
         else -> MimeTypes.VIDEO_MP4
+    }
+}
+
+private fun Long.toFeedRelativeTimeLabel(nowMillis: Long = System.currentTimeMillis()): String {
+    val elapsedMillis = (nowMillis - this).coerceAtLeast(0L)
+    val minutes = TimeUnit.MILLISECONDS.toMinutes(elapsedMillis)
+    val hours = TimeUnit.MILLISECONDS.toHours(elapsedMillis)
+    val days = TimeUnit.MILLISECONDS.toDays(elapsedMillis)
+
+    return when {
+        minutes < 1 -> "JUST NOW"
+        minutes < 60 -> "${minutes}M AGO"
+        hours < 24 -> "${hours}H AGO"
+        days < 7 -> "${days}D AGO"
+        days < 30 -> "${days / 7}W AGO"
+        days < 365 -> "${days / 30}MO AGO"
+        else -> "${days / 365}Y AGO"
     }
 }
 

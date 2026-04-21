@@ -1,10 +1,12 @@
 package com.solari.app.ui.screens
 
-import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,12 +20,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.outlined.PersonAdd
 import androidx.compose.material.icons.outlined.Share
@@ -47,7 +52,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -66,6 +72,7 @@ import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.viewmodels.FriendManagementViewModel
+import kotlinx.coroutines.delay
 
 private val FriendsBackground = Color(0xFF111316)
 private val FriendsSurface = Color(0xFF1B1C21)
@@ -89,53 +96,81 @@ fun FriendManagementScreen(
     onNavigateToProfile: () -> Unit
 ) {
     val clipboardManager = LocalClipboardManager.current
-    val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var requestText by remember { mutableStateOf("") }
     var sortSelection by remember { mutableStateOf(SortSelection.Default) }
     var friendPendingBlock by remember { mutableStateOf<User?>(null) }
+    var isUserRefreshing by remember { mutableStateOf(false) }
+    var feedbackPillVisible by remember { mutableStateOf(false) }
+    var feedbackPillMessage by remember { mutableStateOf("") }
+    var feedbackPillIsSuccess by remember { mutableStateOf(false) }
+    var feedbackEventId by remember { mutableStateOf(0) }
     val inviteLink = "https://solari-backend.com/usern..."
     val friends = viewModel.friends
     val feedbackMessage = viewModel.successMessage ?: viewModel.errorMessage
+    val isSuccessFeedback = viewModel.successMessage != null
 
-    LaunchedEffect(feedbackMessage) {
+    LaunchedEffect(feedbackMessage, isSuccessFeedback) {
         if (feedbackMessage != null) {
-            Toast.makeText(context, feedbackMessage, Toast.LENGTH_SHORT).show()
+            feedbackPillMessage = feedbackMessage
+            feedbackPillIsSuccess = isSuccessFeedback
+            feedbackPillVisible = true
+            feedbackEventId += 1
+        }
+    }
+
+    LaunchedEffect(feedbackEventId) {
+        if (feedbackEventId > 0) {
+            delay(2_000)
+            feedbackPillVisible = false
+            delay(320)
             viewModel.clearMessages()
         }
     }
 
-    Scaffold(
-        containerColor = FriendsBackground,
-        bottomBar = {
-            SolariBottomNavBar(
-                selectedRoute = SolariRoute.Screen.Conversations.name,
-                onNavigate = { routeName ->
-                    when (routeName) {
-                        SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
-                        SolariRoute.Screen.Feed.name -> onNavigateToFeed()
-                        SolariRoute.Screen.Conversations.name -> onNavigateToChat()
-                        SolariRoute.Screen.Profile.name -> onNavigateToProfile()
-                    }
-                }
-            )
+    LaunchedEffect(viewModel.isLoading) {
+        if (!viewModel.isLoading) {
+            isUserRefreshing = false
         }
-    ) { innerPadding ->
-        PullToRefreshBox(
-            isRefreshing = viewModel.isLoading && friends.isNotEmpty(),
-            onRefresh = { viewModel.loadFriends(sortSelection.apiValue) },
-            modifier = Modifier
-                .fillMaxSize()
-                .background(FriendsBackground)
-                .padding(innerPadding)
-                .statusBarsPadding()
-        ) {
-            LazyColumn(
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = FriendsBackground,
+            bottomBar = {
+                SolariBottomNavBar(
+                    selectedRoute = SolariRoute.Screen.Conversations.name,
+                    onNavigate = { routeName ->
+                        when (routeName) {
+                            SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
+                            SolariRoute.Screen.Feed.name -> onNavigateToFeed()
+                            SolariRoute.Screen.Conversations.name -> onNavigateToChat()
+                            SolariRoute.Screen.Profile.name -> onNavigateToProfile()
+                        }
+                    }
+                )
+            }
+        ) { innerPadding ->
+            PullToRefreshBox(
+                isRefreshing = isUserRefreshing,
+                onRefresh = {
+                    isUserRefreshing = true
+                    viewModel.loadFriends(sortSelection.apiValue)
+                },
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 19.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(top = 0.dp, bottom = 22.dp)
-        ) {
+                    .background(FriendsBackground)
+                    .padding(innerPadding)
+                    .statusBarsPadding()
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 19.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    contentPadding = PaddingValues(top = 0.dp, bottom = 22.dp)
+                ) {
             item {
                 FriendManagementSectionTitle(text = "PERSONAL INVITE")
                 Spacer(modifier = Modifier.height(13.dp))
@@ -174,7 +209,10 @@ fun FriendManagementScreen(
                         icon = Icons.Outlined.Share,
                         onClick = {
                             clipboardManager.setText(AnnotatedString(inviteLink))
-                            Toast.makeText(context, "Invite link copied", Toast.LENGTH_SHORT).show()
+                            feedbackPillMessage = "Invite link copied"
+                            feedbackPillIsSuccess = true
+                            feedbackPillVisible = true
+                            feedbackEventId += 1
                         }
                     )
                 }
@@ -259,6 +297,8 @@ fun FriendManagementScreen(
                             .clip(RoundedCornerShape(16.dp))
                             .background(FriendsButton)
                             .clickable(enabled = !viewModel.isSendingRequest) {
+                                focusManager.clearFocus(force = true)
+                                keyboardController?.hide()
                                 viewModel.sendFriendRequest(requestText) {
                                     requestText = ""
                                 }
@@ -362,6 +402,28 @@ fun FriendManagementScreen(
             }
         }
         }
+        }
+
+        AnimatedVisibility(
+            visible = feedbackPillVisible,
+            enter = slideInVertically(
+                initialOffsetY = { it * 2 },
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+            ),
+            exit = slideOutVertically(
+                targetOffsetY = { it * 2 },
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+            ),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 18.dp)
+        ) {
+            FriendManagementFeedbackPill(
+                message = feedbackPillMessage,
+                isSuccess = feedbackPillIsSuccess
+            )
+        }
     }
 
     friendPendingBlock?.let { friend ->
@@ -375,6 +437,46 @@ fun FriendManagementScreen(
             },
             onDismiss = { friendPendingBlock = null }
         )
+    }
+}
+
+@Composable
+private fun FriendManagementFeedbackPill(
+    message: String,
+    isSuccess: Boolean
+) {
+    val backgroundColor = if (isSuccess) Color(0xFF163624) else Color(0xFF3C1E22)
+    val iconTint = if (isSuccess) Color(0xFF77E0A1) else Color(0xFFFF8A80)
+
+    Surface(
+        color = backgroundColor,
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 0.dp,
+        shadowElevation = 10.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (isSuccess) Icons.Default.Check else Icons.Default.Close,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(24.dp)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Text(
+                text = message,
+                color = Color.White,
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

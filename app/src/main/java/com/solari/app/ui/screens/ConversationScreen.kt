@@ -1,5 +1,10 @@
 package com.solari.app.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -21,12 +26,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.FriendRequest
+import com.solari.app.ui.models.FriendRequestDirection
 import com.solari.app.ui.components.SolariAvatar
+import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SortDropdownButton
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.ConversationViewModel
+import kotlinx.coroutines.delay
 import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -42,6 +50,13 @@ fun ConversationScreen(
 ) {
     var sortSelection by remember { mutableStateOf(SortSelection.Default) }
     var isUserRefreshing by remember { mutableStateOf(false) }
+    var requestPendingCancel by remember { mutableStateOf<FriendRequest?>(null) }
+    var feedbackPillVisible by remember { mutableStateOf(false) }
+    var feedbackPillMessage by remember { mutableStateOf("") }
+    var feedbackPillIsSuccess by remember { mutableStateOf(false) }
+    var feedbackEventId by remember { mutableStateOf(0) }
+    val feedbackMessage = viewModel.successMessage ?: viewModel.errorMessage
+    val isSuccessFeedback = viewModel.successMessage != null
 
     val sortedConversations = when (sortSelection) {
         SortSelection.Default -> viewModel.conversations
@@ -55,6 +70,24 @@ fun ConversationScreen(
     LaunchedEffect(viewModel.isLoading) {
         if (!viewModel.isLoading) {
             isUserRefreshing = false
+        }
+    }
+
+    LaunchedEffect(feedbackMessage, isSuccessFeedback) {
+        if (feedbackMessage != null) {
+            feedbackPillMessage = feedbackMessage
+            feedbackPillIsSuccess = isSuccessFeedback
+            feedbackPillVisible = true
+            feedbackEventId += 1
+        }
+    }
+
+    LaunchedEffect(feedbackEventId) {
+        if (feedbackEventId > 0) {
+            delay(2_000)
+            feedbackPillVisible = false
+            delay(320)
+            viewModel.clearMessages()
         }
     }
 
@@ -117,7 +150,7 @@ fun ConversationScreen(
                             }
                         }
 
-                        if (viewModel.friendRequests.isNotEmpty()) {
+                        if (viewModel.visibleFriendRequests.isNotEmpty()) {
                             item {
                                 Text(
                                     text = "FRIEND REQUESTS",
@@ -129,12 +162,38 @@ fun ConversationScreen(
                                 )
                             }
 
-                            items(viewModel.friendRequests) { request ->
+                            items(viewModel.visibleFriendRequests, key = { it.id }) { request ->
                                 FriendRequestItem(
                                     request = request,
                                     onAccept = { viewModel.acceptFriendRequest(request.id) },
-                                    onDecline = { viewModel.declineFriendRequest(request.id) }
+                                    onDecline = { viewModel.declineFriendRequest(request.id) },
+                                    onCancel = { requestPendingCancel = request }
                                 )
+                            }
+
+                            if (viewModel.canViewMoreFriendRequests || viewModel.canViewLessFriendRequests) {
+                                item {
+                                    Box(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        FriendRequestTogglePill(
+                                            text = when {
+                                                viewModel.isLoadingMoreFriendRequests -> "Loading..."
+                                                viewModel.canViewMoreFriendRequests -> "View more"
+                                                else -> "View less"
+                                            },
+                                            enabled = !viewModel.isLoadingMoreFriendRequests,
+                                            onClick = {
+                                                if (viewModel.canViewMoreFriendRequests) {
+                                                    viewModel.expandFriendRequests()
+                                                } else {
+                                                    viewModel.collapseFriendRequests()
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -174,12 +233,76 @@ fun ConversationScreen(
                     }
                 }
             }
+
+            AnimatedVisibility(
+                visible = feedbackPillVisible,
+                enter = slideInVertically(
+                    initialOffsetY = { it * 2 },
+                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                ),
+                exit = slideOutVertically(
+                    targetOffsetY = { it * 2 },
+                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+                ),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 24.dp, vertical = 18.dp)
+            ) {
+                ConversationFeedbackPill(
+                    message = feedbackPillMessage,
+                    isSuccess = feedbackPillIsSuccess
+                )
+            }
         }
+    }
+
+    requestPendingCancel?.let { request ->
+        SolariConfirmationDialog(
+            title = "Unsend friend request",
+            message = "Are you sure you want to cancel your friend request to ${request.user.displayName}?",
+            confirmText = "Unsend",
+            onConfirm = {
+                viewModel.cancelFriendRequest(request.id)
+                requestPendingCancel = null
+            },
+            onDismiss = { requestPendingCancel = null }
+        )
     }
 }
 
 @Composable
-fun FriendRequestItem(request: FriendRequest, onAccept: () -> Unit, onDecline: () -> Unit) {
+private fun FriendRequestTogglePill(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        color = Color(0xFF2C2D30),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Text(
+            text = text,
+            color = SolariTheme.colors.tertiary,
+            fontSize = 12.sp,
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+    }
+}
+
+@Composable
+fun FriendRequestItem(
+    request: FriendRequest,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val isOutgoing = request.direction == FriendRequestDirection.Outgoing
+
     Surface(
         color = SolariTheme.colors.surface,
         shape = RoundedCornerShape(10.dp),
@@ -204,53 +327,110 @@ fun FriendRequestItem(request: FriendRequest, onAccept: () -> Unit, onDecline: (
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = request.user.displayName, 
+                    text = request.user.displayName,
                     color = Color.White, 
                     fontWeight = FontWeight.Bold, 
                     fontSize = 13.6.sp,
                     fontFamily = PlusJakartaSans
                 )
                 Text(
-                    text = "@${request.user.username}", 
+                    text = if (isOutgoing) "Outgoing to @${request.user.username}" else "Incoming from @${request.user.username}",
                     color = SolariTheme.colors.tertiary,
                     fontSize = 11.2.sp,
                     fontFamily = PlusJakartaSans
                 )
             }
 
-            Surface(
-                onClick = onDecline,
-                modifier = Modifier.size(32.dp),
-                shape = RoundedCornerShape(10.dp),
-                color = Color(0xFF2C2D30)
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.Close, 
-                        contentDescription = "Decline", 
-                        tint = SolariTheme.colors.secondary,
-                        modifier = Modifier.size(19.dp)
+            if (isOutgoing) {
+                Surface(
+                    onClick = onCancel,
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color(0xFF2C2D30)
+                ) {
+                    Text(
+                        text = "Unsend",
+                        color = SolariTheme.colors.secondary,
+                        fontSize = 12.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                     )
                 }
-            }
+            } else {
+                Surface(
+                    onClick = onDecline,
+                    modifier = Modifier.size(32.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color = Color(0xFF2C2D30)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Decline",
+                            tint = SolariTheme.colors.secondary,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                }
 
-            Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
-            Surface(
-                onClick = onAccept,
-                modifier = Modifier.size(32.dp),
-                shape = RoundedCornerShape(10.dp),
-                color = SolariTheme.colors.primary
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Default.Check, 
-                        contentDescription = "Accept", 
-                        tint = Color.Black, 
-                        modifier = Modifier.size(19.dp)
-                    )
+                Surface(
+                    onClick = onAccept,
+                    modifier = Modifier.size(32.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    color = SolariTheme.colors.primary
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Accept",
+                            tint = Color.Black,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ConversationFeedbackPill(
+    message: String,
+    isSuccess: Boolean
+) {
+    val backgroundColor = if (isSuccess) Color(0xFF163624) else Color(0xFF3C1E22)
+    val iconTint = if (isSuccess) Color(0xFF77E0A1) else Color(0xFFFF8A80)
+
+    Surface(
+        color = backgroundColor,
+        shape = RoundedCornerShape(20.dp),
+        tonalElevation = 0.dp,
+        shadowElevation = 10.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = if (isSuccess) Icons.Default.Check else Icons.Default.Close,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(24.dp)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Text(
+                text = message,
+                color = Color.White,
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

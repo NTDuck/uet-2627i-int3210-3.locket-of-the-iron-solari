@@ -133,14 +133,15 @@ fun FeedBrowseScreen(
                             Box(
                                 modifier = Modifier
                                     .size(64.dp)
+                                    .clip(CircleShape)
+                                    .clickable { selectedFriendIds = emptySet() }
                                     .border(
                                         width = 2.dp,
                                         color = if (isAllSelected) SolariTheme.colors.primary else Color.Transparent,
                                         shape = CircleShape
                                     )
                                     .padding(4.dp)
-                                    .background(SolariTheme.colors.surface, CircleShape)
-                                    .clickable { selectedFriendIds = emptySet() },
+                                    .background(SolariTheme.colors.surface, CircleShape),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(

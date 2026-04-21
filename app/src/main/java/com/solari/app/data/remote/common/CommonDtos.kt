@@ -10,13 +10,16 @@ data class ApiUserDto(
     val email: String? = null,
     @SerialName("display_name")
     val displayName: String? = null,
-    @SerialName("avatar_key")
-    val avatarKey: String? = null,
-    @SerialName("avatarUrl")
+    @SerialName("avatar_url")
     val avatarUrl: String? = null,
+    @SerialName("avatarUrl")
+    val legacyAvatarUrl: String? = null,
     @SerialName("created_at")
     val createdAt: String? = null
-)
+) {
+    val effectiveAvatarUrl: String?
+        get() = avatarUrl ?: legacyAvatarUrl
+}
 
 @Serializable
 data class MessageResponseDto(

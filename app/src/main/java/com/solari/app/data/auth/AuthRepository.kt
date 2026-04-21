@@ -6,6 +6,12 @@ import kotlinx.coroutines.flow.Flow
 interface AuthRepository {
     val currentSession: Flow<AuthSession?>
 
+    suspend fun signUp(
+        username: String,
+        email: String,
+        password: String
+    ): ApiResult<Unit>
+
     suspend fun signIn(
         identifier: String,
         password: String

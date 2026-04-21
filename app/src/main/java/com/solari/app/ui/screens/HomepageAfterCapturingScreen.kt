@@ -246,7 +246,7 @@ private fun VisibilityAllItem(
 private fun VisibilityFriendItem(
     name: String,
     username: String,
-    avatarUrl: String,
+    avatarUrl: String?,
     selected: Boolean,
     onClick: () -> Unit
 ) {

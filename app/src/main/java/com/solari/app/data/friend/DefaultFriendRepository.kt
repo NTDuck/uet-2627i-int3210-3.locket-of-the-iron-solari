@@ -8,6 +8,7 @@ import com.solari.app.data.remote.friend.FriendApi
 import com.solari.app.data.remote.friend.FriendRequestDto
 import com.solari.app.data.remote.friend.SendFriendRequestDto
 import com.solari.app.ui.models.FriendRequest
+import com.solari.app.ui.models.FriendRequestDirection
 import com.solari.app.ui.models.User
 
 class DefaultFriendRepository(
@@ -21,10 +22,27 @@ class DefaultFriendRepository(
         }
     }
 
-    override suspend fun getFriendRequests(): ApiResult<List<FriendRequest>> {
-        return when (val result = apiExecutor.execute { friendApi.getFriendRequests() }) {
+    override suspend fun getFriendRequests(
+        limit: Int,
+        cursor: String?
+    ): ApiResult<FriendRequestPage> {
+        return when (
+            val result = apiExecutor.execute {
+                friendApi.getFriendRequests(
+                    limit = limit,
+                    cursor = cursor
+                )
+            }
+        ) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiFriendRequest() })
+            is ApiResult.Success -> {
+                ApiResult.Success(
+                    FriendRequestPage(
+                        items = result.data.items.map { it.toUiFriendRequest() },
+                        nextCursor = result.data.nextCursor
+                    )
+                )
+            }
         }
     }
 
@@ -55,9 +73,15 @@ class DefaultFriendRepository(
 
     private fun FriendRequestDto.toUiFriendRequest(): FriendRequest {
         val counterparty = if (direction == "incoming") requester else receiver
+        val requestDirection = if (direction == "outgoing") {
+            FriendRequestDirection.Outgoing
+        } else {
+            FriendRequestDirection.Incoming
+        }
         return FriendRequest(
             id = id,
             user = counterparty.toUiUser(),
+            direction = requestDirection,
             timestamp = createdAt.toEpochMillisOrNow()
         )
     }

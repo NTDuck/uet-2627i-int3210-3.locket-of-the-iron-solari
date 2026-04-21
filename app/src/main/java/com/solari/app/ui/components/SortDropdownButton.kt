@@ -2,6 +2,7 @@ package com.solari.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -84,10 +85,10 @@ fun SortDropdownButton(
                 }
                 AnimatedVisibility(
                     visible = menuVisible,
-                    enter = scaleIn(
-                        initialScale = 0.78f,
-                        transformOrigin = TransformOrigin(1f, 0f),
-                        animationSpec = tween(150)
+                    enter = fadeIn(animationSpec = tween(90)) + scaleIn(
+                        initialScale = 0.7f,
+                        transformOrigin = TransformOrigin(0.5f, 0f),
+                        animationSpec = tween(140)
                     )
                 ) {
                     Surface(

@@ -38,10 +38,13 @@ data class BlockedUserDto(
     val email: String? = null,
     @SerialName("display_name")
     val displayName: String? = null,
-    @SerialName("avatar_key")
-    val avatarKey: String? = null,
-    @SerialName("avatarUrl")
+    @SerialName("avatar_url")
     val avatarUrl: String? = null,
+    @SerialName("avatarUrl")
+    val legacyAvatarUrl: String? = null,
     @SerialName("blocked_at")
     val blockedAt: String
-)
+) {
+    val effectiveAvatarUrl: String?
+        get() = avatarUrl ?: legacyAvatarUrl
+}

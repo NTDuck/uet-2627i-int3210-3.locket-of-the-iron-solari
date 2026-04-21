@@ -86,6 +86,20 @@ private fun NavController.navigateToChat(conversation: Conversation) {
     navigate(SolariRoute.Screen.Chat.name + "/${conversation.id}")
 }
 
+private fun NavController.navigateToWelcomeAfterLogout(onNavigated: () -> Unit) {
+    val currentDestinationId = currentDestination?.id
+
+    navigate(SolariRoute.Screen.Welcome.name) {
+        launchSingleTop = true
+        if (currentDestinationId != null) {
+            popUpTo(currentDestinationId) {
+                inclusive = true
+            }
+        }
+    }
+    onNavigated()
+}
+
 @Composable
 fun SolariApp(
     settingsViewModel: SettingsViewModel,
@@ -142,12 +156,17 @@ fun SolariApp(
             )
         }
         composable(SolariRoute.Screen.SignUp.name) {
-            val viewModel: SignUpViewModel = viewModel()
+            val viewModel: SignUpViewModel = viewModel(factory = appContainer.viewModelFactory)
             SignUpScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToSignIn = { navController.navigate(SolariRoute.Screen.SignIn.name) },
-                onSignUpComplete = { navController.navigate(SolariRoute.Screen.Main.name + "/0") }
+                onSignUpComplete = {
+                    appAuthViewModel.onSignedIn()
+                    navController.navigate(SolariRoute.Screen.Main.name + "/0") {
+                        popUpTo(0)
+                    }
+                }
             )
         }
         composable(SolariRoute.Screen.SignIn.name) {
@@ -230,10 +249,7 @@ fun SolariApp(
                 onNavigateToFeedBrowse = { navController.navigate(SolariRoute.Screen.FeedBrowse.name) },
                 onCapture = { navController.navigate(SolariRoute.Screen.CameraAfter.name) },
                 onLogout = {
-                    appAuthViewModel.signOutLocal()
-                    navController.navigate(SolariRoute.Screen.Welcome.name) {
-                        popUpTo(0)
-                    }
+                    navController.navigateToWelcomeAfterLogout(appAuthViewModel::signOutLocal)
                 }
             )
         }
@@ -253,10 +269,7 @@ fun SolariApp(
                 onNavigateToFeedBrowse = { navController.navigate(SolariRoute.Screen.FeedBrowse.name) },
                 onCapture = { navController.navigate(SolariRoute.Screen.CameraAfter.name) },
                 onLogout = {
-                    appAuthViewModel.signOutLocal()
-                    navController.navigate(SolariRoute.Screen.Welcome.name) {
-                        popUpTo(0)
-                    }
+                    navController.navigateToWelcomeAfterLogout(appAuthViewModel::signOutLocal)
                 }
             )
         }

@@ -17,7 +17,8 @@ interface ConversationRepository {
     suspend fun sendMessage(
         conversationId: String,
         content: String,
-        referencedPostId: String? = null
+        referencedPostId: String? = null,
+        repliedMessageId: String? = null
     ): ApiResult<Message>
 
     suspend fun unsendMessage(

@@ -12,19 +12,24 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -36,6 +41,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -43,7 +49,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
@@ -56,16 +64,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -84,6 +96,7 @@ import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.models.Message
+import com.solari.app.ui.models.MessageDeliveryState
 import com.solari.app.ui.models.MessageReaction
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
@@ -91,11 +104,13 @@ import com.solari.app.ui.util.EmojiCatalog
 import com.solari.app.ui.util.EmojiCatalogCategory
 import com.solari.app.ui.viewmodels.ChatViewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 private val ChatBackground = Color(0xFF111316)
@@ -112,6 +127,11 @@ private val ChatReactionSurface = Color(0xFF26282E)
 private val EmojiPickerPanel = Color(0xFF303234)
 private val EmojiPickerSearch = Color(0xFF46484B)
 private val EmojiPickerMuted = Color(0xFFB5B5B7)
+private const val MaxScrollToBottomPasses = 12
+private const val MessageSendScrollDeltaPx = 1_000_000f
+private const val MinuteMillis = 60_000L
+private const val HourMillis = 60L * MinuteMillis
+private const val DayMillis = 24L * HourMillis
 
 private val QuickReactionEmojis = listOf("❤️", "😂", "😮", "😢", "😡", "👍")
 
@@ -124,6 +144,12 @@ private data class ChatDaySection(
     val date: LocalDate,
     val label: String,
     val blocks: List<ChatMessageBlock>
+)
+
+private data class ChatViewportAnchor(
+    val firstVisibleItemIndex: Int,
+    val firstVisibleItemScrollOffset: Int,
+    val isScrolledToBottom: Boolean
 )
 
 @Composable
@@ -139,32 +165,82 @@ fun ChatScreen(
 ) {
     val currentUser = viewModel.currentUser
     val partner = viewModel.conversation?.otherUser ?: initialPartner
-    val focusManager = LocalFocusManager.current
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val keyboardBottomPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
     val allMessages = viewModel.conversation?.messages.orEmpty()
     val sortedMessages = remember(allMessages) { allMessages.sortedBy { it.timestamp } }
     val daySections = remember(sortedMessages) { buildChatDaySections(sortedMessages) }
     val lastMessage = sortedMessages.lastOrNull()
     val recentEmojis = viewModel.recentEmojis
     val messageListState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
     var previousMessageCount by remember(chatId) { mutableStateOf(sortedMessages.size) }
     var isMessageScrollInitialized by remember(chatId) { mutableStateOf(false) }
+    var hasSeenInitialMessageLoad by remember(chatId) { mutableStateOf(false) }
+    var hasFinishedInitialMessageLoad by remember(chatId) { mutableStateOf(false) }
+    var replyingToMessage by remember(chatId) { mutableStateOf<Message?>(null) }
+    var highlightedMessageId by remember(chatId) { mutableStateOf<String?>(null) }
+    val messageItemIndexes = remember(daySections) {
+        buildMessageItemIndexMap(daySections)
+    }
+    val lastMessageItemIndex = remember(daySections) {
+        daySections.sumOf { section -> 1 + section.blocks.size } - 1
+    }
+
+    fun jumpToMessage(messageId: String) {
+        val targetIndex = messageItemIndexes[messageId] ?: return
+        highlightedMessageId = messageId
+        coroutineScope.launch {
+            val layoutInfo = messageListState.layoutInfo
+            val targetItemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+            if (targetItemInfo != null &&
+                targetItemInfo.offset < layoutInfo.viewportEndOffset &&
+                targetItemInfo.offset + targetItemInfo.size > layoutInfo.viewportStartOffset
+            ) {
+                return@launch
+            }
+
+            val topHalfOffset = -(messageListState.layoutInfo.viewportSize.height / 4)
+            messageListState.animateScrollToItem(targetIndex, scrollOffset = topHalfOffset)
+        }
+    }
+
+    LaunchedEffect(highlightedMessageId) {
+        if (highlightedMessageId == null) return@LaunchedEffect
+        delay(2_000)
+        highlightedMessageId = null
+    }
+
+    LaunchedEffect(viewModel.isLoadingMessages) {
+        if (viewModel.isLoadingMessages) {
+            hasSeenInitialMessageLoad = true
+            hasFinishedInitialMessageLoad = false
+            isMessageScrollInitialized = false
+        } else if (hasSeenInitialMessageLoad) {
+            hasFinishedInitialMessageLoad = true
+        }
+    }
 
     LaunchedEffect(
         sortedMessages.size,
         lastMessage?.id,
         currentUser?.id,
-        viewModel.isLoadingMessages
+        viewModel.isLoadingMessages,
+        hasFinishedInitialMessageLoad
     ) {
         if (viewModel.isLoadingMessages) return@LaunchedEffect
-
-        val targetIndex = daySections.sumOf { section -> 1 + section.blocks.size } - 1
+        if (!hasFinishedInitialMessageLoad) return@LaunchedEffect
+        if (lastMessageItemIndex < 0) {
+            previousMessageCount = sortedMessages.size
+            isMessageScrollInitialized = true
+            return@LaunchedEffect
+        }
 
         if (!isMessageScrollInitialized) {
             previousMessageCount = sortedMessages.size
+            messageListState.scrollToMessageBottom(lastMessageItemIndex)
             isMessageScrollInitialized = true
-            if (targetIndex >= 0) {
-                messageListState.scrollToItem(targetIndex)
-            }
             return@LaunchedEffect
         }
 
@@ -174,9 +250,7 @@ fun ChatScreen(
         previousMessageCount = sortedMessages.size
 
         if (newMessageFromCurrentUser) {
-            if (targetIndex >= 0) {
-                messageListState.scrollToItem(targetIndex)
-            }
+            messageListState.scrollToBottomFromCurrentPosition()
         }
     }
 
@@ -196,11 +270,74 @@ fun ChatScreen(
             )
         }
     ) { innerPadding ->
+        val scaffoldBottomPadding = innerPadding.calculateBottomPadding()
+        val targetContentBottomPadding = max(
+            keyboardBottomPadding.value,
+            scaffoldBottomPadding.value
+        ).dp
+        var displayedContentBottomPadding by remember(chatId) {
+            mutableStateOf(targetContentBottomPadding)
+        }
+        val isKeyboardAboveBottomBar = displayedContentBottomPadding > scaffoldBottomPadding
+        var previousTargetContentBottomPadding by remember(chatId) {
+            mutableStateOf(targetContentBottomPadding)
+        }
+        var keyboardRestoreAnchor by remember(chatId) {
+            mutableStateOf<ChatViewportAnchor?>(null)
+        }
+
+        LaunchedEffect(targetContentBottomPadding, scaffoldBottomPadding, viewModel.isLoadingMessages) {
+            if (viewModel.isLoadingMessages) {
+                previousTargetContentBottomPadding = targetContentBottomPadding
+                displayedContentBottomPadding = targetContentBottomPadding
+                keyboardRestoreAnchor = null
+                return@LaunchedEffect
+            }
+
+            val bottomInsetDelta = targetContentBottomPadding - previousTargetContentBottomPadding
+            previousTargetContentBottomPadding = targetContentBottomPadding
+
+            when {
+                bottomInsetDelta > 0.dp -> {
+                    if (keyboardRestoreAnchor == null) {
+                        keyboardRestoreAnchor = messageListState.viewportAnchor()
+                    }
+                    val shouldKeepBottomVisible = keyboardRestoreAnchor?.isScrolledToBottom == true
+                    displayedContentBottomPadding = targetContentBottomPadding
+                    if (shouldKeepBottomVisible) {
+                        messageListState.scrollToBottomFromCurrentPosition()
+                    } else {
+                        messageListState.scrollBy(
+                            with(density) { bottomInsetDelta.toPx() }
+                        )
+                    }
+                }
+
+                bottomInsetDelta < 0.dp -> {
+                    val restoreAnchor = keyboardRestoreAnchor
+                    if (restoreAnchor != null) {
+                        messageListState.restoreViewportAnchor(restoreAnchor)
+                    }
+                    displayedContentBottomPadding = scaffoldBottomPadding
+                    keyboardRestoreAnchor = null
+                }
+
+                targetContentBottomPadding == scaffoldBottomPadding -> {
+                    displayedContentBottomPadding = scaffoldBottomPadding
+                }
+            }
+        }
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(ChatBackground)
-                .padding(innerPadding)
+                .padding(
+                    start = innerPadding.calculateStartPadding(layoutDirection),
+                    top = innerPadding.calculateTopPadding(),
+                    end = innerPadding.calculateEndPadding(layoutDirection),
+                    bottom = displayedContentBottomPadding
+                )
         ) {
             ChatHeaderBar(
                 chatId = chatId,
@@ -221,11 +358,19 @@ fun ChatScreen(
                         trackColor = ChatInput
                     )
                 } else {
+                    val isMessageListVisible = isMessageScrollInitialized || sortedMessages.isEmpty()
+
                     LazyColumn(
                         state = messageListState,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .alpha(if (isMessageListVisible) 1f else 0f),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 24.dp)
+                        contentPadding = PaddingValues(
+                            start = 24.dp,
+                            top = 24.dp,
+                            end = 24.dp,
+                        )
                     ) {
                         daySections.forEach { section ->
                             item(key = "day-${section.date}") {
@@ -244,10 +389,8 @@ fun ChatScreen(
                                     partner = partner,
                                     isFromMe = isFromMe,
                                     isLastBlock = lastMessage?.id == lastBlockMessage.id,
-                                    showReadReceipt = isFromMe &&
-                                            lastMessage?.id == lastBlockMessage.id &&
-                                            lastBlockMessage.isRead,
                                     currentUserId = currentUser?.id,
+                                    highlightedMessageId = highlightedMessageId,
                                     recentEmojis = recentEmojis,
                                     onRecordRecentEmoji = viewModel::recordRecentEmoji,
                                     onUnsendMessage = { message ->
@@ -255,10 +398,21 @@ fun ChatScreen(
                                     },
                                     onReactToMessage = { message, emoji ->
                                         viewModel.reactToMessage(message.id, emoji)
-                                    }
+                                    },
+                                    onReplyToMessage = { message ->
+                                        replyingToMessage = message
+                                    },
+                                    onJumpToMessage = ::jumpToMessage
                                 )
                             }
                         }
+                    }
+
+                    if (!isMessageListVisible) {
+                        CircularProgressIndicator(
+                            color = ChatPrimary,
+                            trackColor = ChatInput
+                        )
                     }
                 }
             }
@@ -266,11 +420,22 @@ fun ChatScreen(
             ChatInputBar(
                 value = viewModel.messageText,
                 onValueChange = { viewModel.messageText = it },
+                replyingToMessage = replyingToMessage,
+                isKeyboardAboveBottomBar = isKeyboardAboveBottomBar,
+                replyLabel = replyingToMessage?.let { message ->
+                    if (message.senderId == currentUser?.id) {
+                        "Replying to yourself"
+                    } else {
+                        "Replying to ${partner?.displayName.orEmpty()}"
+                    }
+                },
+                onCancelReply = { replyingToMessage = null },
                 onSend = {
                     val trimmedMessage = viewModel.messageText.trim()
                     if (trimmedMessage.isNotEmpty()) {
-                        viewModel.sendMessage(chatId)
-                        focusManager.clearFocus()
+                        keyboardRestoreAnchor = null
+                        viewModel.sendMessage(chatId, repliedMessage = replyingToMessage)
+                        replyingToMessage = null
                     }
                 }
             )
@@ -384,12 +549,14 @@ private fun ChatMessageBlockRow(
     partner: User?,
     isFromMe: Boolean,
     isLastBlock: Boolean,
-    showReadReceipt: Boolean,
     currentUserId: String?,
+    highlightedMessageId: String?,
     recentEmojis: List<String>,
     onRecordRecentEmoji: (String) -> Unit,
     onUnsendMessage: (Message) -> Unit,
-    onReactToMessage: (Message, String) -> Unit
+    onReactToMessage: (Message, String) -> Unit,
+    onReplyToMessage: (Message) -> Unit,
+    onJumpToMessage: (String) -> Unit
 ) {
     val lastMessage = block.messages.last()
 
@@ -406,27 +573,27 @@ private fun ChatMessageBlockRow(
                     ChatBubble(
                         message = message,
                         isFromMe = true,
+                        isHighlighted = message.id == highlightedMessageId,
+                        partnerName = partner?.displayName.orEmpty(),
                         currentUserId = currentUserId,
                         recentEmojis = recentEmojis,
                         onRecordRecentEmoji = onRecordRecentEmoji,
                         onUnsendMessage = onUnsendMessage,
-                        onReactToMessage = onReactToMessage
+                        onReactToMessage = onReactToMessage,
+                        onReplyToMessage = onReplyToMessage,
+                        onJumpToMessage = onJumpToMessage
                     )
                 }
             }
 
             if (isLastBlock) {
                 Text(
-                    text = if (showReadReceipt) {
-                        "Read 09:50 AM"
-                    } else {
-                        "09:50 AM"
-                    },
+                    text = lastMessage.deliveryFooterText(),
                     color = ChatReadText,
                     fontSize = 13.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(top = 6.dp, end = 2.dp, bottom = 8.dp)
+                    modifier = Modifier.padding(top = 2.dp, end = 8.dp, bottom = 8.dp)
                 )
             }
         } else {
@@ -453,24 +620,18 @@ private fun ChatMessageBlockRow(
                         ChatBubble(
                             message = message,
                             isFromMe = false,
+                            isHighlighted = message.id == highlightedMessageId,
+                            partnerName = partner?.displayName.orEmpty(),
                             currentUserId = currentUserId,
                             recentEmojis = recentEmojis,
                             onRecordRecentEmoji = onRecordRecentEmoji,
                             onUnsendMessage = onUnsendMessage,
-                            onReactToMessage = onReactToMessage
+                            onReactToMessage = onReactToMessage,
+                            onReplyToMessage = onReplyToMessage,
+                            onJumpToMessage = onJumpToMessage
                         )
                     }
                 }
-            }
-
-            if (isLastBlock) {
-                Text(
-                    text = "09:48 AM",
-                    color = ChatReadText,
-                    fontSize = 13.sp,
-                    fontFamily = PlusJakartaSans,
-                    modifier = Modifier.padding(top = 2.dp, bottom = 10.dp, start = 44.dp)
-                )
             }
         }
     }
@@ -481,16 +642,31 @@ private fun ChatMessageBlockRow(
 private fun ChatBubble(
     message: Message,
     isFromMe: Boolean,
+    isHighlighted: Boolean,
+    partnerName: String,
     currentUserId: String?,
     recentEmojis: List<String>,
     onRecordRecentEmoji: (String) -> Unit,
     onUnsendMessage: (Message) -> Unit,
-    onReactToMessage: (Message, String) -> Unit
+    onReactToMessage: (Message, String) -> Unit,
+    onReplyToMessage: (Message) -> Unit,
+    onJumpToMessage: (String) -> Unit
 ) {
     var isActionMenuExpanded by remember { mutableStateOf(false) }
     var isEmojiPickerExpanded by remember { mutableStateOf(false) }
     var isConfirmingUnsend by remember { mutableStateOf(false) }
+    var dragOffsetPx by remember(message.id) { mutableStateOf(0f) }
     val bubbleShape = RoundedCornerShape(12.dp)
+    val animatedDragOffsetPx by animateFloatAsState(
+        targetValue = dragOffsetPx,
+        animationSpec = tween(durationMillis = 120),
+        label = "messageReplyDragOffset"
+    )
+    val highlightAlpha by animateFloatAsState(
+        targetValue = if (isHighlighted) 0.12f else 0f,
+        animationSpec = tween(durationMillis = 220),
+        label = "messageHighlightAlpha"
+    )
     val currentUserReactionEmoji = message.reactions
         .firstOrNull { it.userId == currentUserId }
         ?.emoji
@@ -499,12 +675,47 @@ private fun ChatBubble(
         onReactToMessage(message, emoji)
     }
 
-    val hasReactions = message.reactions.isNotEmpty()
+    val hasReactions = !message.isDeleted && message.reactions.isNotEmpty()
 
     Box(
         modifier = Modifier
+            .offset { IntOffset(animatedDragOffsetPx.roundToInt(), 0) }
             .widthIn(max = if (isFromMe) 292.dp else 248.dp)
             .padding(bottom = if (hasReactions) 8.dp else 0.dp)
+            .then(
+                if (message.isDeleted) {
+                    Modifier
+                } else {
+                    Modifier.pointerInput(message.id, isFromMe) {
+                        detectHorizontalDragGestures(
+                            onDragStart = {
+                                dragOffsetPx = 0f
+                            },
+                            onHorizontalDrag = { _, dragAmount ->
+                                dragOffsetPx = if (isFromMe) {
+                                    (dragOffsetPx + dragAmount).coerceIn(-144f, 0f)
+                                } else {
+                                    (dragOffsetPx + dragAmount).coerceIn(0f, 144f)
+                                }
+                            },
+                            onDragEnd = {
+                                val shouldReply = if (isFromMe) {
+                                    dragOffsetPx < -130f
+                                } else {
+                                    dragOffsetPx > 130f
+                                }
+                                if (shouldReply) {
+                                    onReplyToMessage(message)
+                                }
+                                dragOffsetPx = 0f
+                            },
+                            onDragCancel = {
+                                dragOffsetPx = 0f
+                            }
+                        )
+                    }
+                }
+            )
     ) {
         Box {
             Box(
@@ -522,11 +733,19 @@ private fun ChatBubble(
                         }
                     )
                     .then(
+                        if (highlightAlpha > 0f) {
+                            Modifier.background(Color.White.copy(alpha = highlightAlpha), bubbleShape)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .then(
                         if (message.isDeleted) {
                             Modifier
                         } else {
                             Modifier.combinedClickable(
                                 onClick = {},
+                                onDoubleClick = { reactWithRecent("❤️") },
                                 onLongClick = { isActionMenuExpanded = true }
                             )
                         }
@@ -537,7 +756,12 @@ private fun ChatBubble(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     if (!message.isDeleted) {
-                        MessageContextPreview(message = message)
+                        MessageContextPreview(
+                            message = message,
+                            isFromMe = isFromMe,
+                            partnerName = partnerName,
+                            onReplyPreviewClick = onJumpToMessage
+                        )
                     }
 
                     Text(
@@ -612,9 +836,19 @@ private fun ChatBubble(
 }
 
 @Composable
-private fun MessageContextPreview(message: Message) {
+private fun MessageContextPreview(
+    message: Message,
+    isFromMe: Boolean,
+    partnerName: String,
+    onReplyPreviewClick: (String) -> Unit
+) {
     val hasReferencedPost = message.referencedPostId != null
     val replyPreview = message.repliedMessagePreview
+    val replyLabel = if (isFromMe) {
+        "You replied to ${partnerName.ifBlank { "them" }}"
+    } else {
+        "${partnerName.ifBlank { "They" }} replied to you"
+    }
 
     if (!hasReferencedPost && replyPreview == null) {
         return
@@ -672,23 +906,56 @@ private fun MessageContextPreview(message: Message) {
         }
 
         if (replyPreview != null) {
-            Text(
-                text = replyPreview,
-                color = ChatText.copy(alpha = 0.72f),
-                fontSize = 12.sp,
-                lineHeight = 16.sp,
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Medium,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            Column(
                 modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable {
+                        message.repliedMessageId?.let(onReplyPreviewClick)
+                    }
                     .border(
                         width = 1.dp,
                         color = ChatMuted.copy(alpha = 0.28f),
                         shape = RoundedCornerShape(8.dp)
                     )
                     .padding(horizontal = 8.dp, vertical = 6.dp)
-            )
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Reply,
+                        contentDescription = null,
+                        tint = ChatPrimary,
+                        modifier = Modifier.size(14.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(5.dp))
+
+                    Text(
+                        text = replyLabel,
+                        color = ChatPrimary,
+                        fontSize = 11.sp,
+                        lineHeight = 13.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(3.dp))
+
+                Text(
+                    text = replyPreview,
+                    color = ChatText.copy(alpha = 0.72f),
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -1229,63 +1496,117 @@ private fun ReactionOptionButton(
 private fun ChatInputBar(
     value: String,
     onValueChange: (String) -> Unit,
+    replyingToMessage: Message?,
+    isKeyboardAboveBottomBar: Boolean,
+    replyLabel: String?,
+    onCancelReply: () -> Unit,
     onSend: () -> Unit
 ) {
-    Row(
+    val bottomPadding = if (isKeyboardAboveBottomBar) 4.dp else 16.dp
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .imePadding()
-            .padding(horizontal = 24.dp, vertical = 16.dp)
-            .height(56.dp)
+            .padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = bottomPadding)
             .clip(RoundedCornerShape(12.dp))
             .background(ChatInput)
-            .padding(start = 20.dp, end = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(start = 20.dp, end = 8.dp, top = if (replyingToMessage == null) 0.dp else 10.dp, bottom = 0.dp)
     ) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.weight(1f),
-            textStyle = TextStyle(
-                color = ChatText,
-                fontSize = 15.sp,
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Medium
-            ),
-            cursorBrush = SolidColor(ChatText),
-            singleLine = true,
-            decorationBox = { innerTextField ->
-                Box(contentAlignment = Alignment.CenterStart) {
-                    if (value.isEmpty()) {
-                        Text(
-                            text = "Type a message",
-                            color = ChatMuted,
-                            fontSize = 14.sp,
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                    innerTextField()
+        if (replyingToMessage != null && replyLabel != null) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(end = 4.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = replyLabel,
+                        color = ChatPrimary,
+                        fontSize = 12.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = replyingToMessage.text,
+                        color = ChatMuted,
+                        fontSize = 12.sp,
+                        fontFamily = PlusJakartaSans,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onCancelReply),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cancel reply",
+                        tint = ChatMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
-        )
+        }
 
-        Spacer(modifier = Modifier.width(12.dp))
-
-        Box(
+        Row(
             modifier = Modifier
-                .size(40.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(ChatPrimary)
-                .clickable(onClick = onSend),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .height(56.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.Send,
-                contentDescription = "Send message",
-                tint = Color(0xFF5F2900),
-                modifier = Modifier.size(24.dp)
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                modifier = Modifier.weight(1f),
+                textStyle = TextStyle(
+                    color = ChatText,
+                    fontSize = 15.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Medium
+                ),
+                cursorBrush = SolidColor(ChatText),
+                singleLine = true,
+                decorationBox = { innerTextField ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (value.isEmpty()) {
+                            Text(
+                                text = "Type a message",
+                                color = ChatMuted,
+                                fontSize = 14.sp,
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
             )
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(ChatPrimary)
+                    .clickable(onClick = onSend),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Send,
+                    contentDescription = "Send message",
+                    tint = Color(0xFF5F2900),
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }
@@ -1327,6 +1648,91 @@ private fun buildChatDaySections(messages: List<Message>): List<ChatDaySection> 
                 blocks = groupConsecutiveMessages(dayMessages.sortedBy { it.timestamp })
             )
         }
+}
+
+private fun buildMessageItemIndexMap(daySections: List<ChatDaySection>): Map<String, Int> {
+    val indexes = mutableMapOf<String, Int>()
+    var itemIndex = 0
+
+    daySections.forEach { section ->
+        itemIndex += 1 // Day chip.
+        section.blocks.forEach { block ->
+            block.messages.forEach { message ->
+                indexes[message.id] = itemIndex
+            }
+            itemIndex += 1
+        }
+    }
+
+    return indexes
+}
+
+private fun LazyListState.viewportAnchor(): ChatViewportAnchor {
+    return ChatViewportAnchor(
+        firstVisibleItemIndex = firstVisibleItemIndex,
+        firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
+        isScrolledToBottom = isScrolledToBottom()
+    )
+}
+
+private fun LazyListState.isScrolledToBottom(): Boolean {
+    val layoutInfo = layoutInfo
+    val totalItemsCount = layoutInfo.totalItemsCount
+    if (totalItemsCount == 0) return true
+
+    val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull() ?: return false
+    return lastVisibleItem.index == totalItemsCount - 1 &&
+            lastVisibleItem.offset + lastVisibleItem.size <= layoutInfo.viewportEndOffset
+}
+
+private suspend fun LazyListState.restoreViewportAnchor(anchor: ChatViewportAnchor) {
+    scrollToItem(
+        index = anchor.firstVisibleItemIndex,
+        scrollOffset = anchor.firstVisibleItemScrollOffset
+    )
+}
+
+private fun Message.deliveryFooterText(): String {
+    return when (deliveryState) {
+        MessageDeliveryState.Sending -> "sending"
+        MessageDeliveryState.Sent -> sentFooterText(timestamp)
+    }
+}
+
+private fun sentFooterText(timestamp: Long): String {
+    val ageMillis = max(0L, System.currentTimeMillis() - timestamp)
+    if (ageMillis <= MinuteMillis) return "sent"
+
+    val (amount, suffix) = when {
+        ageMillis < HourMillis -> ageMillis / MinuteMillis to "m"
+        ageMillis < DayMillis -> ageMillis / HourMillis to "h"
+        else -> ageMillis / DayMillis to "d"
+    }
+    return "sent $amount$suffix ago"
+}
+
+private suspend fun LazyListState.scrollToBottomFromCurrentPosition() {
+    repeat(MaxScrollToBottomPasses) {
+        val consumed = scrollBy(MessageSendScrollDeltaPx)
+        if (consumed == 0f) return
+    }
+}
+
+private suspend fun LazyListState.scrollToMessageBottom(itemIndex: Int) {
+    scrollToItem(itemIndex)
+
+    repeat(MaxScrollToBottomPasses) {
+        withFrameNanos { }
+
+        val viewportHeight = layoutInfo.viewportSize.height
+        val scrollDelta = if (viewportHeight > 0) {
+            viewportHeight.toFloat()
+        } else {
+            10_000f
+        }
+        val consumed = scrollBy(scrollDelta)
+        if (consumed == 0f) return
+    }
 }
 
 private fun Long.toLocalDate(zoneId: ZoneId): LocalDate {

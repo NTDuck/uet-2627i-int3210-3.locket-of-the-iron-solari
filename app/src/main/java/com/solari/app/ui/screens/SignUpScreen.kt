@@ -1,42 +1,89 @@
 package com.solari.app.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddAPhoto
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solari.app.ui.components.SolariButton
+import com.solari.app.ui.components.SolariTextField
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.SignUpViewModel
+import kotlinx.coroutines.delay
 
-private val SignUpBackground = Color(0xFF111316)
-private val SignUpInputBackground = Color(0xFF080B0E)
-private val SignUpAvatarBackground = Color(0xFF303238)
-private val SignUpPrimary = Color(0xFFFF8426)
 private val SignUpPrimaryContent = Color(0xFF5F2900)
-private val SignUpMutedText = Color(0xFFD7C0B2)
-private val SignUpPlaceholderText = Color(0xFF3B3E45)
-private val SignUpContentText = Color(0xFFE3E2E6)
+private val SignUpFeedbackSurface = Color(0xFF421F1F)
+private val SignUpFeedbackIcon = Color(0xFFFF8A80)
+
+private enum class SignUpFocusedField {
+    Username,
+    Email,
+    Password,
+    ConfirmPassword
+}
 
 @Composable
 fun SignUpScreen(
@@ -45,217 +92,291 @@ fun SignUpScreen(
     onNavigateToSignIn: () -> Unit,
     onSignUpComplete: () -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
+    val density = LocalDensity.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val usernameFocusRequester = remember { FocusRequester() }
+    val emailFocusRequester = remember { FocusRequester() }
+    val passwordFocusRequester = remember { FocusRequester() }
+    val confirmPasswordFocusRequester = remember { FocusRequester() }
+    var feedbackPillVisible by remember { mutableStateOf(false) }
+    var feedbackPillMessage by remember { mutableStateOf("") }
+    var focusedField by remember { mutableStateOf<SignUpFocusedField?>(null) }
+    var usernameBounds by remember { mutableStateOf<Rect?>(null) }
+    var emailBounds by remember { mutableStateOf<Rect?>(null) }
+    var passwordBounds by remember { mutableStateOf<Rect?>(null) }
+    var confirmPasswordBounds by remember { mutableStateOf<Rect?>(null) }
+    fun clearInputFocus() {
+        focusedField = null
+        focusManager.clearFocus(force = true)
+    }
+    fun isInsideInputField(position: Offset): Boolean {
+        return listOfNotNull(
+            usernameBounds,
+            emailBounds,
+            passwordBounds,
+            confirmPasswordBounds
+        ).any { bounds -> bounds.contains(position) }
+    }
+    val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
+
+    val contentOffset by animateDpAsState(
+        targetValue = when (focusedField) {
+            SignUpFocusedField.Password -> (-34).dp
+            SignUpFocusedField.ConfirmPassword -> (-184).dp
+            else -> 0.dp
+        },
+        animationSpec = tween(durationMillis = 180),
+        label = "SignUpContentOffset"
+    )
+
+    LaunchedEffect(viewModel.errorMessage) {
+        val message = viewModel.errorMessage ?: return@LaunchedEffect
+        feedbackPillMessage = message
+        feedbackPillVisible = true
+        delay(2_000)
+        feedbackPillVisible = false
+        delay(260)
+        viewModel.clearMessages()
+    }
+
+    LaunchedEffect(isKeyboardVisible) {
+        if (!isKeyboardVisible) {
+            focusedField = null
+            focusManager.clearFocus(force = true)
+        }
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = SignUpBackground
+        color = SolariTheme.colors.background
     ) {
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))
-                .imePadding()
-                .padding(horizontal = 28.dp)
-                .padding(top = 52.dp, bottom = 32.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 24.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(100.dp)
-                        .background(SignUpAvatarBackground, RoundedCornerShape(8.dp))
-                        .clickable { },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.AddAPhoto,
-                        contentDescription = "Choose Avatar",
-                        tint = SignUpMutedText,
-                        modifier = Modifier.size(34.dp)
-                    )
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
+                        if (up != null && !isInsideInputField(up.position)) {
+                            clearInputFocus()
+                        }
+                    }
                 }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset(y = contentOffset)
+                    .padding(24.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                SolariTextField(
+                    value = viewModel.username,
+                    onValueChange = { viewModel.username = it },
+                    label = "Username",
+                    placeholder = "Username",
+                    labelFontSize = 17.sp,
+                    textFontSize = 16.sp,
+                    modifier = Modifier.padding(bottom = 24.dp),
+                    color = SolariTheme.colors.tertiary,
+                    textFieldModifier = Modifier
+                        .focusRequester(usernameFocusRequester)
+                        .onGloballyPositioned { usernameBounds = it.boundsInRoot() }
+                        .onFocusChanged {
+                            if (it.isFocused) focusedField = SignUpFocusedField.Username
+                        },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { emailFocusRequester.requestFocus() }
+                    )
+                )
 
-                Spacer(modifier = Modifier.width(32.dp))
+                SolariTextField(
+                    value = viewModel.email,
+                    onValueChange = { viewModel.email = it },
+                    label = "Email Address",
+                    placeholder = "Email address",
+                    labelFontSize = 17.sp,
+                    textFontSize = 16.sp,
+                    modifier = Modifier.padding(bottom = 24.dp),
+                    color = SolariTheme.colors.tertiary,
+                    textFieldModifier = Modifier
+                        .focusRequester(emailFocusRequester)
+                        .onGloballyPositioned { emailBounds = it.boundsInRoot() }
+                        .onFocusChanged {
+                            if (it.isFocused) focusedField = SignUpFocusedField.Email
+                        },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { passwordFocusRequester.requestFocus() }
+                    )
+                )
 
-                Column {
+                SolariTextField(
+                    value = viewModel.password,
+                    onValueChange = { viewModel.password = it },
+                    label = "Password",
+                    placeholder = "••••••••",
+                    isPassword = true,
+                    labelFontSize = 17.sp,
+                    textFontSize = 16.sp,
+                    modifier = Modifier.padding(bottom = 24.dp),
+                    color = SolariTheme.colors.tertiary,
+                    textFieldModifier = Modifier
+                        .focusRequester(passwordFocusRequester)
+                        .onGloballyPositioned { passwordBounds = it.boundsInRoot() }
+                        .onFocusChanged {
+                            if (it.isFocused) focusedField = SignUpFocusedField.Password
+                        },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { confirmPasswordFocusRequester.requestFocus() }
+                    )
+                )
+
+                SolariTextField(
+                    value = viewModel.confirmPassword,
+                    onValueChange = { viewModel.confirmPassword = it },
+                    label = "Confirm Password",
+                    placeholder = "••••••••",
+                    isPassword = true,
+                    labelFontSize = 17.sp,
+                    textFontSize = 16.sp,
+                    modifier = Modifier.padding(bottom = 40.dp),
+                    color = SolariTheme.colors.tertiary,
+                    textFieldModifier = Modifier
+                        .focusRequester(confirmPasswordFocusRequester)
+                        .onGloballyPositioned { confirmPasswordBounds = it.boundsInRoot() }
+                        .onFocusChanged {
+                            if (it.isFocused) focusedField = SignUpFocusedField.ConfirmPassword
+                        }
+                        .onPreviewKeyEvent { event ->
+                            if (
+                                (event.type == KeyEventType.KeyDown || event.type == KeyEventType.KeyUp) &&
+                                event.key == Key.Enter
+                            ) {
+                                clearInputFocus()
+                                keyboardController?.hide()
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(
+                        onNext = {
+                            clearInputFocus()
+                            keyboardController?.hide()
+                        },
+                        onDone = {
+                            clearInputFocus()
+                            keyboardController?.hide()
+                        }
+                    )
+                )
+
+                SolariButton(
+                    text = if (viewModel.isSubmitting) "Creating..." else "Create Account",
+                    onClick = { viewModel.createAccount(onSuccess = onSignUpComplete) },
+                    containerColor = SolariTheme.colors.primary,
+                    contentColor = SignUpPrimaryContent,
+                    buttonHeight = 64.dp,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .fillMaxWidth(0.7f)
+                        .padding(bottom = 16.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center
+                ) {
                     Text(
-                        text = "OPTIONAL",
-                        fontSize = 15.sp,
+                        text = "Already have an account? ",
+                        color = SolariTheme.colors.tertiary,
+                        fontSize = 16.sp,
                         fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Bold,
-                        color = SignUpMutedText
+                        fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Choose Avatar",
-                        fontSize = 22.sp,
+                        text = "Log In",
+                        color = SolariTheme.colors.primary,
+                        fontSize = 16.sp,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
-                        color = SignUpContentText
+                        modifier = Modifier.clickable { onNavigateToSignIn() }
                     )
                 }
             }
 
-            SignUpTextField(
-                value = viewModel.username,
-                onValueChange = { viewModel.username = it },
-                label = "Username",
-                placeholder = "john_netanyahu",
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-
-            SignUpTextField(
-                value = viewModel.email,
-                onValueChange = { viewModel.email = it },
-                label = "Email Address",
-                placeholder = "bnetanyahu@knesset.gov.il",
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-
-            SignUpTextField(
-                value = viewModel.displayName,
-                onValueChange = { viewModel.displayName = it },
-                label = "Display Name (Optional)",
-                placeholder = "John Netanyahu",
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-
-            SignUpTextField(
-                value = viewModel.password,
-                onValueChange = { viewModel.password = it },
-                label = "Password",
-                placeholder = "••••••••",
-                isPassword = true,
-                modifier = Modifier.padding(bottom = 24.dp)
-            )
-
-            SignUpTextField(
-                value = viewModel.confirmPassword,
-                onValueChange = { viewModel.confirmPassword = it },
-                label = "Confirm",
-                placeholder = "••••••••",
-                isPassword = true,
-                modifier = Modifier.padding(bottom = 32.dp)
-            )
-
-            SolariButton(
-                text = "Create Account",
-                onClick = onSignUpComplete,
-                containerColor = SignUpPrimary,
-                contentColor = SignUpPrimaryContent,
-                buttonHeight = 64.dp,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
+            AnimatedVisibility(
+                visible = feedbackPillVisible,
+                enter = slideInVertically(
+                    animationSpec = tween(durationMillis = 260),
+                    initialOffsetY = { -it * 2 }
+                ) + fadeIn(animationSpec = tween(durationMillis = 180)),
+                exit = slideOutVertically(
+                    animationSpec = tween(durationMillis = 220),
+                    targetOffsetY = { -it * 2 }
+                ) + fadeOut(animationSpec = tween(durationMillis = 160)),
                 modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .fillMaxWidth(0.7f)
-                    .padding(bottom = 16.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp, start = 24.dp, end = 24.dp)
             ) {
-                Text(
-                    text = "Already have an account? ",
-                    color = SignUpMutedText,
-                    fontSize = 16.sp,
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = "Log In",
-                    color = SignUpPrimary,
-                    fontSize = 16.sp,
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable { onNavigateToSignIn() }
-                )
+                SignUpFeedbackPill(message = feedbackPillMessage)
+            }
+
+            if (viewModel.isSubmitting) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.42f))
+                        .clickable(enabled = false) {},
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = SolariTheme.colors.primary,
+                        trackColor = SolariTheme.colors.surface
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SignUpTextField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    label: String,
-    placeholder: String,
-    modifier: Modifier = Modifier,
-    isPassword: Boolean = false,
-    fieldHeight: Dp = 48.dp
-) {
-    Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = label.uppercase(),
-            color = SignUpMutedText,
-            fontSize = 14.sp,
-            fontFamily = PlusJakartaSans,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 10.dp)
-        )
+private fun SignUpFeedbackPill(message: String) {
+    Surface(
+        color = SignUpFeedbackSurface,
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 10.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Error,
+                contentDescription = null,
+                tint = SignUpFeedbackIcon,
+                modifier = Modifier.size(22.dp)
+            )
 
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(fieldHeight)
-                .background(SignUpInputBackground, RoundedCornerShape(24.dp))
-                .padding(horizontal = 20.dp),
-            textStyle = TextStyle(
-                color = SignUpContentText,
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Text(
+                text = message,
+                color = Color.White,
                 fontFamily = PlusJakartaSans,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold
-            ),
-            visualTransformation = if (isPassword) {
-                PasswordVisualTransformation()
-            } else {
-                VisualTransformation.None
-            },
-            cursorBrush = SolidColor(SignUpContentText),
-            singleLine = true,
-            decorationBox = { innerTextField ->
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    if (value.isEmpty()) {
-                        Text(
-                            text = placeholder,
-                            color = SignUpPlaceholderText,
-                            fontFamily = PlusJakartaSans,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    innerTextField()
-                }
-            }
-        )
-    }
-}
-
-@Preview(
-    name = "Sign Up Screen",
-    showBackground = true,
-    backgroundColor = 0xFF111316
-)
-@Composable
-private fun SignUpScreenPreview() {
-    val previewViewModel = remember { SignUpViewModel() }
-
-    SolariTheme {
-        SignUpScreen(
-            viewModel = previewViewModel,
-            onNavigateBack = {},
-            onNavigateToSignIn = {},
-            onSignUpComplete = {}
-        )
+                fontWeight = FontWeight.Medium,
+                fontSize = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }

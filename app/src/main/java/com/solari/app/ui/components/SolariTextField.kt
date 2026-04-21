@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
@@ -31,7 +33,10 @@ fun SolariTextField(
     isPassword: Boolean = false,
     labelFontSize: TextUnit = 12.sp,
     textFontSize: TextUnit = TextUnit.Unspecified,
-    color: Color = SolariTheme.colors.tertiary
+    color: Color = SolariTheme.colors.tertiary,
+    textFieldModifier: Modifier = Modifier,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
@@ -46,6 +51,7 @@ fun SolariTextField(
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier
+                .then(textFieldModifier)
                 .fillMaxWidth()
                 .height(56.dp),
             textStyle = TextStyle(fontFamily = PlusJakartaSans, fontSize = textFontSize, color = Color.White),
@@ -65,6 +71,8 @@ fun SolariTextField(
                 focusedTextColor = SolariTheme.colors.onSurface,
                 unfocusedTextColor = SolariTheme.colors.onSurface
             ),
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
             singleLine = true
         )
     }

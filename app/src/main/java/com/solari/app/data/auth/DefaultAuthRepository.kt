@@ -10,6 +10,7 @@ import com.solari.app.data.remote.auth.AuthApi
 import com.solari.app.data.remote.auth.RefreshSessionRequestDto
 import com.solari.app.data.remote.auth.SignInRequestDto
 import com.solari.app.data.remote.auth.SignInResponseDto
+import com.solari.app.data.remote.auth.SignUpRequestDto
 import com.solari.app.data.security.TokenCipher
 import java.security.GeneralSecurityException
 import kotlinx.coroutines.flow.Flow
@@ -24,6 +25,37 @@ class DefaultAuthRepository(
 ) : AuthRepository {
     override val currentSession: Flow<AuthSession?> =
         authSessionDao.observeCurrentSession().map { entity -> entity?.toDomainOrNull() }
+
+    override suspend fun signUp(
+        username: String,
+        email: String,
+        password: String
+    ): ApiResult<Unit> {
+        val normalizedUsername = username.trim()
+        val normalizedEmail = email.trim()
+        if (normalizedUsername.isEmpty() || normalizedEmail.isEmpty() || password.isEmpty()) {
+            return ApiResult.Failure(
+                statusCode = null,
+                type = "MISSING_SIGNUP_FIELDS",
+                message = "Username, email, and password are required."
+            )
+        }
+
+        return when (
+            val result = apiExecutor.execute {
+                authApi.signUp(
+                    SignUpRequestDto(
+                        username = normalizedUsername,
+                        email = normalizedEmail,
+                        password = password
+                    )
+                )
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(Unit)
+        }
+    }
 
     override suspend fun signIn(
         identifier: String,

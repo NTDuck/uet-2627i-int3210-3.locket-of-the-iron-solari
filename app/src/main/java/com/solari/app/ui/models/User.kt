@@ -7,7 +7,7 @@ data class User(
     val displayName: String,
     val username: String,
     val email: String,
-    val profileImageUrl: String = ""
+    val profileImageUrl: String? = null
 ) : Serializable
 
 data class BlockedUser(

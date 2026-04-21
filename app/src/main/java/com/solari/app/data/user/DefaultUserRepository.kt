@@ -9,6 +9,7 @@ import com.solari.app.data.remote.user.UserApi
 import com.solari.app.ui.models.BlockedUser
 import com.solari.app.ui.models.User
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.RequestBody.Companion.toRequestBody
 
 class DefaultUserRepository(
@@ -24,14 +25,16 @@ class DefaultUserRepository(
 
     override suspend fun updateProfile(
         email: String?,
-        displayName: String?
+        displayName: String?,
+        avatar: ProfileAvatarUpload?
     ): ApiResult<User> {
         val fields = buildMap {
             email?.let { put("email", it.toPlainTextRequestBody()) }
             displayName?.let { put("display_name", it.toPlainTextRequestBody()) }
         }
+        val avatarPart = avatar?.toMultipartPart()
 
-        return when (val result = apiExecutor.execute { userApi.updateProfile(fields) }) {
+        return when (val result = apiExecutor.execute { userApi.updateProfile(fields, avatarPart) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(result.data.user.toUiUser())
         }
@@ -68,6 +71,11 @@ class DefaultUserRepository(
     private fun String.toPlainTextRequestBody() =
         toRequestBody("text/plain".toMediaType())
 
+    private fun ProfileAvatarUpload.toMultipartPart(): MultipartBody.Part {
+        val body = bytes.toRequestBody(mimeType.toMediaType())
+        return MultipartBody.Part.createFormData("avatar", fileName, body)
+    }
+
     private fun BlockedUserDto.toUiBlockedUser(): BlockedUser {
         return BlockedUser(
             user = User(
@@ -75,7 +83,7 @@ class DefaultUserRepository(
                 displayName = displayName ?: username,
                 username = username,
                 email = email.orEmpty(),
-                profileImageUrl = avatarUrl.orEmpty()
+                profileImageUrl = effectiveAvatarUrl
             ),
             blockedAt = blockedAt.toEpochMillisOrNow()
         )

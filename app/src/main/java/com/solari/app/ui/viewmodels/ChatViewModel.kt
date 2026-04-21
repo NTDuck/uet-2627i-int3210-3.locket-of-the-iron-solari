@@ -12,6 +12,7 @@ import com.solari.app.data.preferences.RecentEmojiStore
 import com.solari.app.data.user.UserRepository
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.Message
+import com.solari.app.ui.models.MessageDeliveryState
 import com.solari.app.ui.models.MessageReaction
 import com.solari.app.ui.models.User
 import kotlinx.coroutines.CancellationException
@@ -91,7 +92,10 @@ class ChatViewModel(
         }
     }
 
-    fun sendMessage(chatId: String) {
+    fun sendMessage(
+        chatId: String,
+        repliedMessage: Message? = null
+    ) {
         val content = messageText.trim()
         if (content.isBlank()) return
 
@@ -101,7 +105,10 @@ class ChatViewModel(
                 id = "local-${UUID.randomUUID()}",
                 senderId = it.id,
                 text = content,
-                timestamp = System.currentTimeMillis()
+                timestamp = System.currentTimeMillis(),
+                repliedMessageId = repliedMessage?.id,
+                repliedMessagePreview = repliedMessage?.text?.takeIf { text -> text.isNotBlank() },
+                deliveryState = MessageDeliveryState.Sending
             )
         }
         val previousConversation = conversation
@@ -116,21 +123,30 @@ class ChatViewModel(
         }
 
         viewModelScope.launch {
-            when (val result = conversationRepository.sendMessage(chatId, content)) {
+            when (
+                val result = conversationRepository.sendMessage(
+                    conversationId = chatId,
+                    content = content,
+                    repliedMessageId = repliedMessage?.id
+                )
+            ) {
                 is ApiResult.Success -> {
                     messageText = ""
+                    val sentMessage = result.data.copy(
+                        repliedMessagePreview = repliedMessage?.text?.takeIf { it.isNotBlank() }
+                    )
                     val currentConversation = conversation
                     if (currentConversation != null) {
                         conversation = currentConversation.copy(
                             messages = if (localMessage != null) {
                                 currentConversation.messages.map { message ->
-                                    if (message.id == localMessage.id) result.data else message
+                                    if (message.id == localMessage.id) sentMessage else message
                                 }
                             } else {
-                                currentConversation.messages + result.data
+                                currentConversation.messages + sentMessage
                             },
-                            lastMessage = result.data.text,
-                            timestamp = result.data.timestamp
+                            lastMessage = sentMessage.text,
+                            timestamp = sentMessage.timestamp
                         )
                     } else {
                         loadConversation(chatId)

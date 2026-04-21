@@ -3,6 +3,8 @@ package com.solari.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -11,8 +13,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -37,6 +44,16 @@ fun SignInScreen(
     onSignInComplete: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val identifierFocusRequester = remember { FocusRequester() }
+    val passwordFocusRequester = remember { FocusRequester() }
+
+    fun submitSignIn() {
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+        viewModel.signIn()
+    }
 
     LaunchedEffect(uiState.isSignedIn) {
         if (uiState.isSignedIn) {
@@ -65,7 +82,12 @@ fun SignInScreen(
                     labelFontSize = 17.sp,
                     textFontSize = 16.sp,
                     modifier = Modifier.padding(bottom = 24.dp),
-                    color = SolariTheme.colors.tertiary
+                    color = SolariTheme.colors.tertiary,
+                    textFieldModifier = Modifier.focusRequester(identifierFocusRequester),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { passwordFocusRequester.requestFocus() }
+                    )
                 )
 
                 SolariTextField(
@@ -77,7 +99,12 @@ fun SignInScreen(
                     labelFontSize = 17.sp,
                     textFontSize = 16.sp,
                     modifier = Modifier.padding(bottom = 16.dp),
-                    color = SolariTheme.colors.tertiary
+                    color = SolariTheme.colors.tertiary,
+                    textFieldModifier = Modifier.focusRequester(passwordFocusRequester),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { identifierFocusRequester.requestFocus() }
+                    )
                 )
 
                 Text(
@@ -114,7 +141,7 @@ fun SignInScreen(
 
                 SolariButton(
                     text = "Sign In",
-                    onClick = viewModel::signIn,
+                    onClick = ::submitSignIn,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
                         .fillMaxWidth(0.7f)
@@ -190,6 +217,18 @@ private fun SignInScreenPreview() {
 
 private class PreviewAuthRepository : AuthRepository {
     override val currentSession: Flow<AuthSession?> = flowOf(null)
+
+    override suspend fun signUp(
+        username: String,
+        email: String,
+        password: String
+    ): ApiResult<Unit> {
+        return ApiResult.Failure(
+            statusCode = null,
+            type = "PREVIEW",
+            message = "Preview mode does not sign up."
+        )
+    }
 
     override suspend fun signIn(
         identifier: String,

@@ -5,6 +5,11 @@ import retrofit2.http.Body
 import retrofit2.http.POST
 
 interface AuthApi {
+    @POST("signup")
+    suspend fun signUp(
+        @Body request: SignUpRequestDto
+    ): Response<SignUpResponseDto>
+
     @POST("signin")
     suspend fun signIn(
         @Body request: SignInRequestDto
