@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -61,6 +60,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.solari.app.navigation.SolariRoute
@@ -84,6 +84,16 @@ private val FriendsMuted = Color(0xFFD7C0B2)
 private val FriendsSubtle = Color(0xFF9699A1)
 private val FriendsButton = Color(0xFF34363B)
 
+private enum class NicknameAction {
+    Set,
+    Update
+}
+
+private data class NicknameDialogState(
+    val friend: User,
+    val action: NicknameAction
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FriendManagementScreen(
@@ -101,6 +111,7 @@ fun FriendManagementScreen(
     var requestText by remember { mutableStateOf("") }
     var sortSelection by remember { mutableStateOf(SortSelection.Default) }
     var friendPendingBlock by remember { mutableStateOf<User?>(null) }
+    var nicknameDialogState by remember { mutableStateOf<NicknameDialogState?>(null) }
     var isUserRefreshing by remember { mutableStateOf(false) }
     var feedbackPillVisible by remember { mutableStateOf(false) }
     var feedbackPillMessage by remember { mutableStateOf("") }
@@ -117,15 +128,14 @@ fun FriendManagementScreen(
             feedbackPillIsSuccess = isSuccessFeedback
             feedbackPillVisible = true
             feedbackEventId += 1
+            viewModel.clearMessages()
         }
     }
 
     LaunchedEffect(feedbackEventId) {
         if (feedbackEventId > 0) {
-            delay(2_000)
+            delay(1000)
             feedbackPillVisible = false
-            delay(320)
-            viewModel.clearMessages()
         }
     }
 
@@ -394,6 +404,20 @@ fun FriendManagementScreen(
                         friends.forEach { friend ->
                             FriendListItem(
                                 friend = friend,
+                                onSetNickname = { nicknameFriend ->
+                                    nicknameDialogState = NicknameDialogState(
+                                        friend = nicknameFriend,
+                                        action = NicknameAction.Set
+                                    )
+                                },
+                                onUpdateNickname = { nicknameFriend ->
+                                    nicknameDialogState = NicknameDialogState(
+                                        friend = nicknameFriend,
+                                        action = NicknameAction.Update
+                                    )
+                                },
+                                onRemoveNickname = viewModel::removeNickname,
+                                onUnfriend = viewModel::unfriend,
                                 onBlock = { friendPendingBlock = it }
                             )
                         }
@@ -407,17 +431,17 @@ fun FriendManagementScreen(
         AnimatedVisibility(
             visible = feedbackPillVisible,
             enter = slideInVertically(
-                initialOffsetY = { it * 2 },
+                initialOffsetY = { -it * 2 },
                 animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
             ),
             exit = slideOutVertically(
-                targetOffsetY = { it * 2 },
+                targetOffsetY = { -it * 2 },
                 animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
             ),
             modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .navigationBarsPadding()
-                .padding(horizontal = 24.dp, vertical = 18.dp)
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
         ) {
             FriendManagementFeedbackPill(
                 message = feedbackPillMessage,
@@ -436,6 +460,20 @@ fun FriendManagementScreen(
                 friendPendingBlock = null
             },
             onDismiss = { friendPendingBlock = null }
+        )
+    }
+
+    nicknameDialogState?.let { state ->
+        NicknameDialog(
+            state = state,
+            onConfirm = { nickname ->
+                when (state.action) {
+                    NicknameAction.Set -> viewModel.setNickname(state.friend, nickname)
+                    NicknameAction.Update -> viewModel.updateNickname(state.friend, nickname)
+                }
+                nicknameDialogState = null
+            },
+            onDismiss = { nicknameDialogState = null }
         )
     }
 }
@@ -527,10 +565,15 @@ private fun FriendsPrimaryButton(
 @Composable
 private fun FriendListItem(
     friend: User,
+    onSetNickname: (User) -> Unit,
+    onUpdateNickname: (User) -> Unit,
+    onRemoveNickname: (User) -> Unit,
+    onUnfriend: (User) -> Unit,
     onBlock: (User) -> Unit
 ) {
     var isMenuExpanded by remember { mutableStateOf(false) }
     val handle = "@${friend.username}"
+    val hasNickname = !friend.nickname.isNullOrBlank()
 
     Row(
         modifier = Modifier
@@ -611,28 +654,190 @@ private fun FriendListItem(
                             shape = RoundedCornerShape(8.dp),
                             shadowElevation = 8.dp
                         ) {
+                            val actions = buildList {
+                                if (hasNickname) {
+                                    add(
+                                        FriendActionMenuEntry(
+                                            text = "Update Nickname",
+                                            color = FriendsText,
+                                            onClick = { onUpdateNickname(friend) }
+                                        )
+                                    )
+                                    add(
+                                        FriendActionMenuEntry(
+                                            text = "Remove Nickname",
+                                            color = FriendsText,
+                                            onClick = { onRemoveNickname(friend) }
+                                        )
+                                    )
+                                } else {
+                                    add(
+                                        FriendActionMenuEntry(
+                                            text = "Set Nickname",
+                                            color = FriendsText,
+                                            onClick = { onSetNickname(friend) }
+                                        )
+                                    )
+                                }
+                                add(
+                                    FriendActionMenuEntry(
+                                        text = "Unfriend",
+                                        color = FriendsText,
+                                        onClick = { onUnfriend(friend) }
+                                    )
+                                )
+                                add(
+                                    FriendActionMenuEntry(
+                                        text = "Block",
+                                        color = FriendsMuted,
+                                        onClick = { onBlock(friend) }
+                                    )
+                                )
+                            }
                             Column {
-                                FriendActionMenuItem(
-                                    text = "Unfriend",
-                                    color = FriendsText,
-                                    shape = FriendActionOptionTopShape,
-                                    onClick = { isMenuExpanded = false }
-                                )
-                                FriendActionMenuItem(
-                                    text = "Block",
-                                    color = FriendsMuted,
-                                    shape = FriendActionOptionBottomShape,
-                                    onClick = {
-                                        isMenuExpanded = false
-                                        onBlock(friend)
-                                    }
-                                )
+                                actions.forEachIndexed { index, action ->
+                                    FriendActionMenuItem(
+                                        text = action.text,
+                                        color = action.color,
+                                        shape = friendActionOptionShape(
+                                            index = index,
+                                            lastIndex = actions.lastIndex
+                                        ),
+                                        onClick = {
+                                            isMenuExpanded = false
+                                            action.onClick()
+                                        }
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+private data class FriendActionMenuEntry(
+    val text: String,
+    val color: Color,
+    val onClick: () -> Unit
+)
+
+@Composable
+private fun NicknameDialog(
+    state: NicknameDialogState,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var nickname by remember(state.friend.id, state.action) {
+        mutableStateOf(if (state.action == NicknameAction.Update) state.friend.nickname.orEmpty() else "")
+    }
+    val title = when (state.action) {
+        NicknameAction.Set -> "Set Nickname"
+        NicknameAction.Update -> "Update Nickname"
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = FriendsSurface,
+            shape = RoundedCornerShape(16.dp),
+            shadowElevation = 12.dp,
+            modifier = Modifier.width(284.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = title,
+                        color = FriendsText,
+                        fontSize = 16.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold
+                    )
+                    BasicTextField(
+                        value = nickname,
+                        onValueChange = { nickname = it.take(40) },
+                        singleLine = true,
+                        textStyle = TextStyle(
+                            color = FriendsText,
+                            fontFamily = PlusJakartaSans,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        cursorBrush = SolidColor(FriendsText),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(FriendsInput)
+                            .padding(horizontal = 12.dp),
+                        decorationBox = { innerTextField ->
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (nickname.isEmpty()) {
+                                    Text(
+                                        text = "Nickname",
+                                        color = FriendsSubtle,
+                                        fontSize = 14.sp,
+                                        fontFamily = PlusJakartaSans
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        }
+                    )
+                }
+
+                FriendDialogActionRow(
+                    text = title,
+                    textColor = FriendsPrimary,
+                    shape = RoundedCornerShape(0.dp),
+                    onClick = { onConfirm(nickname) }
+                )
+                FriendDialogActionRow(
+                    text = "Cancel",
+                    textColor = FriendsText,
+                    shape = RoundedCornerShape(
+                        topStart = 0.dp,
+                        topEnd = 0.dp,
+                        bottomEnd = 16.dp,
+                        bottomStart = 16.dp
+                    ),
+                    onClick = onDismiss
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FriendDialogActionRow(
+    text: String,
+    textColor: Color,
+    shape: RoundedCornerShape,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .clip(shape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = 14.sp,
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
@@ -645,7 +850,6 @@ private fun FriendActionMenuItem(
 ) {
     Box(
         modifier = Modifier
-            .width(132.dp)
             .height(40.dp)
             .clip(shape)
             .clickable(onClick = onClick)
@@ -663,16 +867,21 @@ private fun FriendActionMenuItem(
     }
 }
 
-private val FriendActionOptionTopShape = RoundedCornerShape(
-    topStart = 8.dp,
-    topEnd = 8.dp,
-    bottomEnd = 0.dp,
-    bottomStart = 0.dp
-)
-
-private val FriendActionOptionBottomShape = RoundedCornerShape(
-    topStart = 0.dp,
-    topEnd = 0.dp,
-    bottomEnd = 8.dp,
-    bottomStart = 8.dp
-)
+private fun friendActionOptionShape(index: Int, lastIndex: Int): RoundedCornerShape {
+    return when {
+        index == 0 && index == lastIndex -> RoundedCornerShape(8.dp)
+        index == 0 -> RoundedCornerShape(
+            topStart = 8.dp,
+            topEnd = 8.dp,
+            bottomEnd = 0.dp,
+            bottomStart = 0.dp
+        )
+        index == lastIndex -> RoundedCornerShape(
+            topStart = 0.dp,
+            topEnd = 0.dp,
+            bottomEnd = 8.dp,
+            bottomStart = 8.dp
+        )
+        else -> RoundedCornerShape(0.dp)
+    }
+}

@@ -9,6 +9,7 @@ fun ApiUserDto.toUiUser(): User {
         displayName = displayName ?: username,
         username = username,
         email = email.orEmpty(),
-        profileImageUrl = effectiveAvatarUrl
+        profileImageUrl = effectiveAvatarUrl,
+        nickname = nickname
     )
 }

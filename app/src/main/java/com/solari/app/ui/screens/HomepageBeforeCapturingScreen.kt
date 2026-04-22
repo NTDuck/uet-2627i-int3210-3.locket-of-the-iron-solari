@@ -99,6 +99,29 @@ fun HomepageBeforeCapturingScreen(
     ) {
         Spacer(modifier = Modifier.height(48.dp))
 
+        if (viewModel.currentStreak >= 2) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    color = SolariTheme.colors.surface,
+                    shape = RoundedCornerShape(18.dp),
+                    shadowElevation = 8.dp
+                ) {
+                    Text(
+                        text = "🔥 Current streak: ${viewModel.currentStreak}",
+                        color = SolariTheme.colors.onSurface,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+                    )
+                }
+            }
+        }
+
         // Viewfinder
         Box(
             modifier = Modifier

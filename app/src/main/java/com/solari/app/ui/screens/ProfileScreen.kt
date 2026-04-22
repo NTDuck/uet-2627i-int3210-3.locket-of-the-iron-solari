@@ -15,6 +15,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -27,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -37,10 +39,12 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.solari.app.data.user.ProfileAvatarUpload
+import androidx.compose.ui.window.Dialog
 import com.solari.app.ui.components.SolariAvatar
+import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.compressAvatarForUpload
 import com.solari.app.ui.viewmodels.ProfileViewModel
 import com.solari.app.ui.viewmodels.SettingsViewModel
 import kotlinx.coroutines.Dispatchers
@@ -60,7 +64,9 @@ fun ProfileScreen(
     onNavigateToCamera: () -> Unit,
     onNavigateToFeed: () -> Unit,
     onNavigateToChat: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    externalFeedbackMessage: String? = null,
+    onExternalFeedbackConsumed: () -> Unit = {}
 ) {
     val user = viewModel.user
     val context = LocalContext.current
@@ -72,14 +78,19 @@ fun ProfileScreen(
     var pillVisible by remember { mutableStateOf(false) }
     var pillMessage by remember { mutableStateOf("") }
     var pillIsSuccess by remember { mutableStateOf(false) }
-    
+    var topPillVisible by remember { mutableStateOf(false) }
+    var topPillMessage by remember { mutableStateOf("") }
+    var topPillEventId by remember { mutableStateOf(0) }
+    var suppressNextBottomError by remember { mutableStateOf(false) }
+
     var editingField by remember { mutableStateOf<String?>(null) } // "displayName", "email"
     var tempValue by remember { mutableStateOf("") }
-    
+
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
+    var showRemoveAvatarConfirm by remember { mutableStateOf(false) }
+    var showRemoveDisplayNameConfirm by remember { mutableStateOf(false) }
     var deletePassword by remember { mutableStateOf("") }
-    var deleteError by remember { mutableStateOf<String?>(null) }
     var selectedAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var committedAvatarPreviewUri by remember { mutableStateOf<Uri?>(null) }
     val avatarPicker = rememberLauncherForActivityResult(
@@ -97,20 +108,20 @@ fun ProfileScreen(
     }
     fun updateSelectedAvatar() {
         val avatarUri = selectedAvatarUri ?: return
+        val previousAvatarPreviewUri = committedAvatarPreviewUri
+        selectedAvatarUri = null
+        committedAvatarPreviewUri = avatarUri
+        viewModel.clearMessages()
+
         coroutineScope.launch {
             val upload = withContext(Dispatchers.IO) {
                 runCatching {
-                    context.contentResolver.openInputStream(avatarUri)?.use { inputStream ->
-                        ProfileAvatarUpload(
-                            fileName = "avatar_${System.currentTimeMillis()}",
-                            mimeType = context.contentResolver.getType(avatarUri) ?: "image/jpeg",
-                            bytes = inputStream.readBytes()
-                        )
-                    }
+                    compressAvatarForUpload(context, avatarUri)
                 }.getOrNull()
             }
 
             if (upload == null) {
+                committedAvatarPreviewUri = previousAvatarPreviewUri
                 viewModel.errorMessage = "Failed to read selected avatar"
                 return@launch
             }
@@ -119,23 +130,53 @@ fun ProfileScreen(
                 avatar = upload,
                 onSuccess = {
                     committedAvatarPreviewUri = avatarUri
-                    selectedAvatarUri = null
                 },
                 onFailure = {
-                    selectedAvatarUri = null
+                    committedAvatarPreviewUri = previousAvatarPreviewUri
                 }
             )
         }
     }
 
+    DisposableEffect(Unit) {
+        onDispose {
+            viewModel.clearMessages()
+        }
+    }
+
     LaunchedEffect(feedbackMessage, isSuccessFeedback) {
         if (feedbackMessage != null) {
+            if (!isSuccessFeedback && suppressNextBottomError) {
+                suppressNextBottomError = false
+                return@LaunchedEffect
+            }
             pillMessage = feedbackMessage
             pillIsSuccess = isSuccessFeedback
             pillVisible = true
 
-            delay(2_000)
+            delay(1000)
             pillVisible = false
+            delay(320)
+            viewModel.clearMessages()
+        }
+    }
+
+    LaunchedEffect(externalFeedbackMessage) {
+        val message = externalFeedbackMessage ?: return@LaunchedEffect
+        pillMessage = message
+        pillIsSuccess = true
+        pillVisible = true
+        onExternalFeedbackConsumed()
+
+        delay(1000)
+        pillVisible = false
+        delay(320)
+    }
+
+    LaunchedEffect(topPillEventId) {
+        if (topPillEventId > 0) {
+            delay(1000)
+            topPillVisible = false
             delay(320)
             viewModel.clearMessages()
         }
@@ -195,247 +236,276 @@ fun ProfileScreen(
                     }
                     .padding(horizontal = 24.dp),
                 contentPadding = PaddingValues(top = 32.dp, bottom = 24.dp)
-        ) {
-            item {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Box {
-                        SolariAvatar(
-                            imageUrl = selectedAvatarUri?.toString()
-                                ?: committedAvatarPreviewUri?.toString()
-                                ?: user.profileImageUrl,
-                            username = user.username,
-                            contentDescription = "Profile Picture",
-                            modifier = Modifier
-                                .size(120.dp)
-                                .clip(RoundedCornerShape(24.dp))
-                                .clickable { openAvatarPicker() },
-                            shape = RoundedCornerShape(24.dp),
-                            fontSize = 42.sp
-                        )
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .offset(x = 8.dp, y = 8.dp)
-                                .size(32.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SolariTheme.colors.primary, RoundedCornerShape(8.dp))
-                                .clickable { openAvatarPicker() },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit Avatar", tint = SolariTheme.colors.onPrimary, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                    AnimatedVisibility(visible = selectedAvatarUri != null) {
-                        Row(
-                            modifier = Modifier.padding(top = 14.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Surface(
-                                onClick = { selectedAvatarUri = null },
-                                enabled = !viewModel.isUpdatingAvatar,
-                                color = SolariTheme.colors.surface,
-                                shape = RoundedCornerShape(16.dp)
+            ) {
+                item {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Box {
+                            SolariAvatar(
+                                imageUrl = selectedAvatarUri?.toString()
+                                    ?: committedAvatarPreviewUri?.toString()
+                                    ?: user.profileImageUrl,
+                                username = user.username,
+                                contentDescription = "Profile Picture",
+                                modifier = Modifier
+                                    .size(120.dp)
+                                    .clip(RoundedCornerShape(24.dp))
+                                    .clickable { openAvatarPicker() },
+                                shape = RoundedCornerShape(24.dp),
+                                fontSize = 42.sp
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .offset(x = 8.dp, y = 8.dp)
+                                    .size(32.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(SolariTheme.colors.primary, RoundedCornerShape(8.dp))
+                                    .clickable { openAvatarPicker() },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text(
-                                    text = "Cancel",
-                                    color = SolariTheme.colors.onSurface,
-                                    fontSize = 13.sp,
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                )
+                                Icon(Icons.Default.Edit, contentDescription = "Edit Avatar", tint = SolariTheme.colors.onPrimary, modifier = Modifier.size(16.dp))
                             }
+                        }
+                        AnimatedVisibility(visible = selectedAvatarUri != null) {
+                            Row(
+                                modifier = Modifier.padding(top = 14.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Surface(
+                                    onClick = { selectedAvatarUri = null },
+                                    enabled = !viewModel.isUpdatingAvatar,
+                                    color = SolariTheme.colors.surface,
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text(
+                                        text = "Cancel",
+                                        color = SolariTheme.colors.onSurface,
+                                        fontSize = 13.sp,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
 
-                            Surface(
-                                onClick = ::updateSelectedAvatar,
-                                enabled = !viewModel.isUpdatingAvatar,
-                                color = SolariTheme.colors.primary,
-                                shape = RoundedCornerShape(16.dp)
-                            ) {
-                                Text(
-                                    text = if (viewModel.isUpdatingAvatar) "Updating..." else "Update avatar",
-                                    color = SolariTheme.colors.onPrimary,
-                                    fontSize = 13.sp,
-                                    fontFamily = PlusJakartaSans,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                )
+                                Surface(
+                                    onClick = ::updateSelectedAvatar,
+                                    enabled = !viewModel.isUpdatingAvatar,
+                                    color = SolariTheme.colors.primary,
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Text(
+                                        text = if (viewModel.isUpdatingAvatar) "Updating..." else "Update avatar",
+                                        color = SolariTheme.colors.onPrimary,
+                                        fontSize = 13.sp,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                    )
+                                }
                             }
                         }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = user.displayName,
+                            fontSize = 24.sp,
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold,
+                            color = SolariTheme.colors.onBackground
+                        )
+                        Text(
+                            text = "@${user.username}",
+                            fontSize = 16.sp,
+                            fontFamily = PlusJakartaSans,
+                            color = Color.Gray
+                        )
                     }
-                    Spacer(modifier = Modifier.height(16.dp))
+                }
+
+                item { Spacer(modifier = Modifier.height(32.dp)) }
+
+                // Username
+                item {
+                    ProfileInfoBox(label = "USERNAME", value = "@${user.username}")
+                }
+
+                item { Spacer(modifier = Modifier.height(16.dp)) }
+
+                // Email
+                item {
+                    if (editingField == "email") {
+                        EditableField(
+                            label = "EMAIL",
+                            value = tempValue,
+                            onValueChange = { tempValue = it },
+                            onDone = {
+                                viewModel.updateEmail(tempValue)
+                                editingField = null
+                                focusManager.clearFocus()
+                            }
+                        )
+                    } else {
+                        ProfileInfoBox(label = "EMAIL", value = user.email, onClick = {
+                            tempValue = user.email
+                            editingField = "email"
+                            viewModel.clearMessages()
+                        })
+                    }
+                }
+
+                item { Spacer(modifier = Modifier.height(16.dp)) }
+
+                // Display Name
+                item {
+                    if (editingField == "displayName") {
+                        EditableField(
+                            label = "DISPLAY NAME",
+                            value = tempValue,
+                            onValueChange = { tempValue = it },
+                            onDone = {
+                                viewModel.updateDisplayName(tempValue)
+                                editingField = null
+                                focusManager.clearFocus()
+                            }
+                        )
+                    } else {
+                        ProfileInfoBox(label = "DISPLAY NAME", value = user.displayName, onClick = {
+                            tempValue = user.displayName
+                            editingField = "displayName"
+                            viewModel.clearMessages()
+                        })
+                    }
+                }
+
+                // Remove Display Name Button
+                item {
+                    if (user.displayName != user.username) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        DestructiveProfileActionButton(
+                            title = "Remove Display Name",
+                            enabled = true,
+                            onClick = {
+                                editingField = null
+                                focusManager.clearFocus()
+                                showRemoveDisplayNameConfirm = true
+                            }
+                        )
+                    }
+                }
+
+                // Remove Avatar Button
+                item {
+                    if (user.profileImageUrl != null || committedAvatarPreviewUri != null) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        DestructiveProfileActionButton(
+                            title = "Remove Avatar",
+                            enabled = !viewModel.isUpdatingAvatar,
+                            onClick = {
+                                editingField = null
+                                focusManager.clearFocus()
+                                showRemoveAvatarConfirm = true
+                            }
+                        )
+                    }
+                }
+
+                item { Spacer(modifier = Modifier.height(32.dp)) }
+
+                item {
                     Text(
-                        text = user.displayName,
-                        fontSize = 24.sp,
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Bold,
-                        color = SolariTheme.colors.onBackground
-                    )
-                    Text(
-                        text = "@${user.username}",
+                        text = "SOCIALS",
                         fontSize = 16.sp,
                         fontFamily = PlusJakartaSans,
-                        color = Color.Gray
+                        fontWeight = FontWeight.Bold,
+                        color = SolariTheme.colors.secondary,
+                        modifier = Modifier.padding(bottom = 12.dp)
                     )
                 }
-            }
 
-            item { Spacer(modifier = Modifier.height(32.dp)) }
-
-            // Username
-            item {
-                ProfileInfoBox(label = "USERNAME", value = "@${user.username}")
-            }
-
-            item { Spacer(modifier = Modifier.height(16.dp)) }
-
-            // Email
-            item {
-                if (editingField == "email") {
-                    EditableField(
-                        label = "EMAIL",
-                        value = tempValue,
-                        onValueChange = { tempValue = it },
-                        onDone = {
-                            viewModel.updateEmail(tempValue)
-                            editingField = null
-                            focusManager.clearFocus()
-                        }
+                item {
+                    SettingsRow(
+                        icon = Icons.Default.People,
+                        title = "Manage Friends",
+                        onClick = onNavigateToManageFriends,
+                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
                     )
-                } else {
-                    ProfileInfoBox(label = "EMAIL", value = user.email, onClick = {
-                        tempValue = user.email
-                        editingField = "email"
-                        viewModel.clearMessages()
-                    })
                 }
-            }
 
-            item { Spacer(modifier = Modifier.height(16.dp)) }
+                item { Spacer(modifier = Modifier.height(32.dp)) }
 
-            // Display Name
-            item {
-                if (editingField == "displayName") {
-                    EditableField(
-                        label = "DISPLAY NAME",
-                        value = tempValue,
-                        onValueChange = { tempValue = it },
-                        onDone = {
-                            viewModel.updateDisplayName(tempValue)
-                            editingField = null
-                            focusManager.clearFocus()
-                        }
+                item {
+                    Text(
+                        text = "SETTINGS & SECURITY",
+                        fontSize = 16.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        color = SolariTheme.colors.secondary,
+                        modifier = Modifier.padding(bottom = 12.dp)
                     )
-                } else {
-                    ProfileInfoBox(label = "DISPLAY NAME", value = user.displayName, onClick = {
-                        tempValue = user.displayName
-                        editingField = "displayName"
-                        viewModel.clearMessages()
-                    })
                 }
-            }
 
-            item { Spacer(modifier = Modifier.height(32.dp)) }
+                item {
+                    SettingsRow(
+                        icon = Icons.Default.Lock,
+                        title = "Change Password",
+                        onClick = onNavigateToChangePassword,
+                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
+                    )
+                }
 
-            item {
-                Text(
-                    text = "SOCIALS",
-                    fontSize = 16.sp,
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Bold,
-                    color = SolariTheme.colors.secondary,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-            }
+                item { Spacer(modifier = Modifier.height(8.dp)) }
 
-            item {
-                SettingsRow(
-                    icon = Icons.Default.People,
-                    title = "Manage Friends",
-                    onClick = onNavigateToManageFriends,
-                    trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
-                )
-            }
+                item {
+                    SettingsRow(
+                        icon = Icons.Default.Palette,
+                        title = "Change Theme",
+                        onClick = onNavigateToChangeTheme,
+                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
+                    )
+                }
 
-            item { Spacer(modifier = Modifier.height(32.dp)) }
+                item { Spacer(modifier = Modifier.height(8.dp)) }
 
-            item {
-                Text(
-                    text = "SETTINGS & SECURITY",
-                    fontSize = 16.sp,
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Bold,
-                    color = SolariTheme.colors.secondary,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-            }
-
-            item {
-                SettingsRow(
-                    icon = Icons.Default.Lock,
-                    title = "Change Password",
-                    onClick = onNavigateToChangePassword,
-                    trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
-                )
-            }
-
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-
-            item {
-                SettingsRow(
-                    icon = Icons.Default.Palette,
-                    title = "Change Theme",
-                    onClick = onNavigateToChangeTheme,
-                    trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
-                )
-            }
-
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-
-            item {
-                SettingsRow(
-                    icon = Icons.Default.DarkMode,
-                    title = "Toggle Dark Mode",
-                    trailing = {
-                        Switch(
-                            checked = settingsViewModel.isDarkMode,
-                            onCheckedChange = { settingsViewModel.toggleDarkMode(it) },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = SolariTheme.colors.onPrimary,
-                                checkedTrackColor = SolariTheme.colors.primary
+                item {
+                    SettingsRow(
+                        icon = Icons.Default.DarkMode,
+                        title = "Toggle Dark Mode",
+                        trailing = {
+                            Switch(
+                                checked = settingsViewModel.isDarkMode,
+                                onCheckedChange = { settingsViewModel.toggleDarkMode(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = SolariTheme.colors.onPrimary,
+                                    checkedTrackColor = SolariTheme.colors.primary
+                                )
                             )
-                        )
-                    }
-                )
+                        }
+                    )
+                }
+
+                item { Spacer(modifier = Modifier.height(8.dp)) }
+
+                item {
+                    SettingsRow(
+                        icon = Icons.AutoMirrored.Filled.Logout,
+                        title = "Log Out",
+                        onClick = { showLogoutConfirm = true },
+                        trailing = { }
+                    )
+                }
+
+                item { Spacer(modifier = Modifier.height(8.dp)) }
+
+                item {
+                    DeleteAccountButton(
+                        isDeleting = viewModel.isDeletingAccount,
+                        onClick = { showDeleteConfirm = true }
+                    )
+                }
             }
-
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-
-            item {
-                SettingsRow(
-                    icon = Icons.AutoMirrored.Filled.Logout,
-                    title = "Log Out",
-                    onClick = { showLogoutConfirm = true },
-                    trailing = { }
-                )
-            }
-
-            item { Spacer(modifier = Modifier.height(8.dp)) }
-
-            item {
-                SettingsRow(
-                    icon = Icons.Default.Delete,
-                    title = "Delete Account",
-                    titleColor = Color(0xFFE57373),
-                    onClick = { showDeleteConfirm = true },
-                    trailing = { Icon(Icons.Default.Warning, contentDescription = null, tint = Color.Gray, modifier = Modifier.size(20.dp)) }
-                )
-            }
-        }
         }
 
         AnimatedVisibility(
@@ -458,49 +528,91 @@ fun ProfileScreen(
                 isSuccess = pillIsSuccess
             )
         }
+
+        AnimatedVisibility(
+            visible = topPillVisible,
+            enter = slideInVertically(
+                initialOffsetY = { -it * 2 },
+                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+            ),
+            exit = slideOutVertically(
+                targetOffsetY = { -it * 2 },
+                animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+            ),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+        ) {
+            ProfileFeedbackPill(
+                message = topPillMessage,
+                isSuccess = false
+            )
+        }
     }
 
     if (showDeleteConfirm) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("Delete Account", fontFamily = PlusJakartaSans) },
-            text = {
-                Column {
-                    Text("This action cannot be undone. Please enter your password to confirm.", fontFamily = PlusJakartaSans)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = deletePassword,
-                        onValueChange = { deletePassword = it },
-                        label = { Text("Password", fontFamily = PlusJakartaSans) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        modifier = Modifier.fillMaxWidth(),
-                        textStyle = TextStyle(fontFamily = PlusJakartaSans)
-                    )
-                    if (deleteError != null) {
-                        Text(deleteError!!, color = Color.Red, fontSize = 12.sp, fontFamily = PlusJakartaSans)
+        DeleteAccountDialog(
+            password = deletePassword,
+            onPasswordChange = { deletePassword = it },
+            isDeleting = viewModel.isDeletingAccount,
+            onConfirm = {
+                val password = deletePassword
+                showDeleteConfirm = false
+                deletePassword = ""
+                viewModel.deleteAccount(
+                    password = password,
+                    onSuccess = {
+                        onLogout()
+                    },
+                    onFailure = { message ->
+                        suppressNextBottomError = true
+                        topPillMessage = message
+                        topPillVisible = true
+                        topPillEventId += 1
                     }
-                }
+                )
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.deleteAccount(
-                        onSuccess = onLogout,
-                        onFailure = { message -> deleteError = message }
-                    )
-                }) {
-                    Text("Delete", color = Color.Red, fontFamily = PlusJakartaSans)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("Cancel", fontFamily = PlusJakartaSans)
-                }
+            onDismiss = {
+                showDeleteConfirm = false
+                deletePassword = ""
             }
         )
     }
 
+    if (showRemoveDisplayNameConfirm) {
+        SolariConfirmationDialog(
+            title = "Remove display name?",
+            message = "Your profile will show your username instead.",
+            confirmText = "Remove Display Name",
+            onConfirm = {
+                showRemoveDisplayNameConfirm = false
+                viewModel.clearMessages()
+                viewModel.removeDisplayName()
+            },
+            onDismiss = { showRemoveDisplayNameConfirm = false }
+        )
+    }
+
+    if (showRemoveAvatarConfirm) {
+        SolariConfirmationDialog(
+            title = "Remove avatar?",
+            message = "Your current avatar will be removed and the default avatar will be shown.",
+            confirmText = "Remove Avatar",
+            onConfirm = {
+                showRemoveAvatarConfirm = false
+                viewModel.clearMessages()
+                viewModel.removeAvatar {
+                    selectedAvatarUri = null
+                    committedAvatarPreviewUri = null
+                }
+            },
+            onDismiss = { showRemoveAvatarConfirm = false }
+        )
+    }
+
     if (showLogoutConfirm) {
-        com.solari.app.ui.components.SolariConfirmationDialog(
+        SolariConfirmationDialog(
             title = "Log out?",
             message = "You will need to sign in again to use Solari.",
             confirmText = "Log Out",
@@ -509,6 +621,207 @@ fun ProfileScreen(
                 onLogout()
             },
             onDismiss = { showLogoutConfirm = false }
+        )
+    }
+}
+
+@Composable
+private fun DestructiveProfileActionButton(
+    title: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit
+) {
+    DestructiveProfileRow(
+        title = title,
+        enabled = enabled,
+        showWarningIcon = false,
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun DeleteAccountButton(
+    isDeleting: Boolean,
+    onClick: () -> Unit
+) {
+    DestructiveProfileRow(
+        title = "Delete Account",
+        enabled = !isDeleting,
+        showWarningIcon = true,
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun DestructiveProfileRow(
+    title: String,
+    enabled: Boolean,
+    showWarningIcon: Boolean = true,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(18.dp)
+    Surface(
+        color = Color(0xFF3C1E22),
+        shape = shape,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .clickable(enabled = enabled, onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = null,
+                    tint = Color(0xFFFF8A80),
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = title,
+                    color = Color(0xFFFF8A80),
+                    fontSize = 16.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+            if (showWarningIcon) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = Color(0xFFFF8A80),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeleteAccountDialog(
+    password: String,
+    onPasswordChange: (String) -> Unit,
+    isDeleting: Boolean,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(
+        onDismissRequest = {
+            if (!isDeleting) onDismiss()
+        }
+    ) {
+        Surface(
+            color = SolariTheme.colors.surface,
+            shape = RoundedCornerShape(16.dp),
+            shadowElevation = 12.dp,
+            modifier = Modifier.width(284.dp)
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Delete Account",
+                        color = SolariTheme.colors.onSurface,
+                        fontSize = 16.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "Enter your password to permanently delete your account.",
+                        color = SolariTheme.colors.tertiary,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Medium
+                    )
+                    BasicTextField(
+                        value = password,
+                        onValueChange = onPasswordChange,
+                        singleLine = true,
+                        enabled = !isDeleting,
+                        visualTransformation = PasswordVisualTransformation(),
+                        textStyle = TextStyle(
+                            color = SolariTheme.colors.onSurface,
+                            fontFamily = PlusJakartaSans,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        ),
+                        cursorBrush = SolidColor(SolariTheme.colors.onSurface),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF080B0E))
+                            .padding(horizontal = 12.dp),
+                        decorationBox = { innerTextField ->
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (password.isEmpty()) {
+                                    Text(
+                                        text = "Password",
+                                        color = Color.Gray,
+                                        fontSize = 14.sp,
+                                        fontFamily = PlusJakartaSans
+                                    )
+                                }
+                                innerTextField()
+                            }
+                        }
+                    )
+                }
+
+                DeleteAccountDialogActionRow(
+                    text = "Delete Account",
+                    textColor = Color(0xFFE57373),
+                    shape = RoundedCornerShape(0.dp),
+                    onClick = onConfirm
+                )
+                DeleteAccountDialogActionRow(
+                    text = "Cancel",
+                    textColor = SolariTheme.colors.onSurface,
+                    shape = RoundedCornerShape(
+                        topStart = 0.dp,
+                        topEnd = 0.dp,
+                        bottomEnd = 16.dp,
+                        bottomStart = 16.dp
+                    ),
+                    onClick = onDismiss
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeleteAccountDialogActionRow(
+    text: String,
+    textColor: Color,
+    shape: RoundedCornerShape,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(42.dp)
+            .clip(shape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = text,
+            color = textColor,
+            fontSize = 14.sp,
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.Bold
         )
     }
 }

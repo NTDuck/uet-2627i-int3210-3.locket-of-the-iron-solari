@@ -11,6 +11,7 @@ data class Conversation(
     val timestamp: Long = System.currentTimeMillis(),
     val isUnread: Boolean = false,
     val isMuted: Boolean = false,
+    val isReadOnly: Boolean = false,
     val messages: List<Message> = emptyList()
 ) : Serializable
 

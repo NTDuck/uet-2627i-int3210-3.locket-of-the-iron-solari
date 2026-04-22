@@ -14,6 +14,7 @@ data class ApiUserDto(
     val avatarUrl: String? = null,
     @SerialName("avatarUrl")
     val legacyAvatarUrl: String? = null,
+    val nickname: String? = null,
     @SerialName("created_at")
     val createdAt: String? = null
 ) {

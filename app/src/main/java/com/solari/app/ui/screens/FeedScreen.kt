@@ -32,12 +32,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +53,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.solari.app.R
 import com.solari.app.ui.components.SolariConfirmationDialog
@@ -71,6 +79,11 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
+private enum class FeedInputOverlayMode {
+    Reaction,
+    Message
+}
+
 @Composable
 fun FeedScreen(
     viewModel: FeedViewModel,
@@ -79,7 +92,8 @@ fun FeedScreen(
     onNavigateToCamera: () -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToProfile: () -> Unit,
-    onNavigateToBrowse: () -> Unit,
+    onNavigateToBrowse: (String?) -> Unit,
+    isFeedVisible: Boolean = true,
     onActivityPanelVisibilityChanged: (Boolean) -> Unit = {}
 ) {
     var showMenuForPost by remember { mutableStateOf<Post?>(null) }
@@ -88,6 +102,7 @@ fun FeedScreen(
     var activitySheetPostId by remember { mutableStateOf<String?>(null) }
     var feedbackPillVisible by remember { mutableStateOf(false) }
     var feedbackPillMessage by remember { mutableStateOf("") }
+    var isInputOverlayVisible by remember { mutableStateOf(false) }
     val posts = viewModel.posts
     val currentUser = viewModel.currentUser
     val initialPostPage = remember(initialPostId, posts) {
@@ -104,15 +119,30 @@ fun FeedScreen(
         }
     }
 
-    LaunchedEffect(isActivitySheetVisible) {
-        onActivityPanelVisibilityChanged(isActivitySheetVisible)
+    LaunchedEffect(isActivitySheetVisible, isInputOverlayVisible) {
+        onActivityPanelVisibilityChanged(isActivitySheetVisible || isInputOverlayVisible)
     }
 
-    LaunchedEffect(viewModel.successMessage) {
+    LaunchedEffect(isFeedVisible) {
+        if (!isFeedVisible) {
+            feedbackPillVisible = false
+            feedbackPillMessage = ""
+            viewModel.clearMessages()
+        }
+    }
+
+    LaunchedEffect(viewModel.successMessage, isFeedVisible) {
         val message = viewModel.successMessage ?: return@LaunchedEffect
+        if (!isFeedVisible) {
+            feedbackPillVisible = false
+            feedbackPillMessage = ""
+            viewModel.clearMessages()
+            return@LaunchedEffect
+        }
+
         feedbackPillMessage = message
         feedbackPillVisible = true
-        delay(2_000)
+        delay(1000)
         feedbackPillVisible = false
         delay(260)
         viewModel.clearMessages()
@@ -130,6 +160,9 @@ fun FeedScreen(
 
     DisposableEffect(Unit) {
         onDispose {
+            feedbackPillVisible = false
+            feedbackPillMessage = ""
+            viewModel.clearMessages()
             onActivityPanelVisibilityChanged(false)
         }
     }
@@ -162,7 +195,7 @@ fun FeedScreen(
             VerticalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = !isActivitySheetVisible
+                userScrollEnabled = !isActivitySheetVisible && !isInputOverlayVisible
             ) { page ->
                 FeedPost(
                     post = posts[page],
@@ -182,6 +215,9 @@ fun FeedScreen(
                         viewModel.sendPostReply(posts[page], content, onSent)
                     },
                     onNavigateToBrowse = onNavigateToBrowse,
+                    onInputOverlayVisibilityChanged = { isVisible ->
+                        isInputOverlayVisible = isVisible
+                    },
                     currentUser = currentUser
                 )
             }
@@ -350,13 +386,16 @@ private fun FeedPost(
     onShowActivity: () -> Unit,
     onSendPostReaction: (String, String?, () -> Unit) -> Unit,
     onSendPostReply: (String, () -> Unit) -> Unit,
-    onNavigateToBrowse: () -> Unit,
+    onNavigateToBrowse: (String?) -> Unit,
+    onInputOverlayVisibilityChanged: (Boolean) -> Unit,
     currentUser: User?
 ) {
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var messageText by remember { mutableStateOf("") }
     var reactionNote by remember { mutableStateOf("") }
     var showEmojiPicker by remember { mutableStateOf(false) }
+    var activeInputOverlay by remember { mutableStateOf<FeedInputOverlayMode?>(null) }
     val currentUserId = currentUser?.id
     val isCurrentUserPost = post.author.id == currentUserId
     val displayAuthor = currentUser?.takeIf { post.author.id == it.id } ?: post.author
@@ -365,6 +404,35 @@ private fun FeedPost(
             .map { it.user }
             .distinctBy { it.id }
             .filter { it.id != currentUserId }
+    }
+
+    fun dismissInputOverlay() {
+        activeInputOverlay = null
+        showEmojiPicker = false
+        onInputOverlayVisibilityChanged(false)
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
+
+    fun showInputOverlay(mode: FeedInputOverlayMode) {
+        activeInputOverlay = mode
+        onInputOverlayVisibilityChanged(true)
+    }
+
+    fun sendReactionOptimistically(emoji: String) {
+        val note = reactionNote.trim().takeIf { it.isNotEmpty() }
+        reactionNote = ""
+        dismissInputOverlay()
+        onSendPostReaction(emoji, note) {}
+    }
+
+    fun sendMessageOptimistically() {
+        val content = messageText.trim()
+        if (content.isEmpty()) return
+
+        messageText = ""
+        dismissInputOverlay()
+        onSendPostReply(content) {}
     }
 
     Box(
@@ -395,6 +463,7 @@ private fun FeedPost(
                         url = post.imageUrl,
                         mediaType = post.mediaType,
                         isActive = isActive,
+                        onLongPress = onLongPress,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -450,8 +519,9 @@ private fun FeedPost(
 
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 100.dp),
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onNavigateToBrowse(displayAuthor.id) }
+                    .padding(vertical = 8.dp, horizontal = 16.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
@@ -500,13 +570,10 @@ private fun FeedPost(
                 FeedReactionField(
                     value = reactionNote,
                     onValueChange = { reactionNote = it.take(20) },
-                    onReact = { emoji ->
-                        onSendPostReaction(emoji, reactionNote.trim().takeIf { it.isNotEmpty() }) {
-                            reactionNote = ""
-                            focusManager.clearFocus()
-                        }
-                    },
-                    onOpenEmojiPicker = { showEmojiPicker = true }
+                    onReact = ::sendReactionOptimistically,
+                    onOpenEmojiPicker = { showEmojiPicker = true },
+                    isEditable = false,
+                    onActivate = { showInputOverlay(FeedInputOverlayMode.Reaction) }
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -514,37 +581,66 @@ private fun FeedPost(
                 FeedMessageField(
                     value = messageText,
                     onValueChange = { messageText = it },
-                    onSend = {
-                        val content = messageText.trim()
-                        if (content.isNotEmpty()) {
-                            onSendPostReply(content) {
-                                messageText = ""
-                                focusManager.clearFocus()
-                            }
-                        }
-                    }
+                    onSend = {},
+                    isEditable = false,
+                    onActivate = { showInputOverlay(FeedInputOverlayMode.Message) }
                 )
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            FeedBrowseButton(onClick = onNavigateToBrowse)
+            FeedBrowseButton(onClick = { onNavigateToBrowse(null) })
 
             Spacer(modifier = Modifier.weight(0.45f))
         }
 
-        if (showEmojiPicker) {
+        if (showEmojiPicker && activeInputOverlay == null) {
             EmojiPickerPopup(
                 onClosed = { showEmojiPicker = false },
                 selectedEmoji = null,
                 recentEmojis = emptyList(),
-                onReact = { emoji ->
-                    onSendPostReaction(emoji, reactionNote.trim().takeIf { it.isNotEmpty() }) {
-                        reactionNote = ""
-                        focusManager.clearFocus()
+                onReact = ::sendReactionOptimistically
+            )
+        }
+
+        activeInputOverlay?.let { overlayMode ->
+            Dialog(
+                onDismissRequest = ::dismissInputOverlay,
+                properties = DialogProperties(
+                    usePlatformDefaultWidth = false,
+                    decorFitsSystemWindows = false
+                )
+            ) {
+                val view = LocalView.current
+                LaunchedEffect(view) {
+                    val window = (view.parent as? DialogWindowProvider)?.window
+                    window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+                }
+
+                Box(modifier = Modifier.fillMaxSize()) {
+                    FeedInputKeyboardOverlay(
+                        mode = overlayMode,
+                        reactionValue = reactionNote,
+                        onReactionValueChange = { reactionNote = it.take(20) },
+                        messageValue = messageText,
+                        onMessageValueChange = { messageText = it },
+                        isEmojiPickerOpen = showEmojiPicker,
+                        onDismiss = ::dismissInputOverlay,
+                        onReact = ::sendReactionOptimistically,
+                        onOpenEmojiPicker = { showEmojiPicker = true },
+                        onSendMessage = ::sendMessageOptimistically
+                    )
+
+                    if (showEmojiPicker) {
+                        EmojiPickerPopup(
+                            onClosed = { showEmojiPicker = false },
+                            selectedEmoji = null,
+                            recentEmojis = emptyList(),
+                            onReact = ::sendReactionOptimistically
+                        )
                     }
                 }
-            )
+            }
         }
     }
 }
@@ -886,21 +982,25 @@ private fun FeedImage(
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FeedVideoPlayer(
     url: String,
     mediaType: String,
     isActive: Boolean,
+    onLongPress: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var isLoading by remember(url) { mutableStateOf(true) }
+    var isUserPaused by remember(url) { mutableStateOf(false) }
     val player = remember(url, mediaType) {
         ExoPlayer.Builder(context)
             .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
             .build()
             .apply {
                 repeatMode = Player.REPEAT_MODE_ONE
+                volume = 0f
                 setMediaItem(
                     MediaItem.Builder()
                         .setUri(Uri.parse(url))
@@ -911,8 +1011,15 @@ private fun FeedVideoPlayer(
             }
     }
 
-    LaunchedEffect(player, isActive) {
-        player.playWhenReady = isActive
+    LaunchedEffect(isActive) {
+        if (!isActive) {
+            isUserPaused = false
+        }
+    }
+
+    LaunchedEffect(player, isActive, isUserPaused) {
+        player.volume = 0f
+        player.playWhenReady = isActive && !isUserPaused
     }
 
     DisposableEffect(player) {
@@ -966,6 +1073,17 @@ private fun FeedVideoPlayer(
                     playerView.player = player
                 }
             }
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = { isUserPaused = !isUserPaused },
+                    onLongClick = onLongPress
+                )
         )
 
         if (isLoading) {
@@ -1028,28 +1146,167 @@ private fun Long.toFeedRelativeTimeLabel(nowMillis: Long = System.currentTimeMil
 }
 
 @Composable
+private fun FeedInputKeyboardOverlay(
+    mode: FeedInputOverlayMode,
+    reactionValue: String,
+    onReactionValueChange: (String) -> Unit,
+    messageValue: String,
+    onMessageValueChange: (String) -> Unit,
+    isEmojiPickerOpen: Boolean,
+    onDismiss: () -> Unit,
+    onReact: (String) -> Unit,
+    onOpenEmojiPicker: () -> Unit,
+    onSendMessage: () -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val density = LocalDensity.current
+    val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
+    var hasSeenKeyboard by remember(mode) { mutableStateOf(false) }
+    var isBarVisible by remember(mode) { mutableStateOf(false) }
+
+    LaunchedEffect(mode) {
+        isBarVisible = true
+        withFrameNanos { }
+        withFrameNanos { }
+        runCatching {
+            focusRequester.requestFocus()
+        }
+        keyboardController?.show()
+    }
+
+    LaunchedEffect(isEmojiPickerOpen) {
+        if (isEmojiPickerOpen) {
+            hasSeenKeyboard = false 
+        } else {
+            runCatching { focusRequester.requestFocus() }
+            keyboardController?.show()
+        }
+    }
+
+    LaunchedEffect(isKeyboardVisible) {
+        if (isKeyboardVisible) {
+            hasSeenKeyboard = true
+        } else if (hasSeenKeyboard && !isEmojiPickerOpen) {
+            onDismiss()
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(4f)
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        event.changes.forEach { it.consume() }
+                    }
+                }
+            }
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.56f))
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                )
+        )
+
+        AnimatedVisibility(
+            visible = isBarVisible,
+            modifier = Modifier
+                .align(Alignment.BottomCenter),
+            enter = fadeIn(animationSpec = tween(durationMillis = 120)) +
+                    slideInVertically(
+                        animationSpec = tween(durationMillis = 180),
+                        initialOffsetY = { it / 2 }
+                    ),
+            exit = fadeOut(animationSpec = tween(durationMillis = 0))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(
+                        start = 32.dp, 
+                        end = 32.dp, 
+                        top = 12.dp, 
+                        bottom = 16.dp
+                    )
+            ) {
+                when (mode) {
+                    FeedInputOverlayMode.Reaction -> {
+                        FeedReactionField(
+                            value = reactionValue,
+                            onValueChange = onReactionValueChange,
+                            onReact = onReact,
+                            onOpenEmojiPicker = onOpenEmojiPicker,
+                            isEditable = true,
+                            focusRequester = focusRequester,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    FeedInputOverlayMode.Message -> {
+                        FeedMessageField(
+                            value = messageValue,
+                            onValueChange = onMessageValueChange,
+                            onSend = onSendMessage,
+                            isEditable = true,
+                            focusRequester = focusRequester,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun FeedReactionField(
     value: String,
     onValueChange: (String) -> Unit,
     onReact: (String) -> Unit,
-    onOpenEmojiPicker: () -> Unit
+    onOpenEmojiPicker: () -> Unit,
+    modifier: Modifier = Modifier,
+    isEditable: Boolean = true,
+    focusRequester: FocusRequester? = null,
+    onActivate: () -> Unit = {}
 ) {
     val quickReactionEmojis = listOf("❤️", "😂", "😮")
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(48.dp)
             .clip(RoundedCornerShape(9.dp))
             .background(Color(0xFF1B1C21))
+            .then(
+                if (isEditable) {
+                    Modifier
+                } else {
+                    Modifier.clickable(onClick = onActivate)
+                }
+            )
             .padding(start = 26.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val textFieldModifier = Modifier
+            .weight(1f)
+            .padding(end = 8.dp)
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.weight(1f)
-                .padding(end = 8.dp),
+            enabled = isEditable,
+            modifier = textFieldModifier,
             textStyle = TextStyle(
                 color = Color.White,
                 fontSize = 14.sp,
@@ -1109,21 +1366,39 @@ private fun FeedReactionField(
 private fun FeedMessageField(
     value: String,
     onValueChange: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    modifier: Modifier = Modifier,
+    isEditable: Boolean = true,
+    focusRequester: FocusRequester? = null,
+    onActivate: () -> Unit = {}
 ) {
+    val barShape = RoundedCornerShape(9.dp)
+
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clip(RoundedCornerShape(9.dp))
+            .clip(barShape)
             .background(Color(0xFF1B1C21))
+            .then(
+                if (isEditable) {
+                    Modifier
+                } else {
+                    Modifier.clickable(onClick = onActivate)
+                }
+            )
             .padding(start = 26.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        val textFieldModifier = Modifier
+            .weight(1f)
+            .then(focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.weight(1f),
+            enabled = isEditable,
+            modifier = textFieldModifier,
             textStyle = TextStyle(
                 color = Color.White,
                 fontSize = 14.sp,
@@ -1152,7 +1427,19 @@ private fun FeedMessageField(
             tint = Color(0xFFD7C0B2),
             modifier = Modifier
                 .size(28.dp)
-                .clickable(onClick = onSend)
+                .then(
+                    if (isEditable) {
+                        Modifier
+                            .clip(CircleShape)
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onSend
+                            )
+                    } else {
+                        Modifier
+                    }
+                )
         )
     }
 }

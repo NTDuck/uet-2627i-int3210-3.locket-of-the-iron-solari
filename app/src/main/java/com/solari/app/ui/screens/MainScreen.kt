@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 fun MainScreen(
     initialPage: Int = 0,
     initialFeedPostId: String? = null,
+    profileFeedbackMessage: String? = null,
     settingsViewModel: SettingsViewModel,
     viewModelFactory: SolariViewModelFactory,
     onNavigateToChat: (Conversation) -> Unit,
@@ -27,9 +28,10 @@ fun MainScreen(
     onNavigateToBlockedAccounts: () -> Unit,
     onNavigateToChangePassword: () -> Unit,
     onNavigateToChangeTheme: () -> Unit,
-    onNavigateToFeedBrowse: () -> Unit,
+    onNavigateToFeedBrowse: (String?) -> Unit,
     onCapture: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onProfileFeedbackConsumed: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 4 }
     val scope = rememberCoroutineScope()
@@ -74,7 +76,7 @@ fun MainScreen(
         ) { page ->
             when (page) {
                 0 -> {
-                    val viewModel: HomepageBeforeCapturingViewModel = viewModel()
+                    val viewModel: HomepageBeforeCapturingViewModel = viewModel(factory = viewModelFactory)
                     HomepageBeforeCapturingScreen(
                         viewModel = viewModel,
                         onNavigateBack = {},
@@ -94,6 +96,7 @@ fun MainScreen(
                         onNavigateToChat = { scope.launch { pagerState.animateScrollToPage(2) } },
                         onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } },
                         onNavigateToBrowse = onNavigateToFeedBrowse,
+                        isFeedVisible = pagerState.currentPage == 1,
                         onActivityPanelVisibilityChanged = { isFeedActivityPanelVisible = it }
                     )
                 }
@@ -114,6 +117,8 @@ fun MainScreen(
                     ProfileScreen(
                         viewModel = viewModel,
                         settingsViewModel = settingsViewModel,
+                        externalFeedbackMessage = profileFeedbackMessage,
+                        onExternalFeedbackConsumed = onProfileFeedbackConsumed,
                         onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToChangePassword = onNavigateToChangePassword,
                         onNavigateToChangeTheme = onNavigateToChangeTheme,

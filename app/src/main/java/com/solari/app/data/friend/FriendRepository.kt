@@ -12,6 +12,8 @@ data class FriendRequestPage(
 interface FriendRepository {
     suspend fun getFriends(sort: String? = null): ApiResult<List<User>>
 
+    suspend fun getNicknames(): ApiResult<Map<String, String>>
+
     suspend fun getFriendRequests(
         limit: Int = 100,
         cursor: String? = null
@@ -22,4 +24,12 @@ interface FriendRepository {
     suspend fun acceptFriendRequest(requestId: String): ApiResult<Unit>
 
     suspend fun deleteFriendRequest(requestId: String): ApiResult<Unit>
+
+    suspend fun unfriend(friendId: String): ApiResult<Unit>
+
+    suspend fun setNickname(friendId: String, nickname: String): ApiResult<Unit>
+
+    suspend fun updateNickname(friendId: String, nickname: String): ApiResult<Unit>
+
+    suspend fun removeNickname(friendId: String): ApiResult<Unit>
 }

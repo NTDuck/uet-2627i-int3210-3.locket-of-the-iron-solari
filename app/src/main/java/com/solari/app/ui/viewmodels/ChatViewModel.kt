@@ -96,6 +96,7 @@ class ChatViewModel(
         chatId: String,
         repliedMessage: Message? = null
     ) {
+        if (conversation?.isReadOnly == true) return
         val content = messageText.trim()
         if (content.isBlank()) return
 
@@ -165,6 +166,7 @@ class ChatViewModel(
     }
     
     fun unsendMessage(chatId: String, messageId: String) {
+        if (conversation?.isReadOnly == true) return
         val previousConversation = conversation
         conversation = previousConversation?.copy(
             messages = previousConversation.messages.map { message ->
@@ -189,6 +191,7 @@ class ChatViewModel(
     }
 
     fun reactToMessage(messageId: String, emoji: String) {
+        if (conversation?.isReadOnly == true) return
         val userId = currentUser?.id ?: return
         val previousConversation = conversation
         val currentUserReaction = conversation

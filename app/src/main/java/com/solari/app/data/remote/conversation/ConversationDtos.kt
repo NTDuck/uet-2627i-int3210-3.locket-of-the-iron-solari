@@ -50,7 +50,9 @@ data class ConversationDto(
     @SerialName("partner_last_read_at")
     val partnerLastReadAt: String? = null,
     @SerialName("is_readonly")
-    val isReadonly: Boolean = false,
+    val legacyIsReadOnly: Boolean = false,
+    @SerialName("is_read_only")
+    val isReadOnly: Boolean = false,
     @SerialName("is_muted")
     val isMuted: Boolean = false
 )

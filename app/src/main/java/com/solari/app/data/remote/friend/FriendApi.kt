@@ -17,6 +17,12 @@ interface FriendApi {
         @Query("cursor") cursor: String? = null
     ): Response<GetFriendsResponseDto>
 
+    @GET("nicknames")
+    suspend fun getNicknames(
+        @Query("limit") limit: Int = 100,
+        @Query("cursor") cursor: String? = null
+    ): Response<GetNicknamesResponseDto>
+
     @GET("friend-requests")
     suspend fun getFriendRequests(
         @Query("limit") limit: Int = 100,
@@ -39,4 +45,26 @@ interface FriendApi {
     suspend fun deleteFriendRequest(
         @Path("requestId") requestId: String
     ): Response<FriendRequestDeleteResponseDto>
+
+    @DELETE("friendships/{friendId}")
+    suspend fun unfriend(
+        @Path("friendId") friendId: String
+    ): Response<FriendshipMutationResponseDto>
+
+    @POST("nicknames/{targetUserId}")
+    suspend fun setNickname(
+        @Path("targetUserId") targetUserId: String,
+        @Body request: SetNicknameRequestDto
+    ): Response<NicknameMutationResponseDto>
+
+    @PATCH("nicknames/{targetUserId}")
+    suspend fun updateNickname(
+        @Path("targetUserId") targetUserId: String,
+        @Body request: UpdateNicknameRequestDto
+    ): Response<NicknameMutationResponseDto>
+
+    @DELETE("nicknames/{targetUserId}")
+    suspend fun removeNickname(
+        @Path("targetUserId") targetUserId: String
+    ): Response<NicknameMutationResponseDto>
 }

@@ -134,7 +134,7 @@ fun SignUpScreen(
         val message = viewModel.errorMessage ?: return@LaunchedEffect
         feedbackPillMessage = message
         feedbackPillVisible = true
-        delay(2_000)
+        delay(1000)
         feedbackPillVisible = false
         delay(260)
         viewModel.clearMessages()

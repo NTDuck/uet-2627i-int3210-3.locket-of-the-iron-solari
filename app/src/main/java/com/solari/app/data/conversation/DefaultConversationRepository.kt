@@ -159,6 +159,7 @@ class DefaultConversationRepository(
                     currentUserLastReadAt != null &&
                     lastMessage.createdAt > currentUserLastReadAt,
             isMuted = isMuted,
+            isReadOnly = isReadOnly || legacyIsReadOnly,
             messages = emptyList()
         )
     }

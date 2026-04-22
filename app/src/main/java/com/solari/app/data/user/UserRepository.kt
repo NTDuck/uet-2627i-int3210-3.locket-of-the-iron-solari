@@ -13,11 +13,17 @@ data class ProfileAvatarUpload(
 interface UserRepository {
     suspend fun getMe(): ApiResult<User>
 
+    suspend fun getPublicProfile(username: String): ApiResult<User>
+
     suspend fun updateProfile(
         email: String? = null,
         displayName: String? = null,
-        avatar: ProfileAvatarUpload? = null
+        avatar: ProfileAvatarUpload? = null,
+        removeDisplayName: Boolean = false,
+        removeAvatar: Boolean = false
     ): ApiResult<User>
+
+    suspend fun getCurrentStreak(timezone: String): ApiResult<Int>
 
     suspend fun blockUser(userId: String): ApiResult<Unit>
 
@@ -25,5 +31,7 @@ interface UserRepository {
 
     suspend fun getBlockedUsers(sort: String = "newest"): ApiResult<List<BlockedUser>>
 
-    suspend fun deleteAccount(): ApiResult<Unit>
+    suspend fun updatePassword(oldPassword: String, newPassword: String): ApiResult<Unit>
+
+    suspend fun deleteAccount(password: String): ApiResult<Unit>
 }

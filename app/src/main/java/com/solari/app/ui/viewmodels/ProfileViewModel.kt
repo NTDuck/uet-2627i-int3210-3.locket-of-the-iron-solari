@@ -25,6 +25,8 @@ class ProfileViewModel(
 
     var isUpdatingAvatar by mutableStateOf(false)
         private set
+    var isDeletingAccount by mutableStateOf(false)
+        private set
 
     var successMessage by mutableStateOf<String?>(null)
     var errorMessage by mutableStateOf<String?>(null)
@@ -82,6 +84,25 @@ class ProfileViewModel(
         }
     }
 
+    fun removeDisplayName() {
+        viewModelScope.launch {
+            try {
+                when (val result = userRepository.updateProfile(removeDisplayName = true)) {
+                    is ApiResult.Success -> {
+                        user = result.data
+                        successMessage = "Display name removed"
+                        errorMessage = null
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to remove display name"
+            }
+        }
+    }
+
     fun updateAvatar(
         avatar: ProfileAvatarUpload,
         onSuccess: () -> Unit = {},
@@ -115,26 +136,72 @@ class ProfileViewModel(
         }
     }
 
+    fun removeAvatar(onSuccess: () -> Unit = {}) {
+        if (isUpdatingAvatar) return
+
+        viewModelScope.launch {
+            isUpdatingAvatar = true
+            try {
+                when (val result = userRepository.updateProfile(removeAvatar = true)) {
+                    is ApiResult.Success -> {
+                        user = result.data
+                        successMessage = "Avatar removed"
+                        errorMessage = null
+                        onSuccess()
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to remove avatar"
+            } finally {
+                isUpdatingAvatar = false
+            }
+        }
+    }
+
     fun clearMessages() {
         successMessage = null
         errorMessage = null
     }
 
     fun deleteAccount(
+        password: String,
         onSuccess: () -> Unit,
-        onFailure: (String) -> Unit
+        onFailure: (String) -> Unit = {}
     ) {
-        viewModelScope.launch {
-            when (val result = userRepository.deleteAccount()) {
-                is ApiResult.Success -> {
-                    authRepository.clearSession()
-                    onSuccess()
-                }
+        if (isDeletingAccount) return
+        val trimmedPassword = password.trim()
+        if (trimmedPassword.isBlank()) {
+            val message = "Enter your password"
+            errorMessage = message
+            onFailure(message)
+            return
+        }
 
-                is ApiResult.Failure -> {
-                    errorMessage = result.message
-                    onFailure(result.message)
+        viewModelScope.launch {
+            isDeletingAccount = true
+            errorMessage = null
+            successMessage = null
+            try {
+                when (val result = userRepository.deleteAccount(trimmedPassword)) {
+                    is ApiResult.Success -> {
+                        authRepository.clearSession()
+                        onSuccess()
+                    }
+
+                    is ApiResult.Failure -> {
+                        errorMessage = result.message
+                        onFailure(result.message)
+                    }
                 }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to delete account"
+                onFailure(errorMessage ?: "Failed to delete account")
+            } finally {
+                isDeletingAccount = false
             }
         }
     }

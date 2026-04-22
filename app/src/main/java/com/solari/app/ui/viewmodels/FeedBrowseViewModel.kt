@@ -8,15 +8,20 @@ import androidx.lifecycle.viewModelScope
 import com.solari.app.data.feed.FeedRepository
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
+import com.solari.app.data.user.UserRepository
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.User
 import kotlinx.coroutines.launch
 
 class FeedBrowseViewModel(
     private val feedRepository: FeedRepository,
-    private val friendRepository: FriendRepository
+    private val friendRepository: FriendRepository,
+    private val userRepository: UserRepository
 ) : ViewModel() {
     var friends by mutableStateOf<List<User>>(emptyList())
+        private set
+
+    var currentUser by mutableStateOf<User?>(null)
         private set
 
     var posts by mutableStateOf<List<Post>>(emptyList())
@@ -38,6 +43,11 @@ class FeedBrowseViewModel(
         viewModelScope.launch {
             isLoading = true
             errorMessage = null
+
+            when (val meResult = userRepository.getMe()) {
+                is ApiResult.Success -> currentUser = meResult.data
+                is ApiResult.Failure -> errorMessage = meResult.message
+            }
 
             when (val friendsResult = friendRepository.getFriends()) {
                 is ApiResult.Success -> friends = friendsResult.data

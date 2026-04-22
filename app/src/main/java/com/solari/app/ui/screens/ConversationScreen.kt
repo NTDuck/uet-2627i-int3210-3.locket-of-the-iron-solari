@@ -79,15 +79,14 @@ fun ConversationScreen(
             feedbackPillIsSuccess = isSuccessFeedback
             feedbackPillVisible = true
             feedbackEventId += 1
+            viewModel.clearMessages()
         }
     }
 
     LaunchedEffect(feedbackEventId) {
         if (feedbackEventId > 0) {
-            delay(2_000)
+            delay(1000)
             feedbackPillVisible = false
-            delay(320)
-            viewModel.clearMessages()
         }
     }
 
@@ -438,6 +437,9 @@ private fun ConversationFeedbackPill(
 @Composable
 fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
     val itemShape = RoundedCornerShape(10.dp)
+    val displayName = if (conversation.isReadOnly) "Someone" else conversation.otherUser.displayName
+    val avatarUsername = if (conversation.isReadOnly) "someone" else conversation.otherUser.username
+    val avatarUrl = if (conversation.isReadOnly) null else conversation.otherUser.profileImageUrl
     val lastMessagePreview = remember(conversation.lastMessage, conversation.lastMessageSenderId, conversation.otherUser.id) {
         when {
             conversation.lastMessage.isBlank() -> ""
@@ -478,9 +480,9 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SolariAvatar(
-                    imageUrl = conversation.otherUser.profileImageUrl,
-                    username = conversation.otherUser.username,
-                    contentDescription = "${conversation.otherUser.displayName} avatar",
+                    imageUrl = avatarUrl,
+                    username = avatarUsername,
+                    contentDescription = "$displayName avatar",
                     modifier = Modifier
                         .size(45.dp)
                         .clip(RoundedCornerShape(6.dp)),
@@ -497,7 +499,7 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = conversation.otherUser.displayName, 
+                            text = displayName,
                             color = Color.White, 
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,

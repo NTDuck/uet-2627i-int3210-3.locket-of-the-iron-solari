@@ -31,19 +31,45 @@ class FriendManagementViewModel(
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
+    private var currentSort: String? = null
+
     init {
         loadFriends()
     }
 
     fun loadFriends(sort: String? = null) {
+        currentSort = sort
         viewModelScope.launch {
             isLoading = true
             errorMessage = null
 
             try {
-                when (val result = friendRepository.getFriends(sort = sort)) {
-                    is ApiResult.Success -> friends = result.data
-                    is ApiResult.Failure -> errorMessage = result.message
+                val friendsResult = friendRepository.getFriends(sort = sort)
+                val nicknamesResult = friendRepository.getNicknames()
+
+                when (friendsResult) {
+                    is ApiResult.Success -> {
+                        val nicknamesByUserId = when (nicknamesResult) {
+                            is ApiResult.Success -> nicknamesResult.data
+                            is ApiResult.Failure -> emptyMap()
+                        }
+                        friends = friendsResult.data.map { friend ->
+                            val nickname = nicknamesByUserId[friend.id]
+                            if (nickname.isNullOrBlank()) {
+                                friend
+                            } else {
+                                friend.copy(
+                                    displayName = nickname,
+                                    nickname = nickname
+                                )
+                            }
+                        }
+                        if (nicknamesResult is ApiResult.Failure && errorMessage == null) {
+                            errorMessage = nicknamesResult.message
+                        }
+                    }
+
+                    is ApiResult.Failure -> errorMessage = friendsResult.message
                 }
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
@@ -103,6 +129,105 @@ class FriendManagementViewModel(
                     friends = previousFriends
                     errorMessage = result.message
                 }
+            }
+        }
+    }
+
+    fun unfriend(friend: User) {
+        val previousFriends = friends
+        friends = friends.filterNot { it.id == friend.id }
+        successMessage = null
+        errorMessage = null
+
+        viewModelScope.launch {
+            try {
+                when (val result = friendRepository.unfriend(friend.id)) {
+                    is ApiResult.Success -> successMessage = "Unfriended ${friend.displayName}"
+                    is ApiResult.Failure -> {
+                        friends = previousFriends
+                        errorMessage = result.message
+                    }
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                friends = previousFriends
+                errorMessage = throwable.message ?: "Failed to unfriend ${friend.displayName}"
+            }
+        }
+    }
+
+    fun setNickname(friend: User, nickname: String) {
+        submitNicknameMutation(
+            friend = friend,
+            nickname = nickname,
+            emptyMessage = "Enter a nickname",
+            successMessage = "Nickname set"
+        ) { trimmedNickname ->
+            friendRepository.setNickname(friend.id, trimmedNickname)
+        }
+    }
+
+    fun updateNickname(friend: User, nickname: String) {
+        submitNicknameMutation(
+            friend = friend,
+            nickname = nickname,
+            emptyMessage = "Enter a nickname",
+            successMessage = "Nickname updated"
+        ) { trimmedNickname ->
+            friendRepository.updateNickname(friend.id, trimmedNickname)
+        }
+    }
+
+    fun removeNickname(friend: User) {
+        successMessage = null
+        errorMessage = null
+
+        viewModelScope.launch {
+            try {
+                when (val result = friendRepository.removeNickname(friend.id)) {
+                    is ApiResult.Success -> {
+                        successMessage = "Nickname removed"
+                        loadFriends(currentSort)
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to remove nickname"
+            }
+        }
+    }
+
+    private fun submitNicknameMutation(
+        friend: User,
+        nickname: String,
+        emptyMessage: String,
+        successMessage: String,
+        request: suspend (String) -> ApiResult<Unit>
+    ) {
+        val trimmedNickname = nickname.trim()
+        if (trimmedNickname.isBlank()) {
+            errorMessage = emptyMessage
+            return
+        }
+
+        this.successMessage = null
+        errorMessage = null
+
+        viewModelScope.launch {
+            try {
+                when (val result = request(trimmedNickname)) {
+                    is ApiResult.Success -> {
+                        this@FriendManagementViewModel.successMessage = successMessage
+                        loadFriends(currentSort)
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to update nickname"
             }
         }
     }

@@ -13,13 +13,45 @@ data class GetMeResponseDto(
 )
 
 @Serializable
+data class GetPublicProfileResponseDto(
+    val profile: ApiUserDto
+)
+
+@Serializable
 data class UpdateUserProfileResponseDto(
     val message: String,
     val user: ApiUserDto
 )
 
 @Serializable
+data class UserStreakResponseDto(
+    val currentStreak: Int,
+    val longestStreak: Int? = null,
+    val lastPostDate: String? = null,
+    val isAlive: Boolean = false,
+    val postedToday: Boolean = false
+)
+
+@Serializable
 data class DeleteAccountResponseDto(
+    val message: String
+)
+
+@Serializable
+data class DeleteAccountRequestDto(
+    val password: String
+)
+
+@Serializable
+data class UpdatePasswordRequestDto(
+    @SerialName("old_password")
+    val oldPassword: String,
+    @SerialName("new_password")
+    val newPassword: String
+)
+
+@Serializable
+data class UpdatePasswordResponseDto(
     val message: String
 )
 
@@ -42,6 +74,7 @@ data class BlockedUserDto(
     val avatarUrl: String? = null,
     @SerialName("avatarUrl")
     val legacyAvatarUrl: String? = null,
+    val nickname: String? = null,
     @SerialName("blocked_at")
     val blockedAt: String
 ) {

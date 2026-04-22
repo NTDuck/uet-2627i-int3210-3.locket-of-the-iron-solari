@@ -43,7 +43,8 @@ class SolariViewModelFactory(
             modelClass.isAssignableFrom(FeedBrowseViewModel::class.java) -> {
                 FeedBrowseViewModel(
                     feedRepository = feedRepository,
-                    friendRepository = friendRepository
+                    friendRepository = friendRepository,
+                    userRepository = userRepository
                 )
             }
 
@@ -90,8 +91,23 @@ class SolariViewModelFactory(
                 )
             }
 
+            modelClass.isAssignableFrom(FriendInvitePreviewViewModel::class.java) -> {
+                FriendInvitePreviewViewModel(
+                    friendRepository = friendRepository,
+                    userRepository = userRepository
+                )
+            }
+
+            modelClass.isAssignableFrom(HomepageBeforeCapturingViewModel::class.java) -> {
+                HomepageBeforeCapturingViewModel(userRepository)
+            }
+
             modelClass.isAssignableFrom(HomepageAfterCapturingViewModel::class.java) -> {
                 HomepageAfterCapturingViewModel(friendRepository)
+            }
+
+            modelClass.isAssignableFrom(PasswordResetViewModel::class.java) -> {
+                PasswordResetViewModel(userRepository)
             }
 
             else -> throw IllegalArgumentException(

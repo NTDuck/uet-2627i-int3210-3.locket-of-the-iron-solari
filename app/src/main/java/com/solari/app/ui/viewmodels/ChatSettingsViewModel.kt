@@ -23,6 +23,8 @@ class ChatSettingsViewModel(
 
     var isMuted by mutableStateOf<Boolean?>(null)
         private set
+    var isReadOnly by mutableStateOf(false)
+        private set
 
     var isLoading by mutableStateOf(false)
         private set
@@ -56,6 +58,7 @@ class ChatSettingsViewModel(
                     partner = conversation.otherUser
                     username = conversation.otherUser.username
                     isMuted = conversation.isMuted
+                    isReadOnly = conversation.isReadOnly
                 }
 
                 is ApiResult.Failure -> {

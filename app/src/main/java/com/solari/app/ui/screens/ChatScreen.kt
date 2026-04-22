@@ -74,9 +74,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
@@ -164,7 +166,22 @@ fun ChatScreen(
     onNavigateToProfile: () -> Unit
 ) {
     val currentUser = viewModel.currentUser
+    val isReadOnly = viewModel.conversation?.isReadOnly == true
     val partner = viewModel.conversation?.otherUser ?: initialPartner
+    val displayPartnerName = if (isReadOnly) "Someone" else partner?.displayName.orEmpty()
+    val displayPartnerUsername = if (isReadOnly) "someone" else partner?.username.orEmpty()
+    val displayPartnerAvatarUrl = if (isReadOnly) null else partner?.profileImageUrl
+    val visiblePartner = if (isReadOnly) {
+        User(
+            id = "read-only-partner",
+            displayName = "Someone",
+            username = "someone",
+            email = "",
+            profileImageUrl = null
+        )
+    } else {
+        partner
+    }
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     val keyboardBottomPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
@@ -208,7 +225,7 @@ fun ChatScreen(
 
     LaunchedEffect(highlightedMessageId) {
         if (highlightedMessageId == null) return@LaunchedEffect
-        delay(2_000)
+        delay(1_250)
         highlightedMessageId = null
     }
 
@@ -341,7 +358,10 @@ fun ChatScreen(
         ) {
             ChatHeaderBar(
                 chatId = chatId,
-                partner = partner,
+                partnerName = displayPartnerName,
+                partnerUsername = displayPartnerUsername,
+                partnerAvatarUrl = displayPartnerAvatarUrl,
+                partner = if (isReadOnly) null else partner,
                 onNavigateBack = onNavigateBack,
                 onNavigateToSettings = onNavigateToSettings
             )
@@ -386,12 +406,13 @@ fun ChatScreen(
 
                                 ChatMessageBlockRow(
                                     block = block,
-                                    partner = partner,
+                                    partner = visiblePartner,
                                     isFromMe = isFromMe,
                                     isLastBlock = lastMessage?.id == lastBlockMessage.id,
                                     currentUserId = currentUser?.id,
                                     highlightedMessageId = highlightedMessageId,
                                     recentEmojis = recentEmojis,
+                                    areMessageActionsEnabled = !isReadOnly,
                                     onRecordRecentEmoji = viewModel::recordRecentEmoji,
                                     onUnsendMessage = { message ->
                                         viewModel.unsendMessage(chatId, message.id)
@@ -417,28 +438,30 @@ fun ChatScreen(
                 }
             }
 
-            ChatInputBar(
-                value = viewModel.messageText,
-                onValueChange = { viewModel.messageText = it },
-                replyingToMessage = replyingToMessage,
-                isKeyboardAboveBottomBar = isKeyboardAboveBottomBar,
-                replyLabel = replyingToMessage?.let { message ->
-                    if (message.senderId == currentUser?.id) {
-                        "Replying to yourself"
-                    } else {
-                        "Replying to ${partner?.displayName.orEmpty()}"
+            if (!isReadOnly) {
+                ChatInputBar(
+                    value = viewModel.messageText,
+                    onValueChange = { viewModel.messageText = it },
+                    replyingToMessage = replyingToMessage,
+                    isKeyboardAboveBottomBar = isKeyboardAboveBottomBar,
+                    replyLabel = replyingToMessage?.let { message ->
+                        if (message.senderId == currentUser?.id) {
+                            "Replying to yourself"
+                        } else {
+                            "Replying to ${displayPartnerName}"
+                        }
+                    },
+                    onCancelReply = { replyingToMessage = null },
+                    onSend = {
+                        val trimmedMessage = viewModel.messageText.trim()
+                        if (trimmedMessage.isNotEmpty()) {
+                            keyboardRestoreAnchor = null
+                            viewModel.sendMessage(chatId, repliedMessage = replyingToMessage)
+                            replyingToMessage = null
+                        }
                     }
-                },
-                onCancelReply = { replyingToMessage = null },
-                onSend = {
-                    val trimmedMessage = viewModel.messageText.trim()
-                    if (trimmedMessage.isNotEmpty()) {
-                        keyboardRestoreAnchor = null
-                        viewModel.sendMessage(chatId, repliedMessage = replyingToMessage)
-                        replyingToMessage = null
-                    }
-                }
-            )
+                )
+            }
         }
     }
 }
@@ -446,6 +469,9 @@ fun ChatScreen(
 @Composable
 private fun ChatHeaderBar(
     chatId: String,
+    partnerName: String,
+    partnerUsername: String,
+    partnerAvatarUrl: String?,
     partner: User?,
     onNavigateBack: () -> Unit,
     onNavigateToSettings: (chatId: String, partner: User?) -> Unit
@@ -480,9 +506,9 @@ private fun ChatHeaderBar(
             Spacer(modifier = Modifier.width(14.dp))
 
             SolariAvatar(
-                imageUrl = partner?.profileImageUrl,
-                username = partner?.username.orEmpty(),
-                contentDescription = partner?.let { "${it.displayName} avatar" },
+                imageUrl = partnerAvatarUrl,
+                username = partnerUsername,
+                contentDescription = "$partnerName avatar",
                 modifier = Modifier
                     .size(40.dp).clip(CircleShape),
                 fontSize = 18.sp
@@ -491,7 +517,7 @@ private fun ChatHeaderBar(
             Spacer(modifier = Modifier.width(12.dp))
 
             Text(
-                text = partner?.displayName.orEmpty(),
+                text = partnerName,
                 color = ChatText,
                 fontSize = 17.sp,
                 fontFamily = PlusJakartaSans,
@@ -552,6 +578,7 @@ private fun ChatMessageBlockRow(
     currentUserId: String?,
     highlightedMessageId: String?,
     recentEmojis: List<String>,
+    areMessageActionsEnabled: Boolean,
     onRecordRecentEmoji: (String) -> Unit,
     onUnsendMessage: (Message) -> Unit,
     onReactToMessage: (Message, String) -> Unit,
@@ -577,6 +604,7 @@ private fun ChatMessageBlockRow(
                         partnerName = partner?.displayName.orEmpty(),
                         currentUserId = currentUserId,
                         recentEmojis = recentEmojis,
+                        areActionsEnabled = areMessageActionsEnabled,
                         onRecordRecentEmoji = onRecordRecentEmoji,
                         onUnsendMessage = onUnsendMessage,
                         onReactToMessage = onReactToMessage,
@@ -624,6 +652,7 @@ private fun ChatMessageBlockRow(
                             partnerName = partner?.displayName.orEmpty(),
                             currentUserId = currentUserId,
                             recentEmojis = recentEmojis,
+                            areActionsEnabled = areMessageActionsEnabled,
                             onRecordRecentEmoji = onRecordRecentEmoji,
                             onUnsendMessage = onUnsendMessage,
                             onReactToMessage = onReactToMessage,
@@ -646,6 +675,7 @@ private fun ChatBubble(
     partnerName: String,
     currentUserId: String?,
     recentEmojis: List<String>,
+    areActionsEnabled: Boolean,
     onRecordRecentEmoji: (String) -> Unit,
     onUnsendMessage: (Message) -> Unit,
     onReactToMessage: (Message, String) -> Unit,
@@ -656,12 +686,11 @@ private fun ChatBubble(
     var isEmojiPickerExpanded by remember { mutableStateOf(false) }
     var isConfirmingUnsend by remember { mutableStateOf(false) }
     var dragOffsetPx by remember(message.id) { mutableStateOf(0f) }
+    var isReplySwipeArmed by remember(message.id) { mutableStateOf(false) }
+    var hasReplySwipeHapticFired by remember(message.id) { mutableStateOf(false) }
+    val hapticFeedback = LocalHapticFeedback.current
+    val replySwipeThresholdPx = with(LocalDensity.current) { 180.dp.toPx() }
     val bubbleShape = RoundedCornerShape(12.dp)
-    val animatedDragOffsetPx by animateFloatAsState(
-        targetValue = dragOffsetPx,
-        animationSpec = tween(durationMillis = 120),
-        label = "messageReplyDragOffset"
-    )
     val highlightAlpha by animateFloatAsState(
         targetValue = if (isHighlighted) 0.12f else 0f,
         animationSpec = tween(durationMillis = 220),
@@ -679,38 +708,45 @@ private fun ChatBubble(
 
     Box(
         modifier = Modifier
-            .offset { IntOffset(animatedDragOffsetPx.roundToInt(), 0) }
+            .offset { IntOffset(dragOffsetPx.roundToInt(), 0) }
             .widthIn(max = if (isFromMe) 292.dp else 248.dp)
             .padding(bottom = if (hasReactions) 8.dp else 0.dp)
             .then(
-                if (message.isDeleted) {
+                if (message.isDeleted || !areActionsEnabled) {
                     Modifier
                 } else {
                     Modifier.pointerInput(message.id, isFromMe) {
                         detectHorizontalDragGestures(
                             onDragStart = {
                                 dragOffsetPx = 0f
+                                isReplySwipeArmed = false
+                                hasReplySwipeHapticFired = false
                             },
                             onHorizontalDrag = { _, dragAmount ->
-                                dragOffsetPx = if (isFromMe) {
-                                    (dragOffsetPx + dragAmount).coerceIn(-144f, 0f)
+                                dragOffsetPx += dragAmount
+                                val isPastReplyThreshold = if (isFromMe) {
+                                    dragOffsetPx <= -replySwipeThresholdPx
                                 } else {
-                                    (dragOffsetPx + dragAmount).coerceIn(0f, 144f)
+                                    dragOffsetPx >= replySwipeThresholdPx
+                                }
+                                isReplySwipeArmed = isPastReplyThreshold
+                                if (isPastReplyThreshold && !hasReplySwipeHapticFired) {
+                                    hasReplySwipeHapticFired = true
+                                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
                                 }
                             },
                             onDragEnd = {
-                                val shouldReply = if (isFromMe) {
-                                    dragOffsetPx < -130f
-                                } else {
-                                    dragOffsetPx > 130f
-                                }
-                                if (shouldReply) {
+                                if (isReplySwipeArmed) {
                                     onReplyToMessage(message)
                                 }
                                 dragOffsetPx = 0f
+                                isReplySwipeArmed = false
+                                hasReplySwipeHapticFired = false
                             },
                             onDragCancel = {
                                 dragOffsetPx = 0f
+                                isReplySwipeArmed = false
+                                hasReplySwipeHapticFired = false
                             }
                         )
                     }
@@ -740,7 +776,7 @@ private fun ChatBubble(
                         }
                     )
                     .then(
-                        if (message.isDeleted) {
+                        if (message.isDeleted || !areActionsEnabled) {
                             Modifier
                         } else {
                             Modifier.combinedClickable(
@@ -760,6 +796,7 @@ private fun ChatBubble(
                             message = message,
                             isFromMe = isFromMe,
                             partnerName = partnerName,
+                            isClickEnabled = areActionsEnabled,
                             onReplyPreviewClick = onJumpToMessage
                         )
                     }
@@ -789,7 +826,7 @@ private fun ChatBubble(
             }
         }
 
-        if (isActionMenuExpanded && !message.isDeleted) {
+        if (isActionMenuExpanded && !message.isDeleted && areActionsEnabled) {
             MessageActionPopup(
                 isFromMe = isFromMe,
                 onDismiss = { isActionMenuExpanded = false },
@@ -809,7 +846,7 @@ private fun ChatBubble(
             )
         }
 
-        if (isEmojiPickerExpanded && !message.isDeleted) {
+        if (isEmojiPickerExpanded && !message.isDeleted && areActionsEnabled) {
             EmojiPickerPopup(
                 onClosed = { isEmojiPickerExpanded = false },
                 selectedEmoji = currentUserReactionEmoji,
@@ -840,6 +877,7 @@ private fun MessageContextPreview(
     message: Message,
     isFromMe: Boolean,
     partnerName: String,
+    isClickEnabled: Boolean,
     onReplyPreviewClick: (String) -> Unit
 ) {
     val hasReferencedPost = message.referencedPostId != null
@@ -909,9 +947,15 @@ private fun MessageContextPreview(
             Column(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable {
-                        message.repliedMessageId?.let(onReplyPreviewClick)
-                    }
+                    .then(
+                        if (isClickEnabled) {
+                            Modifier.clickable {
+                                message.repliedMessageId?.let(onReplyPreviewClick)
+                            }
+                        } else {
+                            Modifier
+                        }
+                    )
                     .border(
                         width = 1.dp,
                         color = ChatMuted.copy(alpha = 0.28f),
@@ -1502,7 +1546,7 @@ private fun ChatInputBar(
     onCancelReply: () -> Unit,
     onSend: () -> Unit
 ) {
-    val bottomPadding = if (isKeyboardAboveBottomBar) 4.dp else 16.dp
+    val bottomPadding = if (isKeyboardAboveBottomBar) 16.dp else 16.dp
 
     Column(
         modifier = Modifier

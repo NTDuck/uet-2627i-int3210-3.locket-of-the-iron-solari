@@ -40,6 +40,9 @@ fun ChatSettingsScreen(
             viewModel.username == null &&
             viewModel.isMuted == null
     val partner = viewModel.partner ?: initialPartner
+    val displayName = if (viewModel.isReadOnly) "Someone" else partner?.displayName.orEmpty()
+    val displayUsername = if (viewModel.isReadOnly) "someone" else viewModel.username ?: partner?.username.orEmpty()
+    val displayAvatarUrl = if (viewModel.isReadOnly) null else partner?.profileImageUrl
     var showClearHistoryConfirm by remember { mutableStateOf(false) }
     var showBlockConfirm by remember { mutableStateOf(false) }
 
@@ -103,8 +106,8 @@ fun ChatSettingsScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 SolariAvatar(
-                    imageUrl = partner?.profileImageUrl,
-                    username = partner?.username.orEmpty(),
+                    imageUrl = displayAvatarUrl,
+                    username = displayUsername,
                     contentDescription = "Friend Avatar",
                     modifier = Modifier
                         .size(100.dp),
@@ -113,13 +116,13 @@ fun ChatSettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = partner?.displayName.orEmpty(),
+                    text = displayName,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color.White
                 )
                 Text(
-                    text = "@${viewModel.username ?: partner?.username.orEmpty()}",
+                    text = "@$displayUsername",
                     fontSize = 14.sp,
                     color = Color.Gray
                 )
@@ -127,31 +130,33 @@ fun ChatSettingsScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            Text(
-                text = "PREFERENCES",
-                fontSize = 12.sp * 1.4f,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+            if (!viewModel.isReadOnly) {
+                Text(
+                    text = "PREFERENCES",
+                    fontSize = 12.sp * 1.4f,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
 
-            SettingsRow(
-                icon = Icons.Default.Notifications,
-                title = "Mute Notifications",
-                trailing = {
-                    Switch(
-                        checked = viewModel.isMuted ?: false,
-                        onCheckedChange = { viewModel.toggleMute(chatId) },
-                        enabled = !viewModel.isLoading && viewModel.isMuted != null,
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = MaterialTheme.colorScheme.primary
+                SettingsRow(
+                    icon = Icons.Default.Notifications,
+                    title = "Mute Notifications",
+                    trailing = {
+                        Switch(
+                            checked = viewModel.isMuted ?: false,
+                            onCheckedChange = { viewModel.toggleMute(chatId) },
+                            enabled = !viewModel.isLoading && viewModel.isMuted != null,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = MaterialTheme.colorScheme.primary
+                            )
                         )
-                    )
-                }
-            )
+                    }
+                )
 
-            Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(32.dp))
+            }
 
             Text(
                 text = "ACTIONS",
@@ -170,17 +175,19 @@ fun ChatSettingsScreen(
                 }
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            if (!viewModel.isReadOnly) {
+                Spacer(modifier = Modifier.height(8.dp))
 
-            SettingsRow(
-                icon = Icons.Default.Block,
-                title = "Block User",
-                titleColor = Color(0xFFE57373),
-                onClick = { showBlockConfirm = true },
-                trailing = {
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
-                }
-            )
+                SettingsRow(
+                    icon = Icons.Default.Block,
+                    title = "Block User",
+                    titleColor = Color(0xFFE57373),
+                    onClick = { showBlockConfirm = true },
+                    trailing = {
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
+                    }
+                )
+            }
 
             Spacer(modifier = Modifier.height(32.dp))
         }

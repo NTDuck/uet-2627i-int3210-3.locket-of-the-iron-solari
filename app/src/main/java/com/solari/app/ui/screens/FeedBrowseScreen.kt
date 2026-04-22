@@ -35,6 +35,7 @@ import com.solari.app.ui.viewmodels.FeedBrowseViewModel
 @Composable
 fun FeedBrowseScreen(
     viewModel: FeedBrowseViewModel,
+    initialAuthorId: String? = null,
     onNavigateBack: () -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToChat: () -> Unit,
@@ -43,9 +44,15 @@ fun FeedBrowseScreen(
 ) {
     val posts = viewModel.posts
     val friends = viewModel.friends
+    val currentUser = viewModel.currentUser
     var selectedSort by remember { mutableStateOf("default") }
-    var selectedFriendIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedFriendIds by remember(initialAuthorId) {
+        mutableStateOf(initialAuthorId?.let { setOf(it) } ?: emptySet())
+    }
     var isUserRefreshing by remember { mutableStateOf(false) }
+    val visibleFriends = remember(friends, currentUser?.id) {
+        friends.filterNot { it.id == currentUser?.id }
+    }
     
     val filteredSortedPosts = remember(posts, selectedSort, selectedFriendIds) {
         val filteredPosts = if (selectedFriendIds.isEmpty()) {
@@ -151,7 +158,7 @@ fun FeedBrowseScreen(
                                 )
                             }
                             Text(
-                                text = "All (${friends.size})",
+                                text = "All (${visibleFriends.size + if (currentUser != null) 1 else 0})",
                                 color = if (isAllSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(top = 8.dp)
@@ -159,7 +166,44 @@ fun FeedBrowseScreen(
                         }
                     }
 
-                    items(friends) { friend ->
+                    currentUser?.let { user ->
+                        item {
+                            val isSelected = user.id in selectedFriendIds
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                SolariAvatar(
+                                    imageUrl = user.profileImageUrl,
+                                    username = user.username,
+                                    contentDescription = "You",
+                                    modifier = Modifier
+                                        .size(64.dp)
+                                        .border(
+                                            width = 2.dp,
+                                            color = if (isSelected) SolariTheme.colors.primary else Color.Transparent,
+                                            shape = CircleShape
+                                        )
+                                        .padding(4.dp)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            selectedFriendIds = if (isSelected) {
+                                                selectedFriendIds - user.id
+                                            } else {
+                                                selectedFriendIds + user.id
+                                            }
+                                        },
+                                    shape = CircleShape,
+                                    fontSize = 22.sp
+                                )
+                                Text(
+                                    "You",
+                                    color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
+                                    fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    items(visibleFriends) { friend ->
                         val isSelected = friend.id in selectedFriendIds
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             SolariAvatar(
@@ -189,6 +233,7 @@ fun FeedBrowseScreen(
                                 friend.displayName,
                                 color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
                                 fontSize = 12.sp,
+                                maxLines = 2,
                                 modifier = Modifier.padding(top = 8.dp)
                             )
                         }

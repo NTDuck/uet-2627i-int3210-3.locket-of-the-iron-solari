@@ -21,10 +21,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +58,7 @@ private val BlockedText = Color(0xFFE3E2E6)
 private val BlockedMuted = Color(0xFFD7C0B2)
 private val BlockedSubtle = Color(0xFF9699A1)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BlockedAccountsScreen(
     viewModel: BlockedAccountsViewModel,
@@ -65,7 +69,14 @@ fun BlockedAccountsScreen(
     onNavigateToProfile: () -> Unit
 ) {
     var pendingUnblock by remember { mutableStateOf<BlockedUser?>(null) }
+    var isUserRefreshing by remember { mutableStateOf(false) }
     val blockedAccounts = viewModel.blockedUsers
+
+    LaunchedEffect(viewModel.isLoading) {
+        if (!viewModel.isLoading) {
+            isUserRefreshing = false
+        }
+    }
 
     Scaffold(
         containerColor = BlockedBackground,
@@ -83,63 +94,70 @@ fun BlockedAccountsScreen(
             )
         }
     ) { innerPadding ->
-        Column(
+        PullToRefreshBox(
+            isRefreshing = isUserRefreshing,
+            onRefresh = {
+                isUserRefreshing = true
+                viewModel.refresh()
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .background(BlockedBackground)
                 .padding(innerPadding)
         ) {
-            BlockedAccountsHeader(onNavigateBack = onNavigateBack)
+            Column(modifier = Modifier.fillMaxSize()) {
+                BlockedAccountsHeader(onNavigateBack = onNavigateBack)
 
-            if (viewModel.isLoading && blockedAccounts.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(
-                        color = SolariTheme.colors.primary,
-                        trackColor = SolariTheme.colors.surface
-                    )
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 32.dp)
-                ) {
-                    item {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        ) {
-                            listOf("default", "newest", "oldest").forEach { sort ->
-                                BlockedSortChip(
-                                    text = sort,
-                                    selected = viewModel.sort == sort,
-                                    onClick = { viewModel.updateSort(sort) }
+                if (viewModel.isLoading && blockedAccounts.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            color = SolariTheme.colors.primary,
+                            trackColor = SolariTheme.colors.surface
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 32.dp)
+                    ) {
+                        item {
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            ) {
+                                listOf("default", "newest", "oldest").forEach { sort ->
+                                    BlockedSortChip(
+                                        text = sort,
+                                        selected = viewModel.sort == sort,
+                                        onClick = { viewModel.updateSort(sort) }
+                                    )
+                                }
+                            }
+                        }
+
+                        if (blockedAccounts.isEmpty()) {
+                            item {
+                                Text(
+                                    text = viewModel.errorMessage ?: "No blocked accounts",
+                                    color = BlockedSubtle,
+                                    fontSize = 14.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.padding(top = 24.dp)
                                 )
                             }
                         }
-                    }
 
-                    if (blockedAccounts.isEmpty()) {
-                        item {
-                            Text(
-                                text = viewModel.errorMessage ?: "No blocked accounts",
-                                color = BlockedSubtle,
-                                fontSize = 14.sp,
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Medium,
-                                modifier = Modifier.padding(top = 24.dp)
+                        items(blockedAccounts) { account ->
+                            BlockedAccountItem(
+                                account = account,
+                                onUnblock = { pendingUnblock = account }
                             )
                         }
-                    }
-
-                    items(blockedAccounts) { account ->
-                        BlockedAccountItem(
-                            account = account,
-                            onUnblock = { pendingUnblock = account }
-                        )
                     }
                 }
             }
