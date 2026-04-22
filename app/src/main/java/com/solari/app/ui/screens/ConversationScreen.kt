@@ -33,6 +33,7 @@ import com.solari.app.ui.components.SortDropdownButton
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.ConversationViewModel
 import kotlinx.coroutines.delay
 import java.util.concurrent.TimeUnit
@@ -277,10 +278,13 @@ private fun FriendRequestTogglePill(
     onClick: () -> Unit
 ) {
     Surface(
-        onClick = onClick,
-        enabled = enabled,
         color = Color(0xFF2C2D30),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.scaledClickable(
+            pressedScale = 1.1f,
+            enabled = enabled,
+            onClick = onClick
+        )
     ) {
         Text(
             text = text,
@@ -357,8 +361,9 @@ fun FriendRequestItem(
                 }
             } else {
                 Surface(
-                    onClick = onDecline,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier
+                        .size(32.dp)
+                        .scaledClickable(pressedScale = 1.1f, onClick = onDecline),
                     shape = RoundedCornerShape(10.dp),
                     color = Color(0xFF2C2D30)
                 ) {
@@ -375,8 +380,9 @@ fun FriendRequestItem(
                 Spacer(modifier = Modifier.width(10.dp))
 
                 Surface(
-                    onClick = onAccept,
-                    modifier = Modifier.size(32.dp),
+                    modifier = Modifier
+                        .size(32.dp)
+                        .scaledClickable(pressedScale = 1.1f, onClick = onAccept),
                     shape = RoundedCornerShape(10.dp),
                     color = SolariTheme.colors.primary
                 ) {
@@ -456,8 +462,8 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
         shape = itemShape,
         modifier = Modifier
             .fillMaxWidth()
-            .clip(itemShape),
-        onClick = onClick
+            .scaledClickable(pressedScale = 0.9f, onClick = onClick)
+            .clip(itemShape)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),

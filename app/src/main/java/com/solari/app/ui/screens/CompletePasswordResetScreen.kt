@@ -1,29 +1,26 @@
 package com.solari.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -34,15 +31,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,29 +41,31 @@ import com.solari.app.ui.components.SolariBackButton
 import com.solari.app.ui.components.SolariButton
 import com.solari.app.ui.components.SolariFeedbackPill
 import com.solari.app.ui.components.SolariTextField
-import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
-import com.solari.app.ui.viewmodels.PasswordRecoveryViewModel
+import com.solari.app.ui.viewmodels.CompletePasswordResetViewModel
 import kotlinx.coroutines.delay
 
 @Composable
-fun PasswordRecoveryScreen(
-    viewModel: PasswordRecoveryViewModel,
+fun CompletePasswordResetScreen(
+    viewModel: CompletePasswordResetViewModel,
+    email: String,
     onNavigateBack: () -> Unit,
-    onGetRecoveryCode: (String) -> Unit
+    onResetComplete: () -> Unit
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
-    val emailFocusRequester = remember { FocusRequester() }
     val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
-    var emailBounds by remember { mutableStateOf<Rect?>(null) }
+    val newPasswordFocusRequester = remember { FocusRequester() }
+    val confirmPasswordFocusRequester = remember { FocusRequester() }
     var feedbackPillVisible by remember { mutableStateOf(false) }
+    var feedbackPillMessage by remember { mutableStateOf("") }
+    var feedbackPillIsSuccess by remember { mutableStateOf(false) }
     var feedbackEventId by remember { mutableStateOf(0) }
     val contentOffset by animateDpAsState(
         targetValue = if (isKeyboardVisible) (-96).dp else 0.dp,
         animationSpec = tween(durationMillis = 180),
-        label = "PasswordRecoveryContentOffset"
+        label = "CompletePasswordResetContentOffset"
     )
 
     fun closeKeyboardAndFocus() {
@@ -80,15 +73,30 @@ fun PasswordRecoveryScreen(
         keyboardController?.hide()
     }
 
-    LaunchedEffect(viewModel.errorMessage) {
-        if (viewModel.errorMessage != null) {
-            feedbackPillVisible = true
-            feedbackEventId += 1
+    fun handleBack() {
+        if (isKeyboardVisible) {
+            closeKeyboardAndFocus()
+        } else {
+            onNavigateBack()
         }
     }
 
+    BackHandler(onBack = ::handleBack)
+
+    LaunchedEffect(email) {
+        viewModel.applyEmail(email)
+    }
+
+    LaunchedEffect(viewModel.errorMessage) {
+        val message = viewModel.errorMessage ?: return@LaunchedEffect
+        feedbackPillMessage = message
+        feedbackPillIsSuccess = false
+        feedbackPillVisible = true
+        feedbackEventId += 1
+    }
+
     LaunchedEffect(feedbackEventId) {
-        if (feedbackEventId > 0) {
+        if (feedbackEventId > 0 && !feedbackPillIsSuccess) {
             delay(1_300)
             feedbackPillVisible = false
             delay(260)
@@ -96,36 +104,24 @@ fun PasswordRecoveryScreen(
         }
     }
 
-    LaunchedEffect(viewModel.isCodeRequested) {
-        if (viewModel.isCodeRequested) {
-            val email = viewModel.email.trim()
-            viewModel.consumeCodeRequested()
-            onGetRecoveryCode(email)
-        }
+    LaunchedEffect(viewModel.successMessage) {
+        val message = viewModel.successMessage ?: return@LaunchedEffect
+        feedbackPillMessage = message
+        feedbackPillIsSuccess = true
+        feedbackPillVisible = true
+        delay(600)
+        viewModel.clearSuccess()
+        onResetComplete()
     }
 
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = SolariTheme.colors.background
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(SolariTheme.colors.background)
-                .pointerInput(Unit) {
-                    awaitEachGesture {
-                        awaitFirstDown(requireUnconsumed = false)
-                        val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
-                        val bounds = emailBounds
-                        if (up != null && bounds?.contains(up.position) != true) {
-                            closeKeyboardAndFocus()
-                        }
-                    }
-                }
-        ) {
-            SolariBackButton(onClick = onNavigateBack)
+        Box(modifier = Modifier.fillMaxSize()) {
+            SolariBackButton(onClick = ::handleBack)
 
-            androidx.compose.foundation.layout.Column(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .offset(y = contentOffset)
@@ -133,51 +129,53 @@ fun PasswordRecoveryScreen(
                 verticalArrangement = Arrangement.Center,
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text(
-                    text = "Recover your password",
-                    fontSize = 28.sp,
-                    lineHeight = 32.sp,
-                    maxLines = 1,
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Bold,
-                    color = SolariTheme.colors.primary,
-                    modifier = Modifier.padding(bottom = 48.dp)
+                SolariTextField(
+                    value = viewModel.newPassword,
+                    onValueChange = { viewModel.newPassword = it },
+                    label = "New Password",
+                    placeholder = "••••••••",
+                    isPassword = true,
+                    labelFontSize = 17.sp,
+                    modifier = Modifier.padding(bottom = 24.dp),
+                    textFieldModifier = Modifier.focusRequester(newPasswordFocusRequester),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(
+                        onNext = { confirmPasswordFocusRequester.requestFocus() }
+                    )
                 )
 
                 SolariTextField(
-                    value = viewModel.email,
-                    onValueChange = { viewModel.email = it },
-                    label = "",
+                    value = viewModel.confirmPassword,
+                    onValueChange = { viewModel.confirmPassword = it },
+                    label = "Confirm New Password",
+                    placeholder = "••••••••",
+                    isPassword = true,
                     labelFontSize = 17.sp,
-                    textFontSize = 16.sp,
-                    placeholder = "Enter your mail address",
-                    modifier = Modifier.padding(bottom = 24.dp),
-                    textFieldModifier = Modifier
-                        .focusRequester(emailFocusRequester)
-                        .onGloballyPositioned { emailBounds = it.boundsInRoot() },
+                    modifier = Modifier.padding(bottom = 40.dp),
+                    textFieldModifier = Modifier.focusRequester(confirmPasswordFocusRequester),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(
                         onDone = {
                             closeKeyboardAndFocus()
-                            viewModel.requestCode()
+                            viewModel.submit()
                         }
                     )
                 )
 
                 SolariButton(
-                    text = "Get Recovery Code",
+                    text = "Submit",
                     enabled = !viewModel.isSubmitting,
                     onClick = {
-                        keyboardController?.hide()
-                        focusManager.clearFocus(force = true)
-                        viewModel.requestCode()
+                        closeKeyboardAndFocus()
+                        viewModel.submit()
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    fontSize = 16.sp,
+                    modifier = Modifier.fillMaxWidth(0.7f)
                 )
             }
 
             AnimatedVisibility(
-                visible = feedbackPillVisible && viewModel.errorMessage != null,
+                visible = feedbackPillVisible,
                 enter = slideInVertically(
                     initialOffsetY = { -it * 2 },
                     animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
@@ -192,8 +190,8 @@ fun PasswordRecoveryScreen(
                     .padding(horizontal = 24.dp, vertical = 12.dp)
             ) {
                 SolariFeedbackPill(
-                    message = viewModel.errorMessage.orEmpty(),
-                    isSuccess = false
+                    message = feedbackPillMessage,
+                    isSuccess = feedbackPillIsSuccess
                 )
             }
 

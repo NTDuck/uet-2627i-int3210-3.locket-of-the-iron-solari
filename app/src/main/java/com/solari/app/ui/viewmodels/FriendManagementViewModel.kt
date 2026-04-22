@@ -16,6 +16,9 @@ class FriendManagementViewModel(
     private val friendRepository: FriendRepository,
     private val userRepository: UserRepository
 ) : ViewModel() {
+    var currentUser by mutableStateOf<User?>(null)
+        private set
+
     var friends by mutableStateOf<List<User>>(emptyList())
         private set
 
@@ -34,7 +37,22 @@ class FriendManagementViewModel(
     private var currentSort: String? = null
 
     init {
+        loadCurrentUser()
         loadFriends()
+    }
+
+    private fun loadCurrentUser() {
+        viewModelScope.launch {
+            try {
+                when (val result = userRepository.getMe()) {
+                    is ApiResult.Success -> currentUser = result.data
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to load profile"
+            }
+        }
     }
 
     fun loadFriends(sort: String? = null) {

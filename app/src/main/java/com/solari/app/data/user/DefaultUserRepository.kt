@@ -60,10 +60,20 @@ class DefaultUserRepository(
         }
     }
 
-    override suspend fun deleteAccount(password: String): ApiResult<Unit> {
+    override suspend fun deleteAccount(verification: DeleteAccountVerification): ApiResult<Unit> {
+        val request = when (verification) {
+            is DeleteAccountVerification.Password -> {
+                DeleteAccountRequestDto(password = verification.password)
+            }
+
+            is DeleteAccountVerification.GoogleIdToken -> {
+                DeleteAccountRequestDto(googleIdToken = verification.idToken)
+            }
+        }
+
         return when (
             val result = apiExecutor.execute {
-                userApi.deleteAccount(DeleteAccountRequestDto(password = password))
+                userApi.deleteAccount(request)
             }
         ) {
             is ApiResult.Failure -> result

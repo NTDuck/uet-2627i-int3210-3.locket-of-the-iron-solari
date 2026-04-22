@@ -65,6 +65,7 @@ import com.solari.app.ui.models.PostActivityEntry
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.FeedViewModel
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -663,9 +664,9 @@ private fun FeedActivityPill(
     Row(
         modifier = Modifier
             .height(64.dp)
+            .scaledClickable(pressedScale = 1.05f, onClick = onClick)
             .clip(RoundedCornerShape(36.dp))
             .background(Color(0xFF34363B))
-            .clickable(onClick = onClick)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
@@ -1285,15 +1286,15 @@ private fun FeedReactionField(
         modifier = modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clip(RoundedCornerShape(9.dp))
-            .background(Color(0xFF1B1C21))
             .then(
                 if (isEditable) {
                     Modifier
                 } else {
-                    Modifier.clickable(onClick = onActivate)
+                    Modifier.scaledClickable(pressedScale = 1.05f, onClick = onActivate)
                 }
             )
+            .clip(RoundedCornerShape(9.dp))
+            .background(Color(0xFF1B1C21))
             .padding(start = 26.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1333,8 +1334,8 @@ private fun FeedReactionField(
             Box(
                 modifier = Modifier
                     .size(36.dp)
-                    .clip(CircleShape)
-                    .clickable { onReact(emoji) },
+                    .scaledClickable(pressedScale = 1.2f) { onReact(emoji) }
+                    .clip(CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -1348,8 +1349,8 @@ private fun FeedReactionField(
         Box(
             modifier = Modifier
                 .size(36.dp)
-                .clip(CircleShape)
-                .clickable(onClick = onOpenEmojiPicker),
+                .scaledClickable(pressedScale = 1.2f, onClick = onOpenEmojiPicker)
+                .clip(CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
@@ -1378,15 +1379,15 @@ private fun FeedMessageField(
         modifier = modifier
             .fillMaxWidth()
             .height(48.dp)
-            .clip(barShape)
-            .background(Color(0xFF1B1C21))
             .then(
                 if (isEditable) {
                     Modifier
                 } else {
-                    Modifier.clickable(onClick = onActivate)
+                    Modifier.scaledClickable(pressedScale = 1.05f, onClick = onActivate)
                 }
             )
+            .clip(barShape)
+            .background(Color(0xFF1B1C21))
             .padding(start = 26.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1450,9 +1451,9 @@ private fun FeedBrowseButton(onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth(0.6f)
             .height(48.dp)
+            .scaledClickable(pressedScale = 1.05f, onClick = onClick)
             .clip(RoundedCornerShape(16.dp))
             .background(Color(0xFF080B0E))
-            .clickable(onClick = onClick)
             .padding(horizontal = 26.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center

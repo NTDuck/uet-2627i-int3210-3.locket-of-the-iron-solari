@@ -15,8 +15,28 @@ interface AuthApi {
         @Body request: SignInRequestDto
     ): Response<SignInResponseDto>
 
+    @POST("signin/google")
+    suspend fun signInWithGoogle(
+        @Body request: GoogleSignInRequestDto
+    ): Response<SignInResponseDto>
+
     @POST("sessions/refresh")
     suspend fun refreshSession(
         @Body request: RefreshSessionRequestDto
     ): Response<SignInResponseDto>
+
+    @POST("password-resets")
+    suspend fun requestPasswordReset(
+        @Body request: PasswordResetRequestDto
+    ): Response<com.solari.app.data.remote.common.MessageResponseDto>
+
+    @POST("password-resets/verify")
+    suspend fun verifyPasswordReset(
+        @Body request: PasswordResetVerifyRequestDto
+    ): Response<PasswordResetVerifyResponseDto>
+
+    @POST("password-resets/complete")
+    suspend fun completePasswordReset(
+        @Body request: PasswordResetCompleteRequestDto
+    ): Response<com.solari.app.data.remote.common.MessageResponseDto>
 }

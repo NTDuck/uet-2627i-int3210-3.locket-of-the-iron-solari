@@ -29,6 +29,7 @@ import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.FeedBrowseViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -140,8 +141,8 @@ fun FeedBrowseScreen(
                             Box(
                                 modifier = Modifier
                                     .size(64.dp)
+                                    .scaledClickable(pressedScale = 1.1f) { selectedFriendIds = emptySet() }
                                     .clip(CircleShape)
-                                    .clickable { selectedFriendIds = emptySet() }
                                     .border(
                                         width = 2.dp,
                                         color = if (isAllSelected) SolariTheme.colors.primary else Color.Transparent,
@@ -176,20 +177,20 @@ fun FeedBrowseScreen(
                                     contentDescription = "You",
                                     modifier = Modifier
                                         .size(64.dp)
+                                        .scaledClickable(pressedScale = 1.1f) {
+                                            selectedFriendIds = if (isSelected) {
+                                                selectedFriendIds - user.id
+                                            } else {
+                                                selectedFriendIds + user.id
+                                            }
+                                        }
                                         .border(
                                             width = 2.dp,
                                             color = if (isSelected) SolariTheme.colors.primary else Color.Transparent,
                                             shape = CircleShape
                                         )
                                         .padding(4.dp)
-                                        .clip(CircleShape)
-                                        .clickable {
-                                            selectedFriendIds = if (isSelected) {
-                                                selectedFriendIds - user.id
-                                            } else {
-                                                selectedFriendIds + user.id
-                                            }
-                                        },
+                                        .clip(CircleShape),
                                     shape = CircleShape,
                                     fontSize = 22.sp
                                 )
@@ -212,20 +213,20 @@ fun FeedBrowseScreen(
                                 contentDescription = friend.displayName,
                                 modifier = Modifier
                                     .size(64.dp)
+                                    .scaledClickable(pressedScale = 1.1f) {
+                                        selectedFriendIds = if (isSelected) {
+                                            selectedFriendIds - friend.id
+                                        } else {
+                                            selectedFriendIds + friend.id
+                                        }
+                                    }
                                     .border(
                                         width = 2.dp,
                                         color = if (isSelected) SolariTheme.colors.primary else Color.Transparent,
                                         shape = CircleShape
                                     )
                                     .padding(4.dp)
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        selectedFriendIds = if (isSelected) {
-                                            selectedFriendIds - friend.id
-                                        } else {
-                                            selectedFriendIds + friend.id
-                                        }
-                                    },
+                                    .clip(CircleShape),
                                 shape = CircleShape,
                                 fontSize = 22.sp
                             )
@@ -253,12 +254,12 @@ fun FeedBrowseScreen(
                         Box(
                             modifier = Modifier
                                 .aspectRatio(1f)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SolariTheme.colors.surface)
-                                .clickable {
+                                .scaledClickable(pressedScale = 0.9f) {
                                     viewModel.registerPostView(post.id)
                                     onNavigateToPost(post.id)
                                 }
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(SolariTheme.colors.surface)
                         ) {
                             AsyncImage(
                                 model = post.thumbnailUrl.ifBlank { post.imageUrl },

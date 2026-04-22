@@ -20,7 +20,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -40,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import com.solari.app.ui.theme.PlusJakartaSans
+import com.solari.app.ui.util.scaledClickable
 
 enum class SortSelection(val label: String, val apiValue: String?) {
     Default(label = "Default", apiValue = null),
@@ -60,9 +60,11 @@ fun SortDropdownButton(
     var expanded by remember { mutableStateOf(false) }
 
     Box(modifier = modifier) {
-        IconButton(
-            onClick = { expanded = true },
-            modifier = Modifier.size(28.dp)
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .scaledClickable(pressedScale = 1.5f) { expanded = true },
+            contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = Icons.Default.FilterList,

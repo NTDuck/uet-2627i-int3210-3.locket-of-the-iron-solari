@@ -40,11 +40,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.credentials.CredentialManager
+import com.solari.app.BuildConfig
+import com.solari.app.ui.auth.GoogleIdTokenResult
+import com.solari.app.ui.auth.requestGoogleIdToken
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.compressAvatarForUpload
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.ProfileViewModel
 import com.solari.app.ui.viewmodels.SettingsViewModel
 import kotlinx.coroutines.Dispatchers
@@ -70,6 +75,7 @@ fun ProfileScreen(
 ) {
     val user = viewModel.user
     val context = LocalContext.current
+    val credentialManager = remember(context) { CredentialManager.create(context) }
     val focusManager = LocalFocusManager.current
     val outsideEditClickSource = remember { MutableInteractionSource() }
     val coroutineScope = rememberCoroutineScope()
@@ -87,12 +93,14 @@ fun ProfileScreen(
     var tempValue by remember { mutableStateOf("") }
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showGoogleDeleteConfirm by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var showRemoveAvatarConfirm by remember { mutableStateOf(false) }
     var showRemoveDisplayNameConfirm by remember { mutableStateOf(false) }
     var deletePassword by remember { mutableStateOf("") }
     var selectedAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var committedAvatarPreviewUri by remember { mutableStateOf<Uri?>(null) }
+    val isGoogleLinked = viewModel.isSignedInWithGoogle
     val avatarPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -135,6 +143,34 @@ fun ProfileScreen(
                     committedAvatarPreviewUri = previousAvatarPreviewUri
                 }
             )
+        }
+    }
+    fun showTopError(message: String) {
+        suppressNextBottomError = true
+        topPillMessage = message
+        topPillVisible = true
+        topPillEventId += 1
+    }
+
+    fun deleteAccountWithGoogleVerification() {
+        coroutineScope.launch {
+            when (
+                val tokenResult = requestGoogleIdToken(
+                    context = context,
+                    credentialManager = credentialManager,
+                    serverClientId = BuildConfig.SOLARI_GOOGLE_SERVER_CLIENT_ID
+                )
+            ) {
+                is GoogleIdTokenResult.Success -> {
+                    viewModel.deleteAccountWithGoogle(
+                        idToken = tokenResult.idToken,
+                        onSuccess = onLogout,
+                        onFailure = ::showTopError
+                    )
+                }
+
+                is GoogleIdTokenResult.Failure -> showTopError(tokenResult.message)
+            }
         }
     }
 
@@ -261,9 +297,9 @@ fun ProfileScreen(
                                     .align(Alignment.BottomEnd)
                                     .offset(x = 8.dp, y = 8.dp)
                                     .size(32.dp)
+                                    .scaledClickable(pressedScale = 1.2f) { openAvatarPicker() }
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(SolariTheme.colors.primary, RoundedCornerShape(8.dp))
-                                    .clickable { openAvatarPicker() },
+                                    .background(SolariTheme.colors.primary, RoundedCornerShape(8.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(Icons.Default.Edit, contentDescription = "Edit Avatar", tint = SolariTheme.colors.onPrimary, modifier = Modifier.size(16.dp))
@@ -336,7 +372,7 @@ fun ProfileScreen(
 
                 // Email
                 item {
-                    if (editingField == "email") {
+                    if (editingField == "email" && !isGoogleLinked) {
                         EditableField(
                             label = "EMAIL",
                             value = tempValue,
@@ -348,11 +384,19 @@ fun ProfileScreen(
                             }
                         )
                     } else {
-                        ProfileInfoBox(label = "EMAIL", value = user.email, onClick = {
-                            tempValue = user.email
-                            editingField = "email"
-                            viewModel.clearMessages()
-                        })
+                        ProfileInfoBox(
+                            label = "EMAIL",
+                            value = user.email,
+                            onClick = if (isGoogleLinked) {
+                                null
+                            } else {
+                                {
+                                    tempValue = user.email
+                                    editingField = "email"
+                                    viewModel.clearMessages()
+                                }
+                            }
+                        )
                     }
                 }
 
@@ -447,16 +491,18 @@ fun ProfileScreen(
                     )
                 }
 
-                item {
-                    SettingsRow(
-                        icon = Icons.Default.Lock,
-                        title = "Change Password",
-                        onClick = onNavigateToChangePassword,
-                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
-                    )
-                }
+                if (!isGoogleLinked) {
+                    item {
+                        SettingsRow(
+                            icon = Icons.Default.Lock,
+                            title = "Change Password",
+                            onClick = onNavigateToChangePassword,
+                            trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
+                        )
+                    }
 
-                item { Spacer(modifier = Modifier.height(8.dp)) }
+                    item { Spacer(modifier = Modifier.height(8.dp)) }
+                }
 
                 item {
                     SettingsRow(
@@ -502,7 +548,13 @@ fun ProfileScreen(
                 item {
                     DeleteAccountButton(
                         isDeleting = viewModel.isDeletingAccount,
-                        onClick = { showDeleteConfirm = true }
+                        onClick = {
+                            if (isGoogleLinked) {
+                                showGoogleDeleteConfirm = true
+                            } else {
+                                showDeleteConfirm = true
+                            }
+                        }
                     )
                 }
             }
@@ -566,10 +618,7 @@ fun ProfileScreen(
                         onLogout()
                     },
                     onFailure = { message ->
-                        suppressNextBottomError = true
-                        topPillMessage = message
-                        topPillVisible = true
-                        topPillEventId += 1
+                        showTopError(message)
                     }
                 )
             },
@@ -577,6 +626,20 @@ fun ProfileScreen(
                 showDeleteConfirm = false
                 deletePassword = ""
             }
+        )
+    }
+
+    if (showGoogleDeleteConfirm) {
+        SolariConfirmationDialog(
+            title = "Delete account?",
+            message = "Google will verify your identity before your account is permanently deleted.",
+            confirmText = "Delete Account",
+            confirmColor = Color(0xFFE57373),
+            onConfirm = {
+                showGoogleDeleteConfirm = false
+                deleteAccountWithGoogleVerification()
+            },
+            onDismiss = { showGoogleDeleteConfirm = false }
         )
     }
 
@@ -903,9 +966,9 @@ fun EditableField(label: String, value: String, onValueChange: (String) -> Unit,
         Box(
             modifier = Modifier
                 .size(56.dp)
+                .scaledClickable(pressedScale = 0.85f, onClick = onDone)
                 .clip(RoundedCornerShape(12.dp))
-                .background(SolariTheme.colors.primary, RoundedCornerShape(12.dp))
-                .clickable(onClick = onDone),
+                .background(SolariTheme.colors.primary, RoundedCornerShape(12.dp)),
             contentAlignment = Alignment.Center
         ) {
             Icon(

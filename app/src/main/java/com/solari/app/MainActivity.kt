@@ -264,18 +264,31 @@ private fun SolariApp(
             }
         ) {
         composable(SolariRoute.Screen.Welcome.name) {
-            val viewModel: WelcomeViewModel = viewModel()
+            val viewModel: WelcomeViewModel = viewModel(factory = appContainer.viewModelFactory)
             WelcomeScreen(
                 viewModel = viewModel,
                 onNavigateToSignUp = { navController.navigate(SolariRoute.Screen.SignUp.name) },
-                onNavigateToSignIn = { navController.navigate(SolariRoute.Screen.SignIn.name) }
+                onNavigateToSignIn = { navController.navigate(SolariRoute.Screen.SignIn.name) },
+                onGoogleSignInComplete = {
+                    appAuthViewModel.onSignedIn()
+                    navController.navigate(SolariRoute.Screen.Main.name + "/0") {
+                        popUpTo(0)
+                    }
+                }
             )
         }
         composable(SolariRoute.Screen.SignUp.name) {
             val viewModel: SignUpViewModel = viewModel(factory = appContainer.viewModelFactory)
             SignUpScreen(
                 viewModel = viewModel,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = {
+                    navController.navigate(SolariRoute.Screen.Welcome.name) {
+                        popUpTo(SolariRoute.Screen.Welcome.name) {
+                            inclusive = false
+                        }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToSignIn = { navController.navigate(SolariRoute.Screen.SignIn.name) },
                 onSignUpComplete = {
                     appAuthViewModel.onSignedIn()
@@ -289,7 +302,14 @@ private fun SolariApp(
             val viewModel: SignInViewModel = viewModel(factory = appContainer.viewModelFactory)
             SignInScreen(
                 viewModel = viewModel,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = {
+                    navController.navigate(SolariRoute.Screen.Welcome.name) {
+                        popUpTo(SolariRoute.Screen.Welcome.name) {
+                            inclusive = false
+                        }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToSignUp = { navController.navigate(SolariRoute.Screen.SignUp.name) },
                 onNavigateToForgotPassword = { navController.navigate(SolariRoute.Screen.PasswordRecovery.name) },
                 onSignInComplete = {
@@ -300,27 +320,28 @@ private fun SolariApp(
                 }
             )
         }
-        composable(SolariRoute.Screen.OTP.name + "/{purpose}") { backStackEntry ->
-            val purpose = backStackEntry.arguments?.getString("purpose") ?: "signup"
-            val viewModel: OTPConfirmationViewModel = viewModel()
+        composable(SolariRoute.Screen.OTP.name + "/{email}") { backStackEntry ->
+            val email = backStackEntry.arguments?.getString("email").orEmpty()
+            val viewModel: OTPConfirmationViewModel = viewModel(factory = appContainer.viewModelFactory)
             OTPConfirmationScreen(
                 viewModel = viewModel,
+                email = email,
                 onNavigateBack = { navController.popBackStack() },
-                onConfirmComplete = {
-                    if (purpose == "reset") {
-                        navController.navigate(SolariRoute.Screen.PasswordReset.name + "/false")
-                    } else {
-                        navController.navigate(SolariRoute.Screen.Main.name + "/0")
-                    }
+                onConfirmComplete = { verifiedEmail ->
+                    navController.navigate(
+                        SolariRoute.Screen.CompletePasswordReset.name + "/${Uri.encode(verifiedEmail)}"
+                    )
                 }
             )
         }
         composable(SolariRoute.Screen.PasswordRecovery.name) {
-            val viewModel: PasswordRecoveryViewModel = viewModel()
+            val viewModel: PasswordRecoveryViewModel = viewModel(factory = appContainer.viewModelFactory)
             PasswordRecoveryScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
-                onGetRecoveryCode = { navController.navigate(SolariRoute.Screen.OTP.name + "/reset") }
+                onGetRecoveryCode = { email ->
+                    navController.navigate(SolariRoute.Screen.OTP.name + "/${Uri.encode(email)}")
+                }
             )
         }
         composable(SolariRoute.Screen.PasswordReset.name + "/{showTopBar}") { backStackEntry ->
@@ -336,6 +357,22 @@ private fun SolariApp(
                         navController.popBackStack()
                     } else {
                         navController.navigate(SolariRoute.Screen.SignIn.name)
+                    }
+                }
+            )
+        }
+        composable(SolariRoute.Screen.CompletePasswordReset.name + "/{email}") { backStackEntry ->
+            val email = backStackEntry.arguments?.getString("email").orEmpty()
+            val viewModel: CompletePasswordResetViewModel = viewModel(factory = appContainer.viewModelFactory)
+            CompletePasswordResetScreen(
+                viewModel = viewModel,
+                email = email,
+                onNavigateBack = { navController.popBackStack() },
+                onResetComplete = {
+                    navController.navigate(SolariRoute.Screen.SignIn.name) {
+                        popUpTo(SolariRoute.Screen.PasswordRecovery.name) {
+                            inclusive = true
+                        }
                     }
                 }
             )

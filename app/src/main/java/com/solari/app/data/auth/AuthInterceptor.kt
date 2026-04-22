@@ -36,6 +36,7 @@ class AuthInterceptor(
     private companion object {
         val UnauthenticatedPaths = setOf(
             "/signin",
+            "/signin/google",
             "/signup",
             "/sessions/refresh",
             "/password-resets",

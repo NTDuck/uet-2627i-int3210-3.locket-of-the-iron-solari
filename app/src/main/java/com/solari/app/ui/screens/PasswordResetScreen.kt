@@ -30,6 +30,7 @@ import com.solari.app.ui.components.SolariButton
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariTextField
 import com.solari.app.ui.theme.PlusJakartaSans
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.PasswordResetViewModel
 import kotlinx.coroutines.delay
 
@@ -100,7 +101,12 @@ fun PasswordResetScreen(
                             .padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(onClick = ::handleBack) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .scaledClickable(pressedScale = 1.2f, onClick = ::handleBack),
+                            contentAlignment = Alignment.Center
+                        ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back",

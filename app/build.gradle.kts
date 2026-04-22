@@ -35,6 +35,12 @@ require(backendUrl.startsWith("http://") || backendUrl.startsWith("https://")) {
     "SOLARI_BACKEND_URL must start with http:// or https://"
 }
 
+val googleServerClientId =
+    providers.gradleProperty("SOLARI_GOOGLE_SERVER_CLIENT_ID").orNull
+        ?: providers.environmentVariable("SOLARI_GOOGLE_SERVER_CLIENT_ID").orNull
+        ?: localProperties.getProperty("SOLARI_GOOGLE_SERVER_CLIENT_ID")
+        ?: ""
+
 android {
     namespace = "com.solari.app"
     compileSdk {
@@ -52,6 +58,7 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SOLARI_BACKEND_URL", androidStringLiteral(backendUrl))
+        buildConfigField("String", "SOLARI_GOOGLE_SERVER_CLIENT_ID", androidStringLiteral(googleServerClientId))
     }
 
     buildTypes {
@@ -109,6 +116,11 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.kotlinx.serialization)
     implementation(libs.kotlinx.serialization.json)
+
+    // Authentication
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
 
     // Local persistence
     implementation(libs.androidx.room.runtime)

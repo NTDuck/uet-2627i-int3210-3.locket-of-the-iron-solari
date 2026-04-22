@@ -5,8 +5,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.solari.app.data.auth.AuthSignInMethod
 import com.solari.app.data.auth.AuthRepository
 import com.solari.app.data.network.ApiResult
+import com.solari.app.data.user.DeleteAccountVerification
 import com.solari.app.data.user.ProfileAvatarUpload
 import com.solari.app.data.user.UserRepository
 import com.solari.app.ui.models.User
@@ -27,12 +29,23 @@ class ProfileViewModel(
         private set
     var isDeletingAccount by mutableStateOf(false)
         private set
+    var isSignedInWithGoogle by mutableStateOf(false)
+        private set
 
     var successMessage by mutableStateOf<String?>(null)
     var errorMessage by mutableStateOf<String?>(null)
 
     init {
         loadMe()
+        observeAuthSession()
+    }
+
+    private fun observeAuthSession() {
+        viewModelScope.launch {
+            authRepository.currentSession.collect { session ->
+                isSignedInWithGoogle = session?.signInMethod == AuthSignInMethod.Google
+            }
+        }
     }
 
     fun loadMe() {
@@ -185,7 +198,55 @@ class ProfileViewModel(
             errorMessage = null
             successMessage = null
             try {
-                when (val result = userRepository.deleteAccount(trimmedPassword)) {
+                when (
+                    val result = userRepository.deleteAccount(
+                        DeleteAccountVerification.Password(trimmedPassword)
+                    )
+                ) {
+                    is ApiResult.Success -> {
+                        authRepository.clearSession()
+                        onSuccess()
+                    }
+
+                    is ApiResult.Failure -> {
+                        errorMessage = result.message
+                        onFailure(result.message)
+                    }
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to delete account"
+                onFailure(errorMessage ?: "Failed to delete account")
+            } finally {
+                isDeletingAccount = false
+            }
+        }
+    }
+
+    fun deleteAccountWithGoogle(
+        idToken: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        if (isDeletingAccount) return
+        val normalizedIdToken = idToken.trim()
+        if (normalizedIdToken.isBlank()) {
+            val message = "Google verification did not return an ID token."
+            errorMessage = message
+            onFailure(message)
+            return
+        }
+
+        viewModelScope.launch {
+            isDeletingAccount = true
+            errorMessage = null
+            successMessage = null
+            try {
+                when (
+                    val result = userRepository.deleteAccount(
+                        DeleteAccountVerification.GoogleIdToken(normalizedIdToken)
+                    )
+                ) {
                     is ApiResult.Success -> {
                         authRepository.clearSession()
                         onSuccess()

@@ -24,9 +24,39 @@ data class SignInRequestDto(
 )
 
 @Serializable
+data class GoogleSignInRequestDto(
+    @SerialName("id_token")
+    val idToken: String
+)
+
+@Serializable
 data class RefreshSessionRequestDto(
     @SerialName("refresh_token")
     val refreshToken: String
+)
+
+@Serializable
+data class PasswordResetRequestDto(
+    val email: String
+)
+
+@Serializable
+data class PasswordResetVerifyRequestDto(
+    val email: String,
+    val code: String
+)
+
+@Serializable
+data class PasswordResetVerifyResponseDto(
+    val message: String,
+    val verified: Boolean
+)
+
+@Serializable
+data class PasswordResetCompleteRequestDto(
+    val email: String,
+    @SerialName("new_password")
+    val newPassword: String
 )
 
 @Serializable
@@ -39,5 +69,7 @@ data class SignInResponseDto(
     @SerialName("refresh_token")
     val refreshToken: String,
     @SerialName("expires_at")
-    val expiresAt: String
+    val expiresAt: String,
+    @SerialName("sign_in_method")
+    val signInMethod: String? = null
 )

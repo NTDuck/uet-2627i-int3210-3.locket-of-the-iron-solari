@@ -8,6 +8,7 @@ object SolariRoute {
         OTP,
         PasswordRecovery,
         PasswordReset,
+        CompletePasswordReset,
         Main,
         CameraBefore,
         CameraAfter,

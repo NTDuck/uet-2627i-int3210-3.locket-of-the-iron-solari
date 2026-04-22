@@ -10,6 +10,11 @@ data class ProfileAvatarUpload(
     val bytes: ByteArray
 )
 
+sealed interface DeleteAccountVerification {
+    data class Password(val password: String) : DeleteAccountVerification
+    data class GoogleIdToken(val idToken: String) : DeleteAccountVerification
+}
+
 interface UserRepository {
     suspend fun getMe(): ApiResult<User>
 
@@ -33,5 +38,5 @@ interface UserRepository {
 
     suspend fun updatePassword(oldPassword: String, newPassword: String): ApiResult<Unit>
 
-    suspend fun deleteAccount(password: String): ApiResult<Unit>
+    suspend fun deleteAccount(verification: DeleteAccountVerification): ApiResult<Unit>
 }

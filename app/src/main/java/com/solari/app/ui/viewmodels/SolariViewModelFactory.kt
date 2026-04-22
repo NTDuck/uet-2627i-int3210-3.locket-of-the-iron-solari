@@ -27,6 +27,10 @@ class SolariViewModelFactory(
                 SignInViewModel(authRepository)
             }
 
+            modelClass.isAssignableFrom(WelcomeViewModel::class.java) -> {
+                WelcomeViewModel(authRepository)
+            }
+
             modelClass.isAssignableFrom(SignUpViewModel::class.java) -> {
                 SignUpViewModel(authRepository)
             }
@@ -108,6 +112,18 @@ class SolariViewModelFactory(
 
             modelClass.isAssignableFrom(PasswordResetViewModel::class.java) -> {
                 PasswordResetViewModel(userRepository)
+            }
+
+            modelClass.isAssignableFrom(PasswordRecoveryViewModel::class.java) -> {
+                PasswordRecoveryViewModel(authRepository)
+            }
+
+            modelClass.isAssignableFrom(OTPConfirmationViewModel::class.java) -> {
+                OTPConfirmationViewModel(authRepository)
+            }
+
+            modelClass.isAssignableFrom(CompletePasswordResetViewModel::class.java) -> {
+                CompletePasswordResetViewModel(authRepository)
             }
 
             else -> throw IllegalArgumentException(

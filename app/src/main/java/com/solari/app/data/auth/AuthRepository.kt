@@ -17,6 +17,14 @@ interface AuthRepository {
         password: String
     ): ApiResult<AuthSession>
 
+    suspend fun signInWithGoogle(idToken: String): ApiResult<AuthSession>
+
+    suspend fun requestPasswordReset(email: String): ApiResult<Unit>
+
+    suspend fun verifyPasswordResetCode(email: String, code: String): ApiResult<Unit>
+
+    suspend fun completePasswordReset(email: String, newPassword: String): ApiResult<Unit>
+
     suspend fun restoreSession(): ApiResult<AuthSession>
 
     suspend fun getCurrentSession(): AuthSession?

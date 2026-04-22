@@ -46,6 +46,7 @@ import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.models.BlockedUser
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.BlockedAccountsViewModel
 import java.util.concurrent.TimeUnit
 
@@ -193,7 +194,7 @@ private fun BlockedAccountsHeader(onNavigateBack: () -> Unit) {
             tint = BlockedPrimary,
             modifier = Modifier
                 .size(22.dp)
-                .clickable(onClick = onNavigateBack)
+                .scaledClickable(pressedScale = 1.2f, onClick = onNavigateBack)
         )
 
         Spacer(modifier = Modifier.width(20.dp))

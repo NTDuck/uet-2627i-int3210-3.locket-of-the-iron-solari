@@ -68,9 +68,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solari.app.ui.components.SolariButton
+import com.solari.app.ui.components.SolariBackButton
 import com.solari.app.ui.components.SolariTextField
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.SignUpViewModel
 import kotlinx.coroutines.delay
 
@@ -164,6 +166,8 @@ fun SignUpScreen(
                     }
                 }
         ) {
+            SolariBackButton(onClick = onNavigateBack)
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -279,7 +283,11 @@ fun SignUpScreen(
 
                 SolariButton(
                     text = if (viewModel.isSubmitting) "Creating..." else "Create Account",
-                    onClick = { viewModel.createAccount(onSuccess = onSignUpComplete) },
+                    onClick = {
+                        clearInputFocus()
+                        keyboardController?.hide()
+                        viewModel.createAccount(onSuccess = onSignUpComplete)
+                    },
                     containerColor = SolariTheme.colors.primary,
                     contentColor = SignUpPrimaryContent,
                     buttonHeight = 64.dp,
@@ -302,12 +310,15 @@ fun SignUpScreen(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Log In",
+                        text = "Log in",
                         color = SolariTheme.colors.primary,
                         fontSize = 16.sp,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable { onNavigateToSignIn() }
+                        modifier = Modifier.scaledClickable(
+                            pressedScale = 1.08f,
+                            onClick = onNavigateToSignIn
+                        )
                     )
                 }
             }

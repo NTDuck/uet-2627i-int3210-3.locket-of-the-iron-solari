@@ -1,5 +1,8 @@
 package com.solari.app.ui.screens
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -50,10 +53,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -71,6 +73,7 @@ import com.solari.app.ui.components.SortDropdownButton
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.FriendManagementViewModel
 import kotlinx.coroutines.delay
 
@@ -83,6 +86,7 @@ private val FriendsText = Color(0xFFE3E2E6)
 private val FriendsMuted = Color(0xFFD7C0B2)
 private val FriendsSubtle = Color(0xFF9699A1)
 private val FriendsButton = Color(0xFF34363B)
+private const val InviteBaseUrl = "https://solari.adnope.io.vn"
 
 private enum class NicknameAction {
     Set,
@@ -105,7 +109,7 @@ fun FriendManagementScreen(
     onNavigateToChat: () -> Unit,
     onNavigateToProfile: () -> Unit
 ) {
-    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var requestText by remember { mutableStateOf("") }
@@ -117,7 +121,7 @@ fun FriendManagementScreen(
     var feedbackPillMessage by remember { mutableStateOf("") }
     var feedbackPillIsSuccess by remember { mutableStateOf(false) }
     var feedbackEventId by remember { mutableStateOf(0) }
-    val inviteLink = "https://solari-backend.com/usern..."
+    val inviteLink = viewModel.currentUser?.username?.let(::buildInviteLink).orEmpty()
     val friends = viewModel.friends
     val feedbackMessage = viewModel.successMessage ?: viewModel.errorMessage
     val isSuccessFeedback = viewModel.successMessage != null
@@ -193,7 +197,7 @@ fun FriendManagementScreen(
                         .padding(13.dp)
                 ) {
                     Text(
-                        text = inviteLink,
+                        text = inviteLink.ifBlank { "Loading invite link..." },
                         color = FriendsText,
                         fontSize = 12.sp,
                         fontFamily = PlusJakartaSans,
@@ -215,14 +219,11 @@ fun FriendManagementScreen(
                     Spacer(modifier = Modifier.height(13.dp))
 
                     FriendsPrimaryButton(
-                        text = "Share invite link",
+                        text = "Share Invite Link",
                         icon = Icons.Outlined.Share,
+                        enabled = inviteLink.isNotBlank(),
                         onClick = {
-                            clipboardManager.setText(AnnotatedString(inviteLink))
-                            feedbackPillMessage = "Invite link copied"
-                            feedbackPillIsSuccess = true
-                            feedbackPillVisible = true
-                            feedbackEventId += 1
+                            shareInviteLink(context, inviteLink)
                         }
                     )
                 }
@@ -315,13 +316,24 @@ fun FriendManagementScreen(
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = if (viewModel.isSendingRequest) "Sending..." else "Send request",
-                            color = FriendsText,
-                            fontSize = 12.sp,
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (viewModel.isSendingRequest) {
+                                CircularProgressIndicator(
+                                    color = FriendsText,
+                                    trackColor = FriendsButton,
+                                    strokeWidth = 2.dp,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(7.dp))
+                            }
+                            Text(
+                                text = "Send request",
+                                color = FriendsText,
+                                fontSize = 12.sp,
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 
@@ -533,33 +545,51 @@ private fun FriendManagementSectionTitle(text: String) {
 private fun FriendsPrimaryButton(
     text: String,
     icon: ImageVector,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(38.dp)
+            .scaledClickable(pressedScale = 1.05f, enabled = enabled, onClick = onClick)
             .clip(RoundedCornerShape(19.dp))
-            .background(FriendsPrimary)
-            .clickable(onClick = onClick),
+            .background(if (enabled) FriendsPrimary else FriendsButton),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = FriendsPrimaryContent,
+            tint = if (enabled) FriendsPrimaryContent else FriendsSubtle,
             modifier = Modifier.size(14.dp)
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = text,
-            color = FriendsPrimaryContent,
+            color = if (enabled) FriendsPrimaryContent else FriendsSubtle,
             fontSize = 13.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold
         )
     }
+}
+
+private fun buildInviteLink(username: String): String {
+    return Uri.parse(InviteBaseUrl)
+        .buildUpon()
+        .appendPath("u")
+        .appendPath(username)
+        .build()
+        .toString()
+}
+
+private fun shareInviteLink(context: Context, inviteLink: String) {
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, inviteLink)
+    }
+    context.startActivity(Intent.createChooser(sendIntent, "Share invite link"))
 }
 
 @Composable
@@ -622,7 +652,7 @@ private fun FriendListItem(
                 modifier = Modifier
                     .size(30.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .clickable { isMenuExpanded = true },
+                    .scaledClickable(pressedScale = 1.2f) { isMenuExpanded = true },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

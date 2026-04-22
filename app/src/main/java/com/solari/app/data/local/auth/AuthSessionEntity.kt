@@ -15,6 +15,8 @@ data class AuthSessionEntity(
     val refreshTokenCiphertext: String,
     @ColumnInfo(name = "expires_at")
     val expiresAt: String,
+    @ColumnInfo(name = "sign_in_method")
+    val signInMethod: String?,
     @ColumnInfo(name = "updated_at_epoch_millis")
     val updatedAtEpochMillis: Long
 )

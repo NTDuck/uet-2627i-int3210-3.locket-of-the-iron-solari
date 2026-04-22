@@ -39,14 +39,16 @@ fun SolariTextField(
     keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = label.uppercase(),
-            color = color,
-            fontSize = labelFontSize,
-            fontFamily = PlusJakartaSans,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp)
-        )
+        if (label.isNotBlank()) {
+            Text(
+                text = label.uppercase(),
+                color = color,
+                fontSize = labelFontSize,
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+        }
         TextField(
             value = value,
             onValueChange = onValueChange,

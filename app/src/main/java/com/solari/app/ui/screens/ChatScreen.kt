@@ -104,6 +104,8 @@ import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.util.EmojiCatalog
 import com.solari.app.ui.util.EmojiCatalogCategory
+import com.solari.app.ui.util.scaleOnPress
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.ChatViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -492,7 +494,7 @@ private fun ChatHeaderBar(
                 modifier = Modifier
                     .size(36.dp)
                     .clip(CircleShape)
-                    .clickable(onClick = onNavigateBack),
+                    .scaledClickable(pressedScale = 1.2f, onClick = onNavigateBack),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -531,7 +533,7 @@ private fun ChatHeaderBar(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .clickable { onNavigateToSettings(chatId, partner) },
+                    .scaledClickable(pressedScale = 1.2f) { onNavigateToSettings(chatId, partner) },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -688,6 +690,7 @@ private fun ChatBubble(
     var dragOffsetPx by remember(message.id) { mutableStateOf(0f) }
     var isReplySwipeArmed by remember(message.id) { mutableStateOf(false) }
     var hasReplySwipeHapticFired by remember(message.id) { mutableStateOf(false) }
+    val bubbleInteractionSource = remember(message.id) { MutableInteractionSource() }
     val hapticFeedback = LocalHapticFeedback.current
     val replySwipeThresholdPx = with(LocalDensity.current) { 180.dp.toPx() }
     val bubbleShape = RoundedCornerShape(12.dp)
@@ -756,6 +759,10 @@ private fun ChatBubble(
         Box {
             Box(
                 modifier = Modifier
+                    .scaleOnPress(
+                        interactionSource = bubbleInteractionSource,
+                        pressedScale = 1.1f
+                    )
                     .clip(bubbleShape)
                     .then(
                         if (message.isDeleted) {
@@ -780,6 +787,8 @@ private fun ChatBubble(
                             Modifier
                         } else {
                             Modifier.combinedClickable(
+                                interactionSource = bubbleInteractionSource,
+                                indication = null,
                                 onClick = {},
                                 onDoubleClick = { reactWithRecent("❤️") },
                                 onLongClick = { isActionMenuExpanded = true }
@@ -1089,7 +1098,7 @@ private fun MessageActionPopup(
                         modifier = Modifier
                             .padding(top = 4.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .clickable(onClick = onUnsend)
+                            .scaledClickable(pressedScale = 1.1f, onClick = onUnsend)
                             .padding(horizontal = 18.dp, vertical = 7.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -1445,7 +1454,7 @@ private fun EmojiPickerEmojiButton(
             .size(42.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(if (selected) Color.White.copy(alpha = 0.12f) else Color.Transparent)
-            .clickable(onClick = onClick),
+            .scaledClickable(pressedScale = 1.1f, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -1523,7 +1532,7 @@ private fun ReactionOptionButton(
             .size(34.dp)
             .clip(CircleShape)
             .background(if (selected) ChatPrimary.copy(alpha = 0.20f) else Color.Transparent)
-            .clickable(onClick = onClick),
+            .scaledClickable(pressedScale = 1.1f, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -1639,9 +1648,9 @@ private fun ChatInputBar(
             Box(
                 modifier = Modifier
                     .size(40.dp)
+                    .scaledClickable(pressedScale = 1.1f, onClick = onSend)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(ChatPrimary)
-                    .clickable(onClick = onSend),
+                    .background(ChatPrimary),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

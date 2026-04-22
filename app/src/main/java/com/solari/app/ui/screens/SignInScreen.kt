@@ -3,6 +3,7 @@ package com.solari.app.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -13,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -25,12 +27,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solari.app.ui.components.SolariButton
+import com.solari.app.ui.components.SolariBackButton
 import com.solari.app.ui.components.SolariTextField
 import com.solari.app.data.auth.AuthRepository
 import com.solari.app.data.auth.AuthSession
 import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.SignInViewModel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -67,6 +71,8 @@ fun SignInScreen(
         color = SolariTheme.colors.background
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            SolariBackButton(onClick = onNavigateBack)
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -115,8 +121,13 @@ fun SignInScreen(
                     fontSize = 16.sp,
                     modifier = Modifier
                         .align(Alignment.Start)
-                        .padding(start = 8.dp)
-                        .clickable { onNavigateToForgotPassword() }
+                        .padding(start = 0.dp)
+                        .scaledClickable(
+                            pressedScale = 1.08f,
+                            onClick = onNavigateToForgotPassword
+                        )
+                        .clip(RoundedCornerShape(10.dp))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
                 )
 
                 Box(
@@ -238,6 +249,41 @@ private class PreviewAuthRepository : AuthRepository {
             statusCode = null,
             type = "PREVIEW",
             message = "Preview mode does not sign in."
+        )
+    }
+
+    override suspend fun signInWithGoogle(idToken: String): ApiResult<AuthSession> {
+        return ApiResult.Failure(
+            statusCode = null,
+            type = "PREVIEW",
+            message = "Preview mode does not sign in with Google."
+        )
+    }
+
+    override suspend fun requestPasswordReset(email: String): ApiResult<Unit> {
+        return ApiResult.Failure(
+            statusCode = null,
+            type = "PREVIEW",
+            message = "Preview mode does not request password reset codes."
+        )
+    }
+
+    override suspend fun verifyPasswordResetCode(email: String, code: String): ApiResult<Unit> {
+        return ApiResult.Failure(
+            statusCode = null,
+            type = "PREVIEW",
+            message = "Preview mode does not verify password reset codes."
+        )
+    }
+
+    override suspend fun completePasswordReset(
+        email: String,
+        newPassword: String
+    ): ApiResult<Unit> {
+        return ApiResult.Failure(
+            statusCode = null,
+            type = "PREVIEW",
+            message = "Preview mode does not complete password resets."
         )
     }
 

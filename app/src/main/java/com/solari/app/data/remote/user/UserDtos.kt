@@ -39,7 +39,9 @@ data class DeleteAccountResponseDto(
 
 @Serializable
 data class DeleteAccountRequestDto(
-    val password: String
+    val password: String? = null,
+    @SerialName("google_id_token")
+    val googleIdToken: String? = null
 )
 
 @Serializable

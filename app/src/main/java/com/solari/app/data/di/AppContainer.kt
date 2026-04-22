@@ -44,7 +44,9 @@ class AppContainer(
         applicationContext,
         SolariDatabase::class.java,
         "solari.db"
-    ).build()
+    )
+        .addMigrations(SolariDatabase.Migration1To2)
+        .build()
 
     private val tokenCipher = TokenCipher()
     private val recentEmojiStore = RecentEmojiStore(applicationContext)
