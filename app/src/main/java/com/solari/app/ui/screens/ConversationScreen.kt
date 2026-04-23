@@ -29,6 +29,7 @@ import com.solari.app.ui.models.FriendRequest
 import com.solari.app.ui.models.FriendRequestDirection
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
+import com.solari.app.ui.components.SolariFeedbackPill
 import com.solari.app.ui.components.SortDropdownButton
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.theme.PlusJakartaSans
@@ -42,6 +43,8 @@ import java.util.concurrent.TimeUnit
 @Composable
 fun ConversationScreen(
     viewModel: ConversationViewModel,
+    externalFeedbackMessage: String? = null,
+    onExternalFeedbackConsumed: () -> Unit = {},
     onNavigateBack: () -> Unit,
     onNavigateToChat: (Conversation) -> Unit,
     onNavigateToManageFriends: () -> Unit,
@@ -56,13 +59,17 @@ fun ConversationScreen(
     var feedbackPillMessage by remember { mutableStateOf("") }
     var feedbackPillIsSuccess by remember { mutableStateOf(false) }
     var feedbackEventId by remember { mutableStateOf(0) }
+    var topFeedbackVisible by remember { mutableStateOf(false) }
+    var topFeedbackMessage by remember { mutableStateOf("") }
+    var topFeedbackEventId by remember { mutableStateOf(0) }
     val feedbackMessage = viewModel.successMessage ?: viewModel.errorMessage
     val isSuccessFeedback = viewModel.successMessage != null
 
+    val visibleConversations = viewModel.conversations.filter { it.lastMessage.isNotBlank() }
     val sortedConversations = when (sortSelection) {
-        SortSelection.Default -> viewModel.conversations
-        SortSelection.Newest -> viewModel.conversations.sortedByDescending { it.timestamp }
-        SortSelection.Oldest -> viewModel.conversations.sortedBy { it.timestamp }
+        SortSelection.Default -> visibleConversations
+        SortSelection.Newest -> visibleConversations.sortedByDescending { it.timestamp }
+        SortSelection.Oldest -> visibleConversations.sortedBy { it.timestamp }
     }
     val isInitialLoading = viewModel.isLoading &&
             viewModel.friendRequests.isEmpty() &&
@@ -91,6 +98,21 @@ fun ConversationScreen(
         }
     }
 
+    LaunchedEffect(externalFeedbackMessage) {
+        val message = externalFeedbackMessage ?: return@LaunchedEffect
+        topFeedbackMessage = message
+        topFeedbackVisible = true
+        topFeedbackEventId += 1
+        onExternalFeedbackConsumed()
+    }
+
+    LaunchedEffect(topFeedbackEventId) {
+        if (topFeedbackEventId > 0) {
+            delay(1000)
+            topFeedbackVisible = false
+        }
+    }
+
     PullToRefreshBox(
         isRefreshing = isUserRefreshing,
         onRefresh = {
@@ -102,6 +124,27 @@ fun ConversationScreen(
             .background(SolariTheme.colors.background)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            AnimatedVisibility(
+                visible = topFeedbackVisible,
+                enter = slideInVertically(
+                    initialOffsetY = { -it * 2 },
+                    animationSpec = tween(durationMillis = 260)
+                ),
+                exit = slideOutVertically(
+                    targetOffsetY = { -it * 2 },
+                    animationSpec = tween(durationMillis = 220)
+                ),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp, start = 24.dp, end = 24.dp)
+            ) {
+                SolariFeedbackPill(
+                    message = topFeedbackMessage,
+                    isSuccess = true
+                )
+            }
+
             if (isInitialLoading) {
                 CircularProgressIndicator(
                     color = SolariTheme.colors.primary,

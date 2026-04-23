@@ -1,6 +1,17 @@
 package com.solari.app.ui.screens
 
+import android.Manifest
+import android.content.ContentValues
+import android.content.Context
+import android.content.pm.PackageManager
+import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
+import android.webkit.MimeTypeMap
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -26,8 +37,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,6 +70,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
+import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.solari.app.R
 import com.solari.app.ui.components.SolariConfirmationDialog
@@ -76,8 +91,13 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import java.io.File
+import java.net.URL
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 private enum class FeedInputOverlayMode {
@@ -85,10 +105,18 @@ private enum class FeedInputOverlayMode {
     Message
 }
 
+private data class FeedActivityUserGroup(
+    val user: User,
+    val activities: List<PostActivityEntry>
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FeedScreen(
     viewModel: FeedViewModel,
     initialPostId: String? = null,
+    authorFilterIds: Set<String> = emptySet(),
+    sortMode: String = "default",
     onNavigateBack: () -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToChat: () -> Unit,
@@ -97,19 +125,63 @@ fun FeedScreen(
     isFeedVisible: Boolean = true,
     onActivityPanelVisibilityChanged: (Boolean) -> Unit = {}
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var showMenuForPost by remember { mutableStateOf<Post?>(null) }
     var postPendingDelete by remember { mutableStateOf<Post?>(null) }
+    var postPendingLegacyDownload by remember { mutableStateOf<Post?>(null) }
     var isActivitySheetVisible by remember { mutableStateOf(false) }
     var activitySheetPostId by remember { mutableStateOf<String?>(null) }
     var feedbackPillVisible by remember { mutableStateOf(false) }
     var feedbackPillMessage by remember { mutableStateOf("") }
+    var feedbackPillEventId by remember { mutableStateOf(0) }
     var isInputOverlayVisible by remember { mutableStateOf(false) }
-    val posts = viewModel.posts
+    var isUserRefreshing by remember { mutableStateOf(false) }
+    val sourcePosts = viewModel.posts
+    val posts = remember(sourcePosts, authorFilterIds, sortMode) {
+        val filteredPosts = if (authorFilterIds.isEmpty()) {
+            sourcePosts
+        } else {
+            sourcePosts.filter { it.author.id in authorFilterIds }
+        }
+
+        when (sortMode) {
+            "newest" -> filteredPosts.sortedByDescending { it.timestamp }
+            "oldest" -> filteredPosts.sortedBy { it.timestamp }
+            else -> filteredPosts
+        }
+    }
     val currentUser = viewModel.currentUser
     val initialPostPage = remember(initialPostId, posts) {
         posts.indexOfFirst { it.id == initialPostId }.takeIf { it >= 0 } ?: 0
     }
     val pagerState = rememberPagerState(initialPage = initialPostPage) { posts.size }
+
+    fun showFeedback(message: String) {
+        feedbackPillMessage = message
+        feedbackPillVisible = true
+        feedbackPillEventId += 1
+    }
+
+    fun downloadPost(post: Post) {
+        coroutineScope.launch {
+            saveFeedPostMediaToPictures(context, post)
+                .onSuccess { showFeedback("Saved to Pictures/Solari") }
+                .onFailure { error ->
+                    showFeedback(error.message ?: "Failed to save media.")
+                }
+        }
+    }
+
+    val storagePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val pendingPost = postPendingLegacyDownload
+        postPendingLegacyDownload = null
+        if (granted && pendingPost != null) {
+            downloadPost(pendingPost)
+        }
+    }
 
     LaunchedEffect(initialPostId, posts) {
         if (initialPostId == null || posts.isEmpty()) return@LaunchedEffect
@@ -122,6 +194,12 @@ fun FeedScreen(
 
     LaunchedEffect(isActivitySheetVisible, isInputOverlayVisible) {
         onActivityPanelVisibilityChanged(isActivitySheetVisible || isInputOverlayVisible)
+    }
+
+    LaunchedEffect(viewModel.isLoading) {
+        if (!viewModel.isLoading) {
+            isUserRefreshing = false
+        }
     }
 
     LaunchedEffect(isFeedVisible) {
@@ -141,12 +219,16 @@ fun FeedScreen(
             return@LaunchedEffect
         }
 
-        feedbackPillMessage = message
-        feedbackPillVisible = true
-        delay(1000)
-        feedbackPillVisible = false
+        showFeedback(message)
         delay(260)
         viewModel.clearMessages()
+    }
+
+    LaunchedEffect(feedbackPillEventId) {
+        if (feedbackPillEventId > 0) {
+            delay(1000)
+            feedbackPillVisible = false
+        }
     }
 
     LaunchedEffect(pagerState.currentPage, posts, currentUser?.id) {
@@ -174,22 +256,35 @@ fun FeedScreen(
             .background(SolariTheme.colors.background)
     ) {
         if (posts.isEmpty()) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
+            PullToRefreshBox(
+                isRefreshing = isUserRefreshing,
+                onRefresh = {
+                    isUserRefreshing = true
+                    viewModel.refresh()
+                },
+                modifier = Modifier.fillMaxSize()
             ) {
-                when {
-                    viewModel.isLoading -> CircularProgressIndicator(
-                        color = SolariTheme.colors.primary,
-                        trackColor = SolariTheme.colors.surface
-                    )
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillParentMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            when {
+                                viewModel.isLoading -> CircularProgressIndicator(
+                                    color = SolariTheme.colors.primary,
+                                    trackColor = SolariTheme.colors.surface
+                                )
 
-                    else -> Text(
-                        text = viewModel.errorMessage ?: "No posts yet",
-                        color = SolariTheme.colors.onBackground,
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Bold
-                    )
+                                else -> Text(
+                                    text = viewModel.errorMessage ?: "No posts yet",
+                                    color = SolariTheme.colors.onBackground,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                 }
             }
         } else {
@@ -260,7 +355,21 @@ fun FeedScreen(
                             } else {
                                 RoundedCornerShape(14.dp)
                             },
-                            onClick = { showMenuForPost = null }
+                            onClick = {
+                                showMenuForPost = null
+                                if (
+                                    Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                                    ) != PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    postPendingLegacyDownload = post
+                                    storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                } else {
+                                    downloadPost(post)
+                                }
+                            }
                         )
 
                         if (canDeletePost) {
@@ -315,6 +424,155 @@ fun FeedScreen(
             FeedFeedbackPill(message = feedbackPillMessage)
         }
     }
+}
+
+private suspend fun saveFeedPostMediaToPictures(
+    context: Context,
+    post: Post
+): Result<Unit> = withContext(Dispatchers.IO) {
+    runCatching {
+        val mediaUrl = post.imageUrl.ifBlank { post.thumbnailUrl }
+        require(mediaUrl.isNotBlank()) { "No media URL found." }
+
+        val mediaUri = Uri.parse(mediaUrl)
+        val isVideo = post.isVideoMedia()
+        val mimeType = context.resolveFeedPostMimeType(mediaUri, post.mediaType, isVideo)
+        val extension = mimeType.toFileExtension(mediaUri, isVideo)
+        val fileName = buildFeedDownloadFileName(post, extension)
+        val mediaBytes = context.readFeedMediaBytes(mediaUri)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val collection = if (isVideo) {
+                MediaStore.Video.Media.EXTERNAL_CONTENT_URI
+            } else {
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+            }
+            val outputUri = context.contentResolver.insert(
+                collection,
+                ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                    put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Solari")
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+            ) ?: throw IllegalStateException("Failed to create destination file.")
+
+            try {
+                context.contentResolver.openOutputStream(outputUri)?.use { output ->
+                    output.write(mediaBytes)
+                } ?: throw IllegalStateException("Failed to write media.")
+
+                context.contentResolver.update(
+                    outputUri,
+                    ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) },
+                    null,
+                    null
+                )
+            } catch (error: Throwable) {
+                context.contentResolver.delete(outputUri, null, null)
+                throw error
+            }
+        } else {
+            val directory = File(
+                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+                "Solari"
+            ).apply { mkdirs() }
+            val outputFile = File(directory, fileName)
+            outputFile.outputStream().use { output ->
+                output.write(mediaBytes)
+            }
+            MediaScannerConnection.scanFile(
+                context,
+                arrayOf(outputFile.absolutePath),
+                arrayOf(mimeType),
+                null
+            )
+        }
+
+        Unit
+    }
+}
+
+private fun Context.readFeedMediaBytes(uri: Uri): ByteArray {
+    return when (uri.scheme?.lowercase()) {
+        "content", "android.resource" -> {
+            contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw IllegalStateException("Failed to read media.")
+        }
+        "file" -> File(requireNotNull(uri.path) { "Missing media path." }).readBytes()
+        "http", "https" -> URL(uri.toString()).openConnection().run {
+            connectTimeout = 15_000
+            readTimeout = 30_000
+            getInputStream().use { it.readBytes() }
+        }
+        else -> throw IllegalStateException("Unsupported media URL.")
+    }
+}
+
+private fun Context.resolveFeedPostMimeType(
+    uri: Uri,
+    mediaType: String,
+    isVideo: Boolean
+): String {
+    val normalizedMediaType = mediaType.trim().lowercase()
+    if (normalizedMediaType.contains('/')) {
+        return normalizedMediaType
+    }
+
+    val resolverMimeType = when (uri.scheme?.lowercase()) {
+        "content", "android.resource" -> contentResolver.getType(uri)
+        else -> null
+    }
+    if (!resolverMimeType.isNullOrBlank()) {
+        return resolverMimeType
+    }
+
+    val extension = uri.lastPathSegment
+        ?.substringBefore('?')
+        ?.substringAfterLast('.', missingDelimiterValue = "")
+        ?.lowercase()
+        .orEmpty()
+    val extensionMimeType = extension
+        .takeIf { it.isNotBlank() }
+        ?.let { MimeTypeMap.getSingleton().getMimeTypeFromExtension(it) }
+    if (!extensionMimeType.isNullOrBlank()) {
+        return extensionMimeType
+    }
+
+    return if (isVideo) "video/mp4" else "image/jpeg"
+}
+
+private fun String.toFileExtension(uri: Uri, isVideo: Boolean): String {
+    val mimeExtension = MimeTypeMap.getSingleton().getExtensionFromMimeType(this)
+    if (!mimeExtension.isNullOrBlank()) {
+        return mimeExtension
+    }
+
+    val pathExtension = uri.lastPathSegment
+        ?.substringBefore('?')
+        ?.substringAfterLast('.', missingDelimiterValue = "")
+        ?.lowercase()
+        .orEmpty()
+    return pathExtension.ifBlank { if (isVideo) "mp4" else "jpg" }
+}
+
+private fun buildFeedDownloadFileName(post: Post, extension: String): String {
+    val username = post.author.username
+        .ifBlank { post.author.displayName }
+        .toSafeFeedFileNamePart()
+        .ifBlank { "solari_user" }
+    val idPart = post.id
+        .take(12)
+        .toSafeFeedFileNamePart()
+        .ifBlank { "post" }
+    return "${username}_${post.timestamp}_${idPart}.$extension"
+}
+
+private fun String.toSafeFeedFileNamePart(): String {
+    return trim()
+        .lowercase()
+        .replace(Regex("[^a-z0-9_-]+"), "_")
+        .trim('_')
 }
 
 @Composable
@@ -735,6 +993,17 @@ private fun FeedActivitySheet(
     val sheetInteractionSource = remember { MutableInteractionSource() }
     var isSheetDragging by remember { mutableStateOf(false) }
     var sheetDragOffsetPx by remember { mutableStateOf(0f) }
+    var expandedUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val groupedActivities = remember(activities) {
+        activities
+            .groupBy { it.user.id }
+            .map { (_, userActivities) ->
+                FeedActivityUserGroup(
+                    user = userActivities.first().user,
+                    activities = userActivities
+                )
+            }
+    }
     val animatedSheetDragOffsetPx by animateFloatAsState(
         targetValue = sheetDragOffsetPx,
         animationSpec = tween(durationMillis = if (isSheetDragging) 0 else 180),
@@ -745,6 +1014,7 @@ private fun FeedActivitySheet(
         if (visible) {
             isSheetDragging = false
             sheetDragOffsetPx = 0f
+            expandedUserIds = emptySet()
         }
     }
 
@@ -875,15 +1145,165 @@ private fun FeedActivitySheet(
 
                     else -> LazyColumn(
                         modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(start = 19.dp, end = 19.dp, bottom = 26.dp)
                     ) {
-                        items(activities) { activity ->
-                            FeedActivityItem(activity = activity)
+                        items(groupedActivities, key = { it.user.id }) { group ->
+                            val isExpanded = group.user.id in expandedUserIds
+                            FeedActivityGroupItem(
+                                group = group,
+                                isExpanded = isExpanded,
+                                onToggleExpanded = {
+                                    if (group.activities.size <= 1) return@FeedActivityGroupItem
+                                    expandedUserIds = if (isExpanded) {
+                                        expandedUserIds - group.user.id
+                                    } else {
+                                        expandedUserIds + group.user.id
+                                    }
+                                },
+                                onCollapse = {
+                                    expandedUserIds = expandedUserIds - group.user.id
+                                }
+                            )
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FeedActivityGroupItem(
+    group: FeedActivityUserGroup,
+    isExpanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onCollapse: () -> Unit
+) {
+    val canExpand = group.activities.size > 1
+
+    Column(
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        FeedActivityGroupRootRow(
+            group = group,
+            isExpanded = isExpanded,
+            canExpand = canExpand,
+            onClick = onToggleExpanded
+        )
+
+        AnimatedVisibility(visible = canExpand && isExpanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 18.dp, top = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                group.activities.forEach { activity ->
+                    FeedActivityItem(activity = activity)
+                }
+
+                Surface(
+                    color = SolariTheme.colors.surfaceVariant.copy(alpha = 0.72f),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .scaledClickable(pressedScale = 1.08f, onClick = onCollapse)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Collapse",
+                            color = SolariTheme.colors.onSurface,
+                            fontSize = 12.sp,
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(
+                            imageVector = Icons.Default.ExpandLess,
+                            contentDescription = null,
+                            tint = SolariTheme.colors.onSurface.copy(alpha = 0.76f),
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FeedActivityGroupRootRow(
+    group: FeedActivityUserGroup,
+    isExpanded: Boolean,
+    canExpand: Boolean,
+    onClick: () -> Unit
+) {
+    val latestActivity = group.activities.first()
+    val summary = if (canExpand) {
+        "${group.activities.size} activities"
+    } else {
+        latestActivity.description
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .scaledClickable(
+                pressedScale = 1.04f,
+                enabled = canExpand,
+                onClick = onClick
+            )
+            .padding(horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SolariAvatar(
+            imageUrl = group.user.profileImageUrl,
+            username = group.user.username,
+            contentDescription = "${group.user.displayName} avatar",
+            modifier = Modifier.size(42.dp),
+            shape = CircleShape,
+            fontSize = 16.sp
+        )
+
+        Spacer(modifier = Modifier.width(13.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = group.user.displayName,
+                color = SolariTheme.colors.onSurface,
+                fontSize = 14.sp,
+                lineHeight = 16.sp,
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = summary,
+                color = SolariTheme.colors.onSurface.copy(alpha = 0.68f),
+                fontSize = 12.sp,
+                lineHeight = 14.sp,
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.Medium
+            )
+        }
+
+        if (latestActivity.caption != null || latestActivity.emoji != null) {
+            FeedActivityTrailing(activity = latestActivity)
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
+        if (canExpand) {
+            Icon(
+                imageVector = if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = if (isExpanded) "Collapse activities" else "Expand activities",
+                tint = SolariTheme.colors.onSurface.copy(alpha = 0.72f),
+                modifier = Modifier.size(24.dp)
+            )
         }
     }
 }
@@ -927,33 +1347,38 @@ private fun FeedActivityItem(activity: PostActivityEntry) {
             )
         }
 
-        Row(
-            modifier = Modifier.widthIn(max = 102.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.End
-        ) {
-            if (activity.caption != null) {
-                Text(
-                    text = activity.caption,
-                    color = SolariTheme.colors.secondary,
-                    fontSize = 12.sp,
-                    lineHeight = 13.sp,
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.End,
-                    maxLines = 2,
-                    modifier = Modifier.weight(1f, fill = false)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-            }
+        FeedActivityTrailing(activity = activity)
+    }
+}
 
-            activity.emoji?.let { emoji ->
-                Text(
-                    text = emoji,
-                    fontSize = 22.sp,
-                    lineHeight = 24.sp
-                )
-            }
+@Composable
+private fun FeedActivityTrailing(activity: PostActivityEntry) {
+    Row(
+        modifier = Modifier.widthIn(max = 102.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.End
+    ) {
+        if (activity.caption != null) {
+            Text(
+                text = activity.caption,
+                color = SolariTheme.colors.secondary,
+                fontSize = 12.sp,
+                lineHeight = 13.sp,
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.End,
+                maxLines = 2,
+                modifier = Modifier.weight(1f, fill = false)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+        }
+
+        activity.emoji?.let { emoji ->
+            Text(
+                text = emoji,
+                fontSize = 22.sp,
+                lineHeight = 24.sp
+            )
         }
     }
 }
@@ -1163,6 +1588,11 @@ private fun FeedInputKeyboardOverlay(
     val keyboardController = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
     val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
+    val bottomInset = with(density) {
+        WindowInsets.ime.getBottom(this)
+            .coerceAtLeast(WindowInsets.navigationBars.getBottom(this))
+            .toDp()
+    }
     var hasSeenKeyboard by remember(mode) { mutableStateOf(false) }
     var isBarVisible by remember(mode) { mutableStateOf(false) }
 
@@ -1231,13 +1661,11 @@ private fun FeedInputKeyboardOverlay(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .imePadding()
                     .padding(
                         start = 32.dp, 
                         end = 32.dp, 
                         top = 12.dp, 
-                        bottom = 16.dp
+                        bottom = bottomInset + 16.dp
                     )
             ) {
                 when (mode) {

@@ -168,8 +168,12 @@ fun ChatScreen(
     onNavigateToProfile: () -> Unit
 ) {
     val currentUser = viewModel.currentUser
-    val isReadOnly = viewModel.conversation?.isReadOnly == true
-    val partner = viewModel.conversation?.otherUser ?: initialPartner
+    val currentUserId = currentUser?.id ?: viewModel.currentUserId
+    val currentConversation = viewModel.conversation
+    val activeChatId = currentConversation?.id ?: chatId
+    val isReadOnly = currentConversation?.isReadOnly == true
+    val isDraftConversation = currentConversation?.isDraft == true
+    val partner = currentConversation?.otherUser ?: initialPartner
     val displayPartnerName = if (isReadOnly) "Someone" else partner?.displayName.orEmpty()
     val displayPartnerUsername = if (isReadOnly) "someone" else partner?.username.orEmpty()
     val displayPartnerAvatarUrl = if (isReadOnly) null else partner?.profileImageUrl
@@ -187,7 +191,7 @@ fun ChatScreen(
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     val keyboardBottomPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
-    val allMessages = viewModel.conversation?.messages.orEmpty()
+    val allMessages = currentConversation?.messages.orEmpty()
     val sortedMessages = remember(allMessages) { allMessages.sortedBy { it.timestamp } }
     val daySections = remember(sortedMessages) { buildChatDaySections(sortedMessages) }
     val lastMessage = sortedMessages.lastOrNull()
@@ -231,6 +235,14 @@ fun ChatScreen(
         highlightedMessageId = null
     }
 
+    LaunchedEffect(isDraftConversation) {
+        if (isDraftConversation) {
+            hasSeenInitialMessageLoad = true
+            hasFinishedInitialMessageLoad = true
+            isMessageScrollInitialized = sortedMessages.isEmpty()
+        }
+    }
+
     LaunchedEffect(viewModel.isLoadingMessages) {
         if (viewModel.isLoadingMessages) {
             hasSeenInitialMessageLoad = true
@@ -244,7 +256,7 @@ fun ChatScreen(
     LaunchedEffect(
         sortedMessages.size,
         lastMessage?.id,
-        currentUser?.id,
+        currentUserId,
         viewModel.isLoadingMessages,
         hasFinishedInitialMessageLoad
     ) {
@@ -264,7 +276,7 @@ fun ChatScreen(
         }
 
         val newMessageFromCurrentUser = sortedMessages.size > previousMessageCount &&
-                lastMessage?.senderId == currentUser?.id
+                lastMessage?.senderId == currentUserId
 
         previousMessageCount = sortedMessages.size
 
@@ -359,11 +371,12 @@ fun ChatScreen(
                 )
         ) {
             ChatHeaderBar(
-                chatId = chatId,
+                chatId = activeChatId,
                 partnerName = displayPartnerName,
                 partnerUsername = displayPartnerUsername,
                 partnerAvatarUrl = displayPartnerAvatarUrl,
                 partner = if (isReadOnly) null else partner,
+                isSettingsEnabled = !isDraftConversation,
                 onNavigateBack = onNavigateBack,
                 onNavigateToSettings = onNavigateToSettings
             )
@@ -403,7 +416,7 @@ fun ChatScreen(
                                 items = section.blocks,
                                 key = { block -> "${section.date}-${block.messages.first().id}" }
                             ) { block ->
-                                val isFromMe = block.senderId == currentUser?.id
+                                val isFromMe = block.senderId == currentUserId
                                 val lastBlockMessage = block.messages.last()
 
                                 ChatMessageBlockRow(
@@ -411,13 +424,13 @@ fun ChatScreen(
                                     partner = visiblePartner,
                                     isFromMe = isFromMe,
                                     isLastBlock = lastMessage?.id == lastBlockMessage.id,
-                                    currentUserId = currentUser?.id,
+                                    currentUserId = currentUserId,
                                     highlightedMessageId = highlightedMessageId,
                                     recentEmojis = recentEmojis,
                                     areMessageActionsEnabled = !isReadOnly,
                                     onRecordRecentEmoji = viewModel::recordRecentEmoji,
                                     onUnsendMessage = { message ->
-                                        viewModel.unsendMessage(chatId, message.id)
+                                        viewModel.unsendMessage(activeChatId, message.id)
                                     },
                                     onReactToMessage = { message, emoji ->
                                         viewModel.reactToMessage(message.id, emoji)
@@ -447,7 +460,7 @@ fun ChatScreen(
                     replyingToMessage = replyingToMessage,
                     isKeyboardAboveBottomBar = isKeyboardAboveBottomBar,
                     replyLabel = replyingToMessage?.let { message ->
-                        if (message.senderId == currentUser?.id) {
+                        if (message.senderId == currentUserId) {
                             "Replying to yourself"
                         } else {
                             "Replying to ${displayPartnerName}"
@@ -458,7 +471,7 @@ fun ChatScreen(
                         val trimmedMessage = viewModel.messageText.trim()
                         if (trimmedMessage.isNotEmpty()) {
                             keyboardRestoreAnchor = null
-                            viewModel.sendMessage(chatId, repliedMessage = replyingToMessage)
+                            viewModel.sendMessage(activeChatId, repliedMessage = replyingToMessage)
                             replyingToMessage = null
                         }
                     }
@@ -475,6 +488,7 @@ private fun ChatHeaderBar(
     partnerUsername: String,
     partnerAvatarUrl: String?,
     partner: User?,
+    isSettingsEnabled: Boolean,
     onNavigateBack: () -> Unit,
     onNavigateToSettings: (chatId: String, partner: User?) -> Unit
 ) {
@@ -533,13 +547,18 @@ private fun ChatHeaderBar(
                 modifier = Modifier
                     .size(38.dp)
                     .clip(CircleShape)
-                    .scaledClickable(pressedScale = 1.2f) { onNavigateToSettings(chatId, partner) },
+                    .scaledClickable(
+                        pressedScale = 1.2f,
+                        enabled = isSettingsEnabled
+                    ) {
+                        onNavigateToSettings(chatId, partner)
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Outlined.Info,
                     contentDescription = "Chat settings",
-                    tint = ChatMuted,
+                    tint = if (isSettingsEnabled) ChatMuted else ChatMuted.copy(alpha = 0.38f),
                     modifier = Modifier.size(24.dp)
                 )
             }

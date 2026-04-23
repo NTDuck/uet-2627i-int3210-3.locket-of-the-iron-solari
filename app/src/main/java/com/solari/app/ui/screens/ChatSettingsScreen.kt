@@ -1,5 +1,6 @@
 package com.solari.app.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -21,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
+import com.solari.app.ui.components.SolariFeedbackPill
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
@@ -32,6 +34,7 @@ fun ChatSettingsScreen(
     initialPartner: User?,
     viewModel: ChatSettingsViewModel,
     onNavigateBack: () -> Unit,
+    onClearHistoryComplete: (String) -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToFeed: () -> Unit,
     onNavigateToChat: () -> Unit,
@@ -46,6 +49,14 @@ fun ChatSettingsScreen(
     val displayAvatarUrl = if (viewModel.isReadOnly) null else partner?.profileImageUrl
     var showClearHistoryConfirm by remember { mutableStateOf(false) }
     var showBlockConfirm by remember { mutableStateOf(false) }
+    var topPillVisible by remember { mutableStateOf(false) }
+    var topPillMessage by remember { mutableStateOf("") }
+
+    LaunchedEffect(viewModel.successMessage) {
+        val message = viewModel.successMessage ?: return@LaunchedEffect
+        topPillMessage = message
+        topPillVisible = true
+    }
 
     LaunchedEffect(chatId) {
         viewModel.setInitialPartner(initialPartner)
@@ -83,62 +94,92 @@ fun ChatSettingsScreen(
             }
         }
     ) { innerPadding ->
-        if (isAllLoading) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(innerPadding)
-                    .background(SolariTheme.colors.background),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(
-                    color = SolariTheme.colors.primary,
-                    trackColor = SolariTheme.colors.surface
-                )
-            }
-            return@Scaffold
-        }
-
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .background(MaterialTheme.colorScheme.background)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp)
         ) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                SolariAvatar(
-                    imageUrl = displayAvatarUrl,
-                    username = displayUsername,
-                    contentDescription = "Friend Avatar",
+            if (isAllLoading) {
+                Box(
                     modifier = Modifier
-                        .size(100.dp),
-                    shape = CircleShape,
-                    fontSize = 34.sp
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = displayName,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text(
-                    text = "@$displayUsername",
-                    fontSize = 14.sp,
-                    color = Color.Gray
-                )
+                        .fillMaxSize()
+                        .background(SolariTheme.colors.background),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = SolariTheme.colors.primary,
+                        trackColor = SolariTheme.colors.surface
+                    )
+                }
+                return@Scaffold
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    SolariAvatar(
+                        imageUrl = displayAvatarUrl,
+                        username = displayUsername,
+                        contentDescription = "Friend Avatar",
+                        modifier = Modifier
+                            .size(100.dp),
+                        shape = CircleShape,
+                        fontSize = 34.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = displayName,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "@$displayUsername",
+                        fontSize = 14.sp,
+                        color = Color.Gray
+                    )
+                }
 
-            if (!viewModel.isReadOnly) {
+                Spacer(modifier = Modifier.height(32.dp))
+
+                if (!viewModel.isReadOnly) {
+                    Text(
+                        text = "PREFERENCES",
+                        fontSize = 12.sp * 1.4f,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+
+                    SettingsRow(
+                        icon = Icons.Default.Notifications,
+                        title = "Mute Notifications",
+                        trailing = {
+                            Switch(
+                                checked = viewModel.isMuted ?: false,
+                                onCheckedChange = { viewModel.toggleMute(chatId) },
+                                enabled = !viewModel.isLoading && viewModel.isMuted != null,
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
+
                 Text(
-                    text = "PREFERENCES",
+                    text = "ACTIONS",
                     fontSize = 12.sp * 1.4f,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.secondary,
@@ -146,56 +187,43 @@ fun ChatSettingsScreen(
                 )
 
                 SettingsRow(
-                    icon = Icons.Default.Notifications,
-                    title = "Mute Notifications",
-                    trailing = {
-                        Switch(
-                            checked = viewModel.isMuted ?: false,
-                            onCheckedChange = { viewModel.toggleMute(chatId) },
-                            enabled = !viewModel.isLoading && viewModel.isMuted != null,
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = Color.White,
-                                checkedTrackColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(32.dp))
-            }
-
-            Text(
-                text = "ACTIONS",
-                fontSize = 12.sp * 1.4f,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-
-            SettingsRow(
-                icon = Icons.Default.Delete,
-                title = "Clear Chat History",
-                onClick = { showClearHistoryConfirm = true },
-                trailing = {
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
-                }
-            )
-
-            if (!viewModel.isReadOnly) {
-                Spacer(modifier = Modifier.height(8.dp))
-
-                SettingsRow(
-                    icon = Icons.Default.Block,
-                    title = "Block User",
-                    titleColor = Color(0xFFE57373),
-                    onClick = { showBlockConfirm = true },
+                    icon = Icons.Default.Delete,
+                    title = "Clear Chat History",
+                    onClick = { showClearHistoryConfirm = true },
                     trailing = {
                         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
                     }
                 )
+
+                if (!viewModel.isReadOnly) {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    SettingsRow(
+                        icon = Icons.Default.Block,
+                        title = "Block User",
+                        titleColor = Color(0xFFE57373),
+                        onClick = { showBlockConfirm = true },
+                        trailing = {
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
+            AnimatedVisibility(
+                visible = topPillVisible,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 12.dp, start = 24.dp, end = 24.dp)
+            ) {
+                SolariFeedbackPill(
+                    message = topPillMessage,
+                    isSuccess = true
+                )
+            }
         }
     }
 
@@ -206,7 +234,9 @@ fun ChatSettingsScreen(
             confirmText = "Clear",
             onConfirm = {
                 showClearHistoryConfirm = false
-                viewModel.clearChatHistory(chatId)
+                viewModel.clearChatHistory(chatId) {
+                    onClearHistoryComplete("Chat history cleared")
+                }
             },
             onDismiss = { showClearHistoryConfirm = false }
         )

@@ -20,4 +20,19 @@ interface FeedRepository {
         emoji: String,
         note: String?
     ): ApiResult<Unit>
+
+    suspend fun initiatePostUpload(
+        request: InitiatePostUploadRequest
+    ): ApiResult<PostUploadSession>
+
+    suspend fun uploadPostBinary(
+        uploadUrl: String,
+        contentType: String,
+        bytes: ByteArray
+    ): ApiResult<Unit>
+
+    suspend fun finalizePostUpload(
+        postId: String,
+        objectKey: String
+    ): ApiResult<Unit>
 }

@@ -4,10 +4,9 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
@@ -15,6 +14,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -50,16 +50,23 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -71,6 +78,7 @@ import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SortDropdownButton
 import com.solari.app.ui.components.SortSelection
+import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.util.scaledClickable
@@ -107,6 +115,7 @@ fun FriendManagementScreen(
     onNavigateToCamera: () -> Unit,
     onNavigateToFeed: () -> Unit,
     onNavigateToChat: () -> Unit,
+    onNavigateToConversation: (Conversation) -> Unit,
     onNavigateToProfile: () -> Unit
 ) {
     val context = LocalContext.current
@@ -114,6 +123,7 @@ fun FriendManagementScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     var requestText by remember { mutableStateOf("") }
     var sortSelection by remember { mutableStateOf(SortSelection.Default) }
+    var friendPendingUnfriend by remember { mutableStateOf<User?>(null) }
     var friendPendingBlock by remember { mutableStateOf<User?>(null) }
     var nicknameDialogState by remember { mutableStateOf<NicknameDialogState?>(null) }
     var isUserRefreshing by remember { mutableStateOf(false) }
@@ -429,7 +439,11 @@ fun FriendManagementScreen(
                                     )
                                 },
                                 onRemoveNickname = viewModel::removeNickname,
-                                onUnfriend = viewModel::unfriend,
+                                onMessage = { friend ->
+                                    viewModel.openConversation(friend, onNavigateToConversation)
+                                },
+                                messagingFriendIds = viewModel.messagingFriendIds,
+                                onUnfriend = { friendPendingUnfriend = it },
                                 onBlock = { friendPendingBlock = it }
                             )
                         }
@@ -460,6 +474,19 @@ fun FriendManagementScreen(
                 isSuccess = feedbackPillIsSuccess
             )
         }
+    }
+
+    friendPendingUnfriend?.let { friend ->
+        SolariConfirmationDialog(
+            title = "Unfriend ${friend.displayName}?",
+            message = "They will be removed from your friend list.",
+            confirmText = "Unfriend",
+            onConfirm = {
+                viewModel.unfriend(friend)
+                friendPendingUnfriend = null
+            },
+            onDismiss = { friendPendingUnfriend = null }
+        )
     }
 
     friendPendingBlock?.let { friend ->
@@ -598,10 +625,17 @@ private fun FriendListItem(
     onSetNickname: (User) -> Unit,
     onUpdateNickname: (User) -> Unit,
     onRemoveNickname: (User) -> Unit,
+    onMessage: (User) -> Unit,
+    messagingFriendIds: Set<String>,
     onUnfriend: (User) -> Unit,
     onBlock: (User) -> Unit
 ) {
     var isMenuExpanded by remember { mutableStateOf(false) }
+    var moreButtonPressPosition by remember { mutableStateOf(Offset.Unspecified) }
+    var moreButtonSize by remember { mutableStateOf(IntSize.Zero) }
+    var menuSize by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current
+    val menuOffsetY = with(density) { 30.dp.roundToPx() }
     val handle = "@${friend.username}"
     val hasNickname = !friend.nickname.isNullOrBlank()
 
@@ -652,7 +686,14 @@ private fun FriendListItem(
                 modifier = Modifier
                     .size(30.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .scaledClickable(pressedScale = 1.2f) { isMenuExpanded = true },
+                    .onSizeChanged { moreButtonSize = it }
+                    .scaledClickable(
+                        pressedScale = 1.2f,
+                        scaleFromTouch = true,
+                        onPressPosition = { moreButtonPressPosition = it }
+                    ) {
+                        isMenuExpanded = true
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -666,7 +707,7 @@ private fun FriendListItem(
             if (isMenuExpanded) {
                 Popup(
                     alignment = Alignment.TopEnd,
-                    offset = IntOffset(0, 30),
+                    offset = IntOffset(0, menuOffsetY),
                     onDismissRequest = { isMenuExpanded = false },
                     properties = PopupProperties(focusable = true)
                 ) {
@@ -674,71 +715,105 @@ private fun FriendListItem(
                     LaunchedEffect(Unit) {
                         menuVisible = true
                     }
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = menuVisible,
-                        enter = fadeIn(animationSpec = tween(120)) +
-                                scaleIn(initialScale = 0.92f, animationSpec = tween(120))
+                    val menuScale by animateFloatAsState(
+                        targetValue = if (menuVisible) 1f else 0.7f,
+                        animationSpec = tween(140),
+                        label = "FriendActionMenuScale"
+                    )
+                    val menuAlpha by animateFloatAsState(
+                        targetValue = if (menuVisible) 1f else 0f,
+                        animationSpec = tween(90),
+                        label = "FriendActionMenuAlpha"
+                    )
+
+                    Surface(
+                        color = FriendsSurface,
+                        shape = RoundedCornerShape(8.dp),
+                        shadowElevation = 8.dp,
+                        modifier = Modifier
+                            .onSizeChanged { menuSize = it }
+                            .graphicsLayer {
+                                alpha = menuAlpha
+                                scaleX = menuScale
+                                scaleY = menuScale
+                                transformOrigin = friendActionMenuTransformOrigin(
+                                    pressPosition = moreButtonPressPosition,
+                                    anchorSize = moreButtonSize,
+                                    menuSize = menuSize,
+                                    menuOffsetY = menuOffsetY
+                                )
+                            }
                     ) {
-                        Surface(
-                            color = FriendsSurface,
-                            shape = RoundedCornerShape(8.dp),
-                            shadowElevation = 8.dp
-                        ) {
-                            val actions = buildList {
-                                if (hasNickname) {
-                                    add(
-                                        FriendActionMenuEntry(
-                                            text = "Update Nickname",
-                                            color = FriendsText,
-                                            onClick = { onUpdateNickname(friend) }
-                                        )
-                                    )
-                                    add(
-                                        FriendActionMenuEntry(
-                                            text = "Remove Nickname",
-                                            color = FriendsText,
-                                            onClick = { onRemoveNickname(friend) }
-                                        )
-                                    )
-                                } else {
-                                    add(
-                                        FriendActionMenuEntry(
-                                            text = "Set Nickname",
-                                            color = FriendsText,
-                                            onClick = { onSetNickname(friend) }
-                                        )
-                                    )
-                                }
+                        val isOpeningMessage = friend.id in messagingFriendIds
+                        val actions = buildList {
+                            add(
+                                FriendActionMenuEntry(
+                                    text = if (isOpeningMessage) "Opening..." else "Message",
+                                    color = if (isOpeningMessage) FriendsSubtle else FriendsText,
+                                    enabled = !isOpeningMessage,
+                                    onClick = { onMessage(friend) }
+                                )
+                            )
+                            if (hasNickname) {
                                 add(
                                     FriendActionMenuEntry(
-                                        text = "Unfriend",
+                                        text = "Update Nickname",
                                         color = FriendsText,
-                                        onClick = { onUnfriend(friend) }
+                                        enabled = true,
+                                        onClick = { onUpdateNickname(friend) }
                                     )
                                 )
                                 add(
                                     FriendActionMenuEntry(
-                                        text = "Block",
-                                        color = FriendsMuted,
-                                        onClick = { onBlock(friend) }
+                                        text = "Remove Nickname",
+                                        color = FriendsText,
+                                        enabled = true,
+                                        onClick = { onRemoveNickname(friend) }
+                                    )
+                                )
+                            } else {
+                                add(
+                                    FriendActionMenuEntry(
+                                        text = "Set Nickname",
+                                        color = FriendsText,
+                                        enabled = true,
+                                        onClick = { onSetNickname(friend) }
                                     )
                                 )
                             }
-                            Column {
-                                actions.forEachIndexed { index, action ->
-                                    FriendActionMenuItem(
-                                        text = action.text,
-                                        color = action.color,
-                                        shape = friendActionOptionShape(
-                                            index = index,
-                                            lastIndex = actions.lastIndex
-                                        ),
-                                        onClick = {
+                            add(
+                                FriendActionMenuEntry(
+                                    text = "Unfriend",
+                                    color = FriendsText,
+                                    enabled = true,
+                                    onClick = { onUnfriend(friend) }
+                                )
+                            )
+                            add(
+                                FriendActionMenuEntry(
+                                    text = "Block",
+                                    color = FriendsMuted,
+                                    enabled = true,
+                                    onClick = { onBlock(friend) }
+                                )
+                            )
+                        }
+                        Column(modifier = Modifier.width(IntrinsicSize.Max)) {
+                            actions.forEachIndexed { index, action ->
+                                FriendActionMenuItem(
+                                    text = action.text,
+                                    color = action.color,
+                                    shape = friendActionOptionShape(
+                                        index = index,
+                                        lastIndex = actions.lastIndex
+                                    ),
+                                    onClick = {
+                                        if (action.enabled) {
                                             isMenuExpanded = false
                                             action.onClick()
                                         }
-                                    )
-                                }
+                                    }
+                                )
                             }
                         }
                     }
@@ -751,8 +826,27 @@ private fun FriendListItem(
 private data class FriendActionMenuEntry(
     val text: String,
     val color: Color,
+    val enabled: Boolean,
     val onClick: () -> Unit
 )
+
+private fun friendActionMenuTransformOrigin(
+    pressPosition: Offset,
+    anchorSize: IntSize,
+    menuSize: IntSize,
+    menuOffsetY: Int
+): TransformOrigin {
+    if (!pressPosition.isSpecified || anchorSize.width == 0 || menuSize.width == 0 || menuSize.height == 0) {
+        return TransformOrigin(1f, 0f)
+    }
+
+    val pressXInMenu = menuSize.width - anchorSize.width + pressPosition.x
+    val pressYInMenu = pressPosition.y - menuOffsetY
+    return TransformOrigin(
+        pivotFractionX = pressXInMenu / menuSize.width,
+        pivotFractionY = pressYInMenu / menuSize.height
+    )
+}
 
 @Composable
 private fun NicknameDialog(
@@ -880,6 +974,7 @@ private fun FriendActionMenuItem(
 ) {
     Box(
         modifier = Modifier
+            .fillMaxWidth()
             .height(40.dp)
             .clip(shape)
             .clickable(onClick = onClick)

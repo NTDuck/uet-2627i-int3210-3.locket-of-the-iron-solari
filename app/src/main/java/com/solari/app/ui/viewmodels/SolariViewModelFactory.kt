@@ -107,7 +107,10 @@ class SolariViewModelFactory(
             }
 
             modelClass.isAssignableFrom(HomepageAfterCapturingViewModel::class.java) -> {
-                HomepageAfterCapturingViewModel(friendRepository)
+                HomepageAfterCapturingViewModel(
+                    friendRepository = friendRepository,
+                    feedRepository = feedRepository
+                )
             }
 
             modelClass.isAssignableFrom(PasswordResetViewModel::class.java) -> {

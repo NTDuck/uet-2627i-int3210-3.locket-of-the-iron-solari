@@ -41,7 +41,7 @@ fun FeedBrowseScreen(
     onNavigateToCamera: () -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToProfile: () -> Unit,
-    onNavigateToPost: (String) -> Unit
+    onNavigateToPost: (postId: String, authorIds: Set<String>, sort: String) -> Unit
 ) {
     val posts = viewModel.posts
     val friends = viewModel.friends
@@ -256,7 +256,7 @@ fun FeedBrowseScreen(
                                 .aspectRatio(1f)
                                 .scaledClickable(pressedScale = 0.9f) {
                                     viewModel.registerPostView(post.id)
-                                    onNavigateToPost(post.id)
+                                    onNavigateToPost(post.id, selectedFriendIds, selectedSort)
                                 }
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(SolariTheme.colors.surface)

@@ -1,22 +1,34 @@
 package com.solari.app.data.feed
 
+import android.util.Log
 import com.solari.app.data.mappers.toEpochMillisOrNow
 import com.solari.app.data.mappers.toUiUser
 import com.solari.app.data.network.ApiExecutor
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.remote.feed.FeedApi
 import com.solari.app.data.remote.feed.FeedPostDto
+import com.solari.app.data.remote.feed.FinalizePostUploadRequestDto
+import com.solari.app.data.remote.feed.InitiatePostUploadRequestDto
 import com.solari.app.data.remote.feed.PostReactionDto
 import com.solari.app.data.remote.feed.PostViewerDto
 import com.solari.app.data.remote.feed.SendPostReactionRequestDto
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostActivityEntry
 import com.solari.app.ui.models.User
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 class DefaultFeedRepository(
     private val feedApi: FeedApi,
-    private val apiExecutor: ApiExecutor
+    private val apiExecutor: ApiExecutor,
+    private val uploadClient: OkHttpClient = OkHttpClient()
 ) : FeedRepository {
+    private val uploadLogTag = "SolariUpload"
+
     override suspend fun getFeed(authorIds: Set<String>): ApiResult<List<Post>> {
         val authors = authorIds.takeIf { it.isNotEmpty() }?.joinToString(",")
         return when (val result = apiExecutor.execute { feedApi.getFeed(authors = authors) }) {
@@ -66,6 +78,106 @@ class DefaultFeedRepository(
                     request = SendPostReactionRequestDto(
                         emoji = emoji,
                         note = trimmedNote
+                    )
+                )
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(Unit)
+        }
+    }
+
+    override suspend fun initiatePostUpload(
+        request: InitiatePostUploadRequest
+    ): ApiResult<PostUploadSession> {
+        return when (
+            val result = apiExecutor.execute {
+                feedApi.initiatePostUpload(
+                    request = InitiatePostUploadRequestDto(
+                        contentType = request.contentType,
+                        caption = request.caption,
+                        audienceType = request.audienceType,
+                        viewerIds = request.viewerIds.takeIf { it.isNotEmpty() }?.joinToString(","),
+                        width = request.width,
+                        height = request.height,
+                        byteSize = request.byteSize,
+                        durationMs = request.durationMs,
+                        timezone = request.timezone
+                    )
+                )
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(
+                PostUploadSession(
+                    postId = result.data.postId,
+                    objectKey = result.data.objectKey,
+                    uploadUrl = result.data.uploadUrl
+                )
+            )
+        }
+    }
+
+    override suspend fun uploadPostBinary(
+        uploadUrl: String,
+        contentType: String,
+        bytes: ByteArray
+    ): ApiResult<Unit> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val response = uploadClient.newCall(
+                    Request.Builder()
+                        .url(uploadUrl)
+                        .put(bytes.toRequestBody(contentType.toMediaType()))
+                        .header("Content-Type", contentType)
+                        .build()
+                ).execute()
+
+                response.use {
+                    if (it.isSuccessful) {
+                        ApiResult.Success(Unit)
+                    } else {
+                        val errorBody = it.body?.string()?.take(2_000).orEmpty()
+                        Log.e(
+                            uploadLogTag,
+                            "Presigned upload failed: status=${it.code}, " +
+                                    "contentType=$contentType, bytes=${bytes.size}, " +
+                                    "host=${it.request.url.host}, path=${it.request.url.encodedPath}, " +
+                                    "body=$errorBody"
+                        )
+                        ApiResult.Failure(
+                            statusCode = it.code,
+                            type = "UPLOAD_FAILED",
+                            message = "Media upload failed (${it.code}). Check Logcat tag $uploadLogTag."
+                        )
+                    }
+                }
+            } catch (error: Exception) {
+                Log.e(
+                    uploadLogTag,
+                    "Presigned upload crashed: contentType=$contentType, bytes=${bytes.size}",
+                    error
+                )
+                ApiResult.Failure(
+                    statusCode = null,
+                    type = "UPLOAD_FAILED",
+                    message = error.message ?: "Media upload failed. Check Logcat tag $uploadLogTag.",
+                    cause = error
+                )
+            }
+        }
+    }
+
+    override suspend fun finalizePostUpload(
+        postId: String,
+        objectKey: String
+    ): ApiResult<Unit> {
+        return when (
+            val result = apiExecutor.execute {
+                feedApi.finalizePostUpload(
+                    request = FinalizePostUploadRequestDto(
+                        postId = postId,
+                        objectKey = objectKey
                     )
                 )
             }

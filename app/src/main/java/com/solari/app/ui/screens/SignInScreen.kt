@@ -11,7 +11,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +54,7 @@ fun SignInScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val identifierFocusRequester = remember { FocusRequester() }
     val passwordFocusRequester = remember { FocusRequester() }
+    var isPasswordVisible by remember { mutableStateOf(false) }
 
     fun submitSignIn() {
         focusManager.clearFocus(force = true)
@@ -102,6 +105,8 @@ fun SignInScreen(
                     label = "Password",
                     placeholder = "••••••••",
                     isPassword = true,
+                    isPasswordVisible = isPasswordVisible,
+                    onPasswordVisibilityChange = { isPasswordVisible = it },
                     labelFontSize = 17.sp,
                     textFontSize = 16.sp,
                     modifier = Modifier.padding(bottom = 16.dp),

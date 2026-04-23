@@ -3,6 +3,8 @@ package com.solari.app.ui.models
 import java.io.Serializable
 import java.util.UUID
 
+private const val DraftConversationIdPrefix = "draft-"
+
 data class Conversation(
     val id: String,
     val otherUser: User,
@@ -12,8 +14,13 @@ data class Conversation(
     val isUnread: Boolean = false,
     val isMuted: Boolean = false,
     val isReadOnly: Boolean = false,
+    val isDraft: Boolean = false,
     val messages: List<Message> = emptyList()
 ) : Serializable
+
+fun draftConversationIdForUser(userId: String): String {
+    return "$DraftConversationIdPrefix$userId"
+}
 
 data class FriendRequest(
     val id: String,
