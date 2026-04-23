@@ -4,47 +4,174 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
-import com.solari.app.data.ServiceLocator
+import androidx.lifecycle.viewModelScope
+import com.solari.app.data.auth.AuthSignInMethod
+import com.solari.app.data.auth.AuthRepository
+import com.solari.app.data.network.ApiResult
+import com.solari.app.data.user.DeleteAccountVerification
+import com.solari.app.data.user.ProfileAvatarUpload
+import com.solari.app.data.user.UserRepository
 import com.solari.app.ui.models.User
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
-class ProfileViewModel : ViewModel() {
-    var user by mutableStateOf(ServiceLocator.mockDataProvider.currentUser)
+class ProfileViewModel(
+    private val userRepository: UserRepository,
+    private val authRepository: AuthRepository
+) : ViewModel() {
+    var user by mutableStateOf<User?>(null)
+        private set
+
+    var isLoading by mutableStateOf(false)
+        private set
+
+    var isUpdatingAvatar by mutableStateOf(false)
+        private set
+    var isDeletingAccount by mutableStateOf(false)
+        private set
+    var isSignedInWithGoogle by mutableStateOf(false)
         private set
 
     var successMessage by mutableStateOf<String?>(null)
     var errorMessage by mutableStateOf<String?>(null)
 
+    init {
+        loadMe()
+        observeAuthSession()
+    }
+
+    private fun observeAuthSession() {
+        viewModelScope.launch {
+            authRepository.currentSession.collect { session ->
+                isSignedInWithGoogle = session?.signInMethod == AuthSignInMethod.Google
+            }
+        }
+    }
+
+    fun loadMe() {
+        viewModelScope.launch {
+            isLoading = true
+            try {
+                when (val result = userRepository.getMe()) {
+                    is ApiResult.Success -> {
+                        user = result.data
+                        errorMessage = null
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to load profile"
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
     fun updateDisplayName(newName: String) {
-        user = user.copy(displayName = newName)
-        ServiceLocator.mockDataProvider.currentUser = user
+        viewModelScope.launch {
+            when (val result = userRepository.updateProfile(displayName = newName)) {
+                is ApiResult.Success -> {
+                    user = result.data
+                    successMessage = "Display name updated successfully"
+                    errorMessage = null
+                }
+
+                is ApiResult.Failure -> errorMessage = result.message
+            }
+        }
     }
 
-    fun updateUsername(newUsername: String): Boolean {
-        if (newUsername == user.username) return true
-        val exists = ServiceLocator.mockDataProvider.users.any { it.username == newUsername && it.id != user.id }
-        if (exists) {
-            errorMessage = "Username already exists"
-            return false
+    fun updateEmail(newEmail: String) {
+        viewModelScope.launch {
+            when (val result = userRepository.updateProfile(email = newEmail)) {
+                is ApiResult.Success -> {
+                    user = result.data
+                    successMessage = "Email updated successfully"
+                    errorMessage = null
+                }
+
+                is ApiResult.Failure -> errorMessage = result.message
+            }
         }
-        user = user.copy(username = newUsername)
-        ServiceLocator.mockDataProvider.currentUser = user
-        successMessage = "Username updated successfully"
-        errorMessage = null
-        return true
     }
 
-    fun updateEmail(newEmail: String): Boolean {
-        if (newEmail == user.email) return true
-        val exists = ServiceLocator.mockDataProvider.users.any { it.email == newEmail && it.id != user.id }
-        if (exists) {
-            errorMessage = "Email already exists"
-            return false
+    fun removeDisplayName() {
+        viewModelScope.launch {
+            try {
+                when (val result = userRepository.updateProfile(removeDisplayName = true)) {
+                    is ApiResult.Success -> {
+                        user = result.data
+                        successMessage = "Display name removed"
+                        errorMessage = null
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to remove display name"
+            }
         }
-        user = user.copy(email = newEmail)
-        ServiceLocator.mockDataProvider.currentUser = user
-        successMessage = "Email updated successfully"
-        errorMessage = null
-        return true
+    }
+
+    fun updateAvatar(
+        avatar: ProfileAvatarUpload,
+        onSuccess: () -> Unit = {},
+        onFailure: () -> Unit = {}
+    ) {
+        if (isUpdatingAvatar) return
+
+        viewModelScope.launch {
+            isUpdatingAvatar = true
+            try {
+                when (val result = userRepository.updateProfile(avatar = avatar)) {
+                    is ApiResult.Success -> {
+                        user = result.data
+                        successMessage = "Avatar updated successfully"
+                        errorMessage = null
+                        onSuccess()
+                    }
+
+                    is ApiResult.Failure -> {
+                        errorMessage = result.message
+                        onFailure()
+                    }
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to update avatar"
+                onFailure()
+            } finally {
+                isUpdatingAvatar = false
+            }
+        }
+    }
+
+    fun removeAvatar(onSuccess: () -> Unit = {}) {
+        if (isUpdatingAvatar) return
+
+        viewModelScope.launch {
+            isUpdatingAvatar = true
+            try {
+                when (val result = userRepository.updateProfile(removeAvatar = true)) {
+                    is ApiResult.Success -> {
+                        user = result.data
+                        successMessage = "Avatar removed"
+                        errorMessage = null
+                        onSuccess()
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to remove avatar"
+            } finally {
+                isUpdatingAvatar = false
+            }
+        }
     }
 
     fun clearMessages() {
@@ -52,12 +179,91 @@ class ProfileViewModel : ViewModel() {
         errorMessage = null
     }
 
-    fun deleteAccount(password: String): Boolean {
-        // Mock password check
-        if (password == "password") {
-            ServiceLocator.mockDataProvider.deleteAccount()
-            return true
+    fun deleteAccount(
+        password: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        if (isDeletingAccount) return
+        val trimmedPassword = password.trim()
+        if (trimmedPassword.isBlank()) {
+            val message = "Enter your password"
+            errorMessage = message
+            onFailure(message)
+            return
         }
-        return false
+
+        viewModelScope.launch {
+            isDeletingAccount = true
+            errorMessage = null
+            successMessage = null
+            try {
+                when (
+                    val result = userRepository.deleteAccount(
+                        DeleteAccountVerification.Password(trimmedPassword)
+                    )
+                ) {
+                    is ApiResult.Success -> {
+                        authRepository.clearSession()
+                        onSuccess()
+                    }
+
+                    is ApiResult.Failure -> {
+                        errorMessage = result.message
+                        onFailure(result.message)
+                    }
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to delete account"
+                onFailure(errorMessage ?: "Failed to delete account")
+            } finally {
+                isDeletingAccount = false
+            }
+        }
+    }
+
+    fun deleteAccountWithGoogle(
+        idToken: String,
+        onSuccess: () -> Unit,
+        onFailure: (String) -> Unit = {}
+    ) {
+        if (isDeletingAccount) return
+        val normalizedIdToken = idToken.trim()
+        if (normalizedIdToken.isBlank()) {
+            val message = "Google verification did not return an ID token."
+            errorMessage = message
+            onFailure(message)
+            return
+        }
+
+        viewModelScope.launch {
+            isDeletingAccount = true
+            errorMessage = null
+            successMessage = null
+            try {
+                when (
+                    val result = userRepository.deleteAccount(
+                        DeleteAccountVerification.GoogleIdToken(normalizedIdToken)
+                    )
+                ) {
+                    is ApiResult.Success -> {
+                        authRepository.clearSession()
+                        onSuccess()
+                    }
+
+                    is ApiResult.Failure -> {
+                        errorMessage = result.message
+                        onFailure(result.message)
+                    }
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to delete account"
+                onFailure(errorMessage ?: "Failed to delete account")
+            } finally {
+                isDeletingAccount = false
+            }
+        }
     }
 }

@@ -44,9 +44,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.solari.app.data.ServiceLocator
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.HomepageAfterCapturingViewModel
@@ -66,11 +66,7 @@ fun HomepageAfterCapturingScreen(
 ) {
     var selectedFriends by remember { mutableStateOf(setOf<String>()) }
     var isPublic by remember { mutableStateOf(true) }
-    val friends = remember {
-        ServiceLocator.mockDataProvider.users.filter {
-            it.id != ServiceLocator.mockDataProvider.currentUser.id
-        }
-    }
+    val friends = viewModel.friends
 
     Scaffold(
         containerColor = SolariTheme.colors.background,
@@ -135,6 +131,7 @@ fun HomepageAfterCapturingScreen(
 
                     VisibilityFriendItem(
                         name = friend.displayName,
+                        username = friend.username,
                         avatarUrl = friend.profileImageUrl,
                         selected = isSelected,
                         onClick = {
@@ -248,7 +245,8 @@ private fun VisibilityAllItem(
 @Composable
 private fun VisibilityFriendItem(
     name: String,
-    avatarUrl: String,
+    username: String,
+    avatarUrl: String?,
     selected: Boolean,
     onClick: () -> Unit
 ) {
@@ -256,19 +254,19 @@ private fun VisibilityFriendItem(
         modifier = Modifier.width(56.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        AsyncImage(
-            model = avatarUrl,
+        SolariAvatar(
+            imageUrl = avatarUrl,
+            username = username,
             contentDescription = "$name avatar",
             modifier = Modifier
                 .size(56.dp)
-                .clip(CircleShape)
                 .border(
                     width = if (selected) 2.dp else 0.dp,
                     color = if (selected) SolariTheme.colors.primary else Color.Transparent,
                     shape = CircleShape
                 )
-                .clickable(onClick = onClick),
-            contentScale = ContentScale.Crop
+                .clickable(onClick = onClick).clip(CircleShape),
+            fontSize = 19.sp
         )
 
         Text(
@@ -277,7 +275,7 @@ private fun VisibilityFriendItem(
             fontSize = 11.sp,
             lineHeight = 12.sp,
             fontFamily = PlusJakartaSans,
-            maxLines = 1,
+            maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 9.dp)
         )

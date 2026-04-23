@@ -2,7 +2,6 @@ package com.solari.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.annotation.DrawableRes
@@ -51,21 +50,19 @@ fun SolariBottomNavBar(
             .height(72.dp)
             .clip(RoundedCornerShape(36.dp))
             .background(SolariTheme.colors.navBarColor)
-            .padding(4.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxSize(),
             verticalAlignment = Alignment.CenterVertically
         ) {
             items.forEach { item ->
+                val rippleShape = RoundedCornerShape(36.dp)
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .clickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null
-                        ) {
+                        .clip(rippleShape)
+                        .clickable {
                             onNavigate(item.route)
                         },
                     contentAlignment = Alignment.Center

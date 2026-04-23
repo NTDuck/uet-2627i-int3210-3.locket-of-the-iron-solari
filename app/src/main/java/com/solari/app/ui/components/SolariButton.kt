@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -34,11 +35,14 @@ fun SolariButton(
     contentColor: Color = SolariTheme.colors.onPrimary,
     buttonHeight: Dp = 56.dp,
     fontSize: TextUnit = 16.sp,
+    fontFamily: FontFamily = PlusJakartaSans,
     fontWeight: FontWeight = FontWeight.Bold,
-    icon: @Composable (() -> Unit)? = null
+    icon: @Composable (() -> Unit)? = null,
+    enabled: Boolean = true
 ) {
     Button(
         onClick = onClick,
+        enabled = enabled,
         modifier = modifier
             .fillMaxWidth()
             .height(buttonHeight),
@@ -58,7 +62,7 @@ fun SolariButton(
             Text(
                 text = text,
                 fontSize = fontSize,
-                fontFamily = PlusJakartaSans,
+                fontFamily = fontFamily,
                 fontWeight = fontWeight
             )
         }

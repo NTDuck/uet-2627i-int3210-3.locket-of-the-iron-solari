@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.sp
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.theme.SolariThemeVariant
 import com.solari.app.ui.theme.ThemeMap
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.ChangeThemeViewModel
 import com.solari.app.ui.viewmodels.SettingsViewModel
 
@@ -39,7 +40,12 @@ fun ChangeThemeScreen(
                     .padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onNavigateBack) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .scaledClickable(pressedScale = 1.2f, onClick = onNavigateBack),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",

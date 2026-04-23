@@ -10,7 +10,6 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.HomepageBeforeCapturingViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -99,6 +99,29 @@ fun HomepageBeforeCapturingScreen(
     ) {
         Spacer(modifier = Modifier.height(48.dp))
 
+        if (viewModel.currentStreak >= 2) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Surface(
+                    color = SolariTheme.colors.surface,
+                    shape = RoundedCornerShape(18.dp),
+                    shadowElevation = 8.dp
+                ) {
+                    Text(
+                        text = "🔥 Current streak: ${viewModel.currentStreak}",
+                        color = SolariTheme.colors.onSurface,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
+                    )
+                }
+            }
+        }
+
         // Viewfinder
         Box(
             modifier = Modifier
@@ -153,15 +176,15 @@ fun HomepageBeforeCapturingScreen(
             Box(
                 modifier = Modifier
                     .size(48.dp * buttonScale)
-                    .clip(CircleShape)
-                    .background(SolariTheme.colors.surface)
-                    .clickable {
-                    flashMode = when (flashMode) {
-                        ImageCapture.FLASH_MODE_OFF -> ImageCapture.FLASH_MODE_ON
-                        ImageCapture.FLASH_MODE_ON -> ImageCapture.FLASH_MODE_AUTO
-                        else -> ImageCapture.FLASH_MODE_OFF
+                    .scaledClickable(pressedScale = 1.2f) {
+                        flashMode = when (flashMode) {
+                            ImageCapture.FLASH_MODE_OFF -> ImageCapture.FLASH_MODE_ON
+                            ImageCapture.FLASH_MODE_ON -> ImageCapture.FLASH_MODE_AUTO
+                            else -> ImageCapture.FLASH_MODE_OFF
+                        }
                     }
-                },
+                    .clip(CircleShape)
+                    .background(SolariTheme.colors.surface),
                 contentAlignment = Alignment.Center
             ) {
                 val icon = when (flashMode) {
@@ -196,15 +219,15 @@ fun HomepageBeforeCapturingScreen(
             Box(
                 modifier = Modifier
                     .size(48.dp * buttonScale)
-                    .clip(CircleShape)
-                    .background(SolariTheme.colors.surface)
-                    .clickable {
-                    timerValue = when (timerValue) {
-                        0 -> 3
-                        3 -> 10
-                        else -> 0
+                    .scaledClickable(pressedScale = 1.2f) {
+                        timerValue = when (timerValue) {
+                            0 -> 3
+                            3 -> 10
+                            else -> 0
+                        }
                     }
-                },
+                    .clip(CircleShape)
+                    .background(SolariTheme.colors.surface),
                 contentAlignment = Alignment.Center
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -232,9 +255,9 @@ fun HomepageBeforeCapturingScreen(
             Box(
                 modifier = Modifier
                     .size(56.dp * buttonScale)
+                    .scaledClickable(pressedScale = 1.2f, onClick = onCapture)
                     .clip(CircleShape)
-                    .background(SolariTheme.colors.surface)
-                    .clickable { onCapture() },
+                    .background(SolariTheme.colors.surface),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.Image, contentDescription = "Gallery", tint = SolariTheme.colors.onSurface, modifier = Modifier.size(28.dp * buttonScale))
@@ -242,23 +265,24 @@ fun HomepageBeforeCapturingScreen(
 
             // Capture Button
             Surface(
-                onClick = {
-                    if (timerValue > 0) {
-                        scope.launch {
-                            isTimerRunning = true
-                            countdownValue = timerValue
-                            while (countdownValue > 0) {
-                                delay(1000)
-                                countdownValue--
+                modifier = Modifier
+                    .size(72.dp * buttonScale)
+                    .scaledClickable(pressedScale = 1.2f) {
+                        if (timerValue > 0) {
+                            scope.launch {
+                                isTimerRunning = true
+                                countdownValue = timerValue
+                                while (countdownValue > 0) {
+                                    delay(1000)
+                                    countdownValue--
+                                }
+                                onCapture()
+                                isTimerRunning = false
                             }
+                        } else {
                             onCapture()
-                            isTimerRunning = false
                         }
-                    } else {
-                        onCapture()
-                    }
-                },
-                modifier = Modifier.size(72.dp * buttonScale),
+                    },
                 shape = CircleShape,
                 color = SolariTheme.colors.primary,
                 border = BorderStroke(4.dp, SolariTheme.colors.onPrimary.copy(alpha = 0.5f))
@@ -267,15 +291,15 @@ fun HomepageBeforeCapturingScreen(
             Box(
                 modifier = Modifier
                     .size(56.dp * buttonScale)
-                    .clip(CircleShape)
-                    .background(SolariTheme.colors.surface)
-                    .clickable {
-                    lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
-                        CameraSelector.LENS_FACING_FRONT
-                    } else {
-                        CameraSelector.LENS_FACING_BACK
+                    .scaledClickable(pressedScale = 1.2f) {
+                        lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK) {
+                            CameraSelector.LENS_FACING_FRONT
+                        } else {
+                            CameraSelector.LENS_FACING_BACK
+                        }
                     }
-                },
+                    .clip(CircleShape)
+                    .background(SolariTheme.colors.surface),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(

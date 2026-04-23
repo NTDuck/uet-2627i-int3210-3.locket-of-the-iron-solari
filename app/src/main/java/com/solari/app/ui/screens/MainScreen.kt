@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.viewmodels.*
 import kotlinx.coroutines.launch
 
@@ -19,18 +20,22 @@ import kotlinx.coroutines.launch
 fun MainScreen(
     initialPage: Int = 0,
     initialFeedPostId: String? = null,
+    profileFeedbackMessage: String? = null,
     settingsViewModel: SettingsViewModel,
-    onNavigateToChat: (String) -> Unit,
+    viewModelFactory: SolariViewModelFactory,
+    onNavigateToChat: (Conversation) -> Unit,
     onNavigateToManageFriends: () -> Unit,
     onNavigateToBlockedAccounts: () -> Unit,
     onNavigateToChangePassword: () -> Unit,
     onNavigateToChangeTheme: () -> Unit,
-    onNavigateToFeedBrowse: () -> Unit,
+    onNavigateToFeedBrowse: (String?) -> Unit,
     onCapture: () -> Unit,
-    onLogout: () -> Unit
+    onLogout: () -> Unit,
+    onProfileFeedbackConsumed: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 4 }
     val scope = rememberCoroutineScope()
+    var isFeedActivityPanelVisible by remember { mutableStateOf(false) }
 
     val routes = listOf(
         SolariRoute.Screen.CameraBefore,
@@ -67,11 +72,11 @@ fun MainScreen(
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize().padding(innerPadding),
-            userScrollEnabled = true
+            userScrollEnabled = !isFeedActivityPanelVisible
         ) { page ->
             when (page) {
                 0 -> {
-                    val viewModel: HomepageBeforeCapturingViewModel = viewModel()
+                    val viewModel: HomepageBeforeCapturingViewModel = viewModel(factory = viewModelFactory)
                     HomepageBeforeCapturingScreen(
                         viewModel = viewModel,
                         onNavigateBack = {},
@@ -82,7 +87,7 @@ fun MainScreen(
                     )
                 }
                 1 -> {
-                    val viewModel: FeedViewModel = viewModel()
+                    val viewModel: FeedViewModel = viewModel(factory = viewModelFactory)
                     FeedScreen(
                         viewModel = viewModel,
                         initialPostId = initialFeedPostId,
@@ -90,11 +95,13 @@ fun MainScreen(
                         onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToChat = { scope.launch { pagerState.animateScrollToPage(2) } },
                         onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } },
-                        onNavigateToBrowse = onNavigateToFeedBrowse
+                        onNavigateToBrowse = onNavigateToFeedBrowse,
+                        isFeedVisible = pagerState.currentPage == 1,
+                        onActivityPanelVisibilityChanged = { isFeedActivityPanelVisible = it }
                     )
                 }
                 2 -> {
-                    val viewModel: ConversationViewModel = viewModel()
+                    val viewModel: ConversationViewModel = viewModel(factory = viewModelFactory)
                     ConversationScreen(
                         viewModel = viewModel,
                         onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
@@ -106,10 +113,12 @@ fun MainScreen(
                     )
                 }
                 3 -> {
-                    val viewModel: ProfileViewModel = viewModel()
+                    val viewModel: ProfileViewModel = viewModel(factory = viewModelFactory)
                     ProfileScreen(
                         viewModel = viewModel,
                         settingsViewModel = settingsViewModel,
+                        externalFeedbackMessage = profileFeedbackMessage,
+                        onExternalFeedbackConsumed = onProfileFeedbackConsumed,
                         onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToChangePassword = onNavigateToChangePassword,
                         onNavigateToChangeTheme = onNavigateToChangeTheme,

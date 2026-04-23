@@ -4,19 +4,79 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.solari.app.data.feed.FeedRepository
+import com.solari.app.data.friend.FriendRepository
+import com.solari.app.data.network.ApiResult
+import com.solari.app.data.user.UserRepository
+import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.User
+import kotlinx.coroutines.launch
 
-class FeedBrowseViewModel : ViewModel() {
-    var friends by mutableStateOf(
-        listOf(
-            User("2", "Alice", "alice", "alice@solari.app"),
-            User("3", "Benjamin", "ben", "ben@solari.app"),
-            User("4", "Charlie", "charlie", "charlie@solari.app"),
-            User("1", "John", "john_n", "john@solari.app")
-        )
-    )
+class FeedBrowseViewModel(
+    private val feedRepository: FeedRepository,
+    private val friendRepository: FriendRepository,
+    private val userRepository: UserRepository
+) : ViewModel() {
+    var friends by mutableStateOf<List<User>>(emptyList())
         private set
 
-    var browseImages by mutableStateOf(List(15) { "https://www.politicon.com/wp-content/uploads/2017/06/Charlie-Kirk-2019-1024x1024.jpg" })
+    var currentUser by mutableStateOf<User?>(null)
         private set
+
+    var posts by mutableStateOf<List<Post>>(emptyList())
+        private set
+
+    var isLoading by mutableStateOf(false)
+        private set
+
+    var errorMessage by mutableStateOf<String?>(null)
+        private set
+
+    private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
+
+    init {
+        refresh()
+    }
+
+    fun refresh() {
+        viewModelScope.launch {
+            isLoading = true
+            errorMessage = null
+
+            when (val meResult = userRepository.getMe()) {
+                is ApiResult.Success -> currentUser = meResult.data
+                is ApiResult.Failure -> errorMessage = meResult.message
+            }
+
+            when (val friendsResult = friendRepository.getFriends()) {
+                is ApiResult.Success -> friends = friendsResult.data
+                is ApiResult.Failure -> errorMessage = friendsResult.message
+            }
+
+            when (val feedResult = feedRepository.getFeed()) {
+                is ApiResult.Success -> posts = feedResult.data
+                is ApiResult.Failure -> if (errorMessage == null) errorMessage = feedResult.message
+            }
+
+            isLoading = false
+        }
+    }
+
+    fun registerPostView(postId: String) {
+        if (postId in registeredViewPostIds) {
+            return
+        }
+
+        registeredViewPostIds = registeredViewPostIds + postId
+        viewModelScope.launch {
+            when (val result = feedRepository.registerPostView(postId)) {
+                is ApiResult.Success -> Unit
+                is ApiResult.Failure -> {
+                    registeredViewPostIds = registeredViewPostIds - postId
+                    errorMessage = result.message
+                }
+            }
+        }
+    }
 }
