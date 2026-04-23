@@ -104,6 +104,8 @@ fun SignUpScreen(
     var feedbackPillVisible by remember { mutableStateOf(false) }
     var feedbackPillMessage by remember { mutableStateOf("") }
     var focusedField by remember { mutableStateOf<SignUpFocusedField?>(null) }
+    var isPasswordVisible by remember { mutableStateOf(false) }
+    var isConfirmPasswordVisible by remember { mutableStateOf(false) }
     var usernameBounds by remember { mutableStateOf<Rect?>(null) }
     var emailBounds by remember { mutableStateOf<Rect?>(null) }
     var passwordBounds by remember { mutableStateOf<Rect?>(null) }
@@ -224,6 +226,8 @@ fun SignUpScreen(
                     label = "Password",
                     placeholder = "••••••••",
                     isPassword = true,
+                    isPasswordVisible = isPasswordVisible,
+                    onPasswordVisibilityChange = { isPasswordVisible = it },
                     labelFontSize = 17.sp,
                     textFontSize = 16.sp,
                     modifier = Modifier.padding(bottom = 24.dp),
@@ -246,6 +250,8 @@ fun SignUpScreen(
                     label = "Confirm Password",
                     placeholder = "••••••••",
                     isPassword = true,
+                    isPasswordVisible = isConfirmPasswordVisible,
+                    onPasswordVisibilityChange = { isConfirmPasswordVisible = it },
                     labelFontSize = 17.sp,
                     textFontSize = 16.sp,
                     modifier = Modifier.padding(bottom = 40.dp),

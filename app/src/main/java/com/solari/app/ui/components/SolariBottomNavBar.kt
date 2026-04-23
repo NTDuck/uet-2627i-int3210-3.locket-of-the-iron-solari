@@ -46,6 +46,7 @@ fun SolariBottomNavBar(
     Box(
         modifier = Modifier
             .fillMaxWidth()
+            .navigationBarsPadding()
             .padding(bottom = 32.dp, start = 24.dp, end = 24.dp)
             .height(72.dp)
             .clip(RoundedCornerShape(36.dp))

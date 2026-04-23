@@ -31,6 +31,9 @@ class ChatViewModel(
 
     var currentUser by mutableStateOf<User?>(null)
         private set
+
+    var currentUserId by mutableStateOf<String?>(null)
+        private set
     
     var messageText by mutableStateOf("")
 
@@ -57,16 +60,19 @@ class ChatViewModel(
         }
     }
 
+    fun openDraftConversation(conversation: Conversation) {
+        setInitialConversation(conversation)
+        isLoadingMessages = false
+        errorMessage = null
+    }
+
     fun loadConversation(chatId: String) {
         viewModelScope.launch {
             isLoadingMessages = true
             errorMessage = null
 
             try {
-                when (val userResult = userRepository.getMe()) {
-                    is ApiResult.Success -> currentUser = userResult.data
-                    is ApiResult.Failure -> errorMessage = userResult.message
-                }
+                loadCurrentUser()
 
                 val conversationResult = conversationRepository.getConversation(chatId)
                 val messagesResult = conversationRepository.getMessages(chatId)
@@ -100,11 +106,11 @@ class ChatViewModel(
         val content = messageText.trim()
         if (content.isBlank()) return
 
-        val sender = currentUser
-        val localMessage = sender?.let {
+        val senderId = currentUser?.id ?: currentUserId
+        val localMessage = senderId?.let {
             Message(
                 id = "local-${UUID.randomUUID()}",
-                senderId = it.id,
+                senderId = it,
                 text = content,
                 timestamp = System.currentTimeMillis(),
                 repliedMessageId = repliedMessage?.id,
@@ -113,9 +119,9 @@ class ChatViewModel(
             )
         }
         val previousConversation = conversation
+        messageText = ""
 
         if (localMessage != null && previousConversation != null) {
-            messageText = ""
             conversation = previousConversation.copy(
                 messages = previousConversation.messages + localMessage,
                 lastMessage = localMessage.text,
@@ -124,43 +130,89 @@ class ChatViewModel(
         }
 
         viewModelScope.launch {
-            when (
-                val result = conversationRepository.sendMessage(
-                    conversationId = chatId,
-                    content = content,
-                    repliedMessageId = repliedMessage?.id
-                )
-            ) {
-                is ApiResult.Success -> {
-                    messageText = ""
-                    val sentMessage = result.data.copy(
-                        repliedMessagePreview = repliedMessage?.text?.takeIf { it.isNotBlank() }
-                    )
-                    val currentConversation = conversation
-                    if (currentConversation != null) {
-                        conversation = currentConversation.copy(
-                            messages = if (localMessage != null) {
-                                currentConversation.messages.map { message ->
-                                    if (message.id == localMessage.id) sentMessage else message
-                                }
-                            } else {
-                                currentConversation.messages + sentMessage
-                            },
-                            lastMessage = sentMessage.text,
-                            timestamp = sentMessage.timestamp
-                        )
-                    } else {
-                        loadConversation(chatId)
+            var targetChatId = chatId
+            var createdConversationId: String? = null
+
+            try {
+                if (previousConversation?.isDraft == true) {
+                    when (val createResult = conversationRepository.createConversation(previousConversation.otherUser.id)) {
+                        is ApiResult.Success -> {
+                            targetChatId = createResult.data
+                            createdConversationId = createResult.data
+                            conversation = conversation?.copy(
+                                id = createResult.data,
+                                isDraft = false
+                            )
+                        }
+
+                        is ApiResult.Failure -> {
+                            if (localMessage != null) {
+                                conversation = previousConversation
+                            }
+                            messageText = content
+                            errorMessage = createResult.message
+                            return@launch
+                        }
                     }
                 }
 
-                is ApiResult.Failure -> {
-                    if (localMessage != null && previousConversation != null) {
-                        conversation = previousConversation
+                when (
+                    val result = conversationRepository.sendMessage(
+                        conversationId = targetChatId,
+                        content = content,
+                        repliedMessageId = repliedMessage?.id
+                    )
+                ) {
+                    is ApiResult.Success -> {
+                        messageText = ""
+                        val sentMessage = result.data.copy(
+                            repliedMessagePreview = repliedMessage?.text?.takeIf { it.isNotBlank() }
+                        )
+                        currentUserId = sentMessage.senderId
+                        val currentConversation = conversation
+                        if (currentConversation != null) {
+                            conversation = currentConversation.copy(
+                                id = targetChatId,
+                                isDraft = false,
+                                messages = if (localMessage != null) {
+                                    currentConversation.messages.map { message ->
+                                        if (message.id == localMessage.id) sentMessage else message
+                                    }
+                                } else {
+                                    currentConversation.messages + sentMessage
+                                },
+                                lastMessage = sentMessage.text,
+                                timestamp = sentMessage.timestamp
+                            )
+                        } else {
+                            loadConversation(targetChatId)
+                        }
                     }
-                    messageText = content
-                    errorMessage = result.message
+
+                    is ApiResult.Failure -> {
+                        if (localMessage != null && previousConversation != null) {
+                            conversation = if (createdConversationId == null) {
+                                previousConversation
+                            } else {
+                                previousConversation.copy(
+                                    id = createdConversationId,
+                                    isDraft = false
+                                )
+                            }
+                        }
+                        messageText = content
+                        errorMessage = result.message
+                    }
                 }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                if (localMessage != null && previousConversation != null) {
+                    conversation = createdConversationId?.let { conversationId ->
+                        previousConversation.copy(id = conversationId, isDraft = false)
+                    } ?: previousConversation
+                }
+                messageText = content
+                errorMessage = throwable.message ?: "Failed to send message"
             }
         }
     }
@@ -235,6 +287,16 @@ class ChatViewModel(
             }.onFailure { throwable ->
                 errorMessage = throwable.message ?: "Failed to save recent emoji"
             }
+        }
+    }
+
+    private suspend fun loadCurrentUser() {
+        when (val userResult = userRepository.getMe()) {
+            is ApiResult.Success -> {
+                currentUser = userResult.data
+                currentUserId = userResult.data.id
+            }
+            is ApiResult.Failure -> errorMessage = userResult.message
         }
     }
 

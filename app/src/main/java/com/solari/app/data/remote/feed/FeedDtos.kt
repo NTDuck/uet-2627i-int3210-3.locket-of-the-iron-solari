@@ -86,3 +86,47 @@ data class SendPostReactionRequestDto(
     val emoji: String,
     val note: String? = null
 )
+
+@Serializable
+data class InitiatePostUploadRequestDto(
+    @SerialName("content_type")
+    val contentType: String,
+    val caption: String? = null,
+    @SerialName("audience_type")
+    val audienceType: String,
+    @SerialName("viewer_ids")
+    val viewerIds: String? = null,
+    val width: Int,
+    val height: Int,
+    @SerialName("byte_size")
+    val byteSize: Long,
+    @SerialName("duration_ms")
+    val durationMs: Long? = null,
+    val timezone: String
+)
+
+@Serializable
+data class InitiatePostUploadResponseDto(
+    @SerialName("post_id")
+    val postId: String,
+    @SerialName("object_key")
+    val objectKey: String,
+    @SerialName("upload_url")
+    val uploadUrl: String
+)
+
+@Serializable
+data class FinalizePostUploadRequestDto(
+    @SerialName("post_id")
+    val postId: String,
+    @SerialName("object_key")
+    val objectKey: String
+)
+
+@Serializable
+data class FinalizePostUploadResponseDto(
+    val message: String,
+    @SerialName("post_id")
+    val postId: String,
+    val status: String
+)

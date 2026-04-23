@@ -8,7 +8,9 @@ import androidx.lifecycle.viewModelScope
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.user.UserRepository
+import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.User
+import com.solari.app.ui.models.draftConversationIdForUser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -26,6 +28,9 @@ class FriendManagementViewModel(
         private set
 
     var isSendingRequest by mutableStateOf(false)
+        private set
+
+    var messagingFriendIds by mutableStateOf<Set<String>>(emptySet())
         private set
 
     var successMessage by mutableStateOf<String?>(null)
@@ -172,6 +177,23 @@ class FriendManagementViewModel(
                 errorMessage = throwable.message ?: "Failed to unfriend ${friend.displayName}"
             }
         }
+    }
+
+    fun openConversation(
+        friend: User,
+        onConversationReady: (Conversation) -> Unit
+    ) {
+        successMessage = null
+        errorMessage = null
+
+        onConversationReady(
+            Conversation(
+                id = draftConversationIdForUser(friend.id),
+                otherUser = friend,
+                lastMessage = "",
+                isDraft = true
+            )
+        )
     }
 
     fun setNickname(friend: User, nickname: String) {

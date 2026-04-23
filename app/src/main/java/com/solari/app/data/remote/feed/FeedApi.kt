@@ -46,4 +46,14 @@ interface FeedApi {
         @Path("postId") postId: String,
         @Body request: SendPostReactionRequestDto
     ): Response<MessageResponseDto>
+
+    @POST("posts/initiate")
+    suspend fun initiatePostUpload(
+        @Body request: InitiatePostUploadRequestDto
+    ): Response<InitiatePostUploadResponseDto>
+
+    @POST("posts/finalize")
+    suspend fun finalizePostUpload(
+        @Body request: FinalizePostUploadRequestDto
+    ): Response<FinalizePostUploadResponseDto>
 }

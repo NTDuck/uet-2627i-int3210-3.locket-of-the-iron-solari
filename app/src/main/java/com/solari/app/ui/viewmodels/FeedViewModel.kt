@@ -10,6 +10,7 @@ import com.solari.app.data.feed.FeedRepository
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.user.UserRepository
+import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostActivityEntry
 import com.solari.app.ui.models.User
@@ -46,6 +47,8 @@ class FeedViewModel(
         private set
 
     private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
+    private var remotePosts: List<Post> = emptyList()
+    private var optimisticPostDrafts: List<OptimisticPostDraft> = emptyList()
 
     init {
         refresh()
@@ -57,7 +60,10 @@ class FeedViewModel(
             errorMessage = null
 
             when (val userResult = userRepository.getMe()) {
-                is ApiResult.Success -> currentUser = userResult.data
+                is ApiResult.Success -> {
+                    currentUser = userResult.data
+                    applyDisplayPosts()
+                }
                 is ApiResult.Failure -> errorMessage = userResult.message
             }
 
@@ -68,9 +74,12 @@ class FeedViewModel(
 
             when (val feedResult = feedRepository.getFeed()) {
                 is ApiResult.Success -> {
-                    posts = feedResult.data
+                    remotePosts = feedResult.data
                     val livePostIds = feedResult.data.map { it.id }.toSet()
-                    postActivities = postActivities.filterKeys { it in livePostIds }
+                    optimisticPostDrafts = optimisticPostDrafts.filterNot { it.id in livePostIds }
+                    applyDisplayPosts()
+                    val displayedPostIds = posts.map(Post::id).toSet()
+                    postActivities = postActivities.filterKeys { it in displayedPostIds }
                 }
                 is ApiResult.Failure -> if (errorMessage == null) errorMessage = feedResult.message
             }
@@ -83,7 +92,9 @@ class FeedViewModel(
         viewModelScope.launch {
             when (val result = feedRepository.deletePost(postId)) {
                 is ApiResult.Success -> {
-                    posts = posts.filter { it.id != postId }
+                    remotePosts = remotePosts.filter { it.id != postId }
+                    optimisticPostDrafts = optimisticPostDrafts.filterNot { it.id == postId }
+                    applyDisplayPosts()
                     postActivities = postActivities - postId
                     loadingPostActivityIds = loadingPostActivityIds - postId
                 }
@@ -93,6 +104,11 @@ class FeedViewModel(
     }
 
     fun loadPostActivity(postId: String, force: Boolean = false) {
+        if (optimisticPostDrafts.any { it.id == postId }) {
+            postActivities = postActivities + (postId to emptyList())
+            return
+        }
+
         if (!force && (postActivities.containsKey(postId) || postId in loadingPostActivityIds)) {
             return
         }
@@ -199,5 +215,45 @@ class FeedViewModel(
     fun clearMessages() {
         errorMessage = null
         successMessage = null
+    }
+
+    fun addOptimisticPost(draft: OptimisticPostDraft) {
+        if (draft.id.isBlank()) {
+            return
+        }
+
+        if (remotePosts.any { it.id == draft.id }) {
+            optimisticPostDrafts = optimisticPostDrafts.filterNot { it.id == draft.id }
+            applyDisplayPosts()
+            return
+        }
+
+        if (optimisticPostDrafts.none { it.id == draft.id }) {
+            optimisticPostDrafts = listOf(draft) + optimisticPostDrafts
+            applyDisplayPosts()
+        }
+    }
+
+    private fun applyDisplayPosts() {
+        val user = currentUser
+        val optimisticPosts = if (user == null) {
+            emptyList()
+        } else {
+            optimisticPostDrafts
+                .sortedByDescending { it.createdAt }
+                .map { draft ->
+                    Post(
+                        id = draft.id,
+                        author = user,
+                        imageUrl = draft.mediaUri.toString(),
+                        thumbnailUrl = draft.mediaUri.toString(),
+                        mediaType = draft.contentType,
+                        timestamp = draft.createdAt,
+                        caption = draft.caption
+                    )
+                }
+        }
+        val optimisticPostIds = optimisticPosts.map(Post::id).toSet()
+        posts = optimisticPosts + remotePosts.filterNot { it.id in optimisticPostIds }
     }
 }

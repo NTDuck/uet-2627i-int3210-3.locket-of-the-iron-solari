@@ -12,7 +12,9 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.Conversation
+import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.viewmodels.*
 import kotlinx.coroutines.launch
 
@@ -20,7 +22,10 @@ import kotlinx.coroutines.launch
 fun MainScreen(
     initialPage: Int = 0,
     initialFeedPostId: String? = null,
+    initialFeedAuthorFilterIds: Set<String> = emptySet(),
+    initialFeedSort: String = "default",
     profileFeedbackMessage: String? = null,
+    conversationFeedbackMessage: String? = null,
     settingsViewModel: SettingsViewModel,
     viewModelFactory: SolariViewModelFactory,
     onNavigateToChat: (Conversation) -> Unit,
@@ -29,9 +34,13 @@ fun MainScreen(
     onNavigateToChangePassword: () -> Unit,
     onNavigateToChangeTheme: () -> Unit,
     onNavigateToFeedBrowse: (String?) -> Unit,
-    onCapture: () -> Unit,
+    onNavigateBackFromFeedPost: (() -> Unit)? = null,
+    optimisticPostDraft: OptimisticPostDraft? = null,
+    onOptimisticPostDraftConsumed: (String) -> Unit = {},
+    onCapture: (CapturedMedia) -> Unit,
     onLogout: () -> Unit,
-    onProfileFeedbackConsumed: () -> Unit = {}
+    onProfileFeedbackConsumed: () -> Unit = {},
+    onConversationFeedbackConsumed: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 4 }
     val scope = rememberCoroutineScope()
@@ -45,10 +54,13 @@ fun MainScreen(
     )
 
     BackHandler(enabled = true) {
-        if (pagerState.currentPage != 0) {
-            scope.launch {
-                pagerState.animateScrollToPage(0)
-            }
+        if (initialFeedPostId != null &&
+            pagerState.currentPage == 1 &&
+            onNavigateBackFromFeedPost != null
+        ) {
+            onNavigateBackFromFeedPost()
+        } else if (pagerState.currentPage != 0) {
+            scope.launch { pagerState.animateScrollToPage(0) }
         } else {
             // No effect on HomepageBeforePreviewScreen (CameraBefore)
         }
@@ -59,10 +71,17 @@ fun MainScreen(
             SolariBottomNavBar(
                 selectedRoute = routes[pagerState.currentPage].name,
                 onNavigate = { routeName ->
-                    val index = routes.indexOfFirst { it.name == routeName }
-                    if (index != -1) {
-                        scope.launch {
-                            pagerState.animateScrollToPage(index)
+                    if (
+                        routeName == SolariRoute.Screen.Feed.name &&
+                        pagerState.currentPage == 1
+                    ) {
+                        onNavigateToFeedBrowse(null)
+                    } else {
+                        val index = routes.indexOfFirst { it.name == routeName }
+                        if (index != -1) {
+                            scope.launch {
+                                pagerState.animateScrollToPage(index)
+                            }
                         }
                     }
                 }
@@ -88,9 +107,16 @@ fun MainScreen(
                 }
                 1 -> {
                     val viewModel: FeedViewModel = viewModel(factory = viewModelFactory)
+                    LaunchedEffect(optimisticPostDraft?.id) {
+                        val draft = optimisticPostDraft ?: return@LaunchedEffect
+                        viewModel.addOptimisticPost(draft)
+                        onOptimisticPostDraftConsumed(draft.id)
+                    }
                     FeedScreen(
                         viewModel = viewModel,
                         initialPostId = initialFeedPostId,
+                        authorFilterIds = initialFeedAuthorFilterIds,
+                        sortMode = initialFeedSort,
                         onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToChat = { scope.launch { pagerState.animateScrollToPage(2) } },
@@ -104,6 +130,8 @@ fun MainScreen(
                     val viewModel: ConversationViewModel = viewModel(factory = viewModelFactory)
                     ConversationScreen(
                         viewModel = viewModel,
+                        externalFeedbackMessage = conversationFeedbackMessage,
+                        onExternalFeedbackConsumed = onConversationFeedbackConsumed,
                         onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToChat = onNavigateToChat,
                         onNavigateToManageFriends = onNavigateToManageFriends,

@@ -42,6 +42,8 @@ import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariFeedbackPill
 import com.solari.app.ui.screens.*
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.models.CapturedMedia
+import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.viewmodels.*
 import com.solari.app.ui.models.Conversation
 import kotlinx.coroutines.delay
@@ -49,6 +51,10 @@ import kotlinx.coroutines.delay
 private const val FriendManagementTransitionMillis = 360
 private const val SelectedConversationKey = "selected_conversation"
 private const val ChatSettingsPartnerKey = "chat_settings_partner"
+private const val CapturedMediaUriKey = "captured_media_uri"
+private const val CapturedMediaTypeKey = "captured_media_type"
+private const val CapturedMediaIsVideoKey = "captured_media_is_video"
+private const val CapturedMediaDurationKey = "captured_media_duration"
 private const val SolariWebHost = "solari.adnope.io.vn"
 
 private data class FriendInviteDeepLink(
@@ -166,8 +172,37 @@ private fun NavController.navigateToFeedBrowse(authorId: String?) {
     navigate(route)
 }
 
+private fun NavController.navigateToFeedPost(
+    postId: String,
+    authorIds: Set<String>,
+    sort: String
+) {
+    val queryParameters = buildList {
+        if (authorIds.isNotEmpty()) {
+            add("authorIds=${Uri.encode(authorIds.sorted().joinToString(","))}")
+        }
+        if (sort != "default") {
+            add("sort=${Uri.encode(sort)}")
+        }
+    }
+    val query = queryParameters.takeIf { it.isNotEmpty() }?.joinToString(
+        separator = "&",
+        prefix = "?"
+    ).orEmpty()
+    navigate("${SolariRoute.Screen.Main.name}/1/${Uri.encode(postId)}$query")
+}
+
 private fun String?.isFriendManagementRoute(): Boolean {
     return this?.startsWith(SolariRoute.Screen.FriendManagement.name) == true
+}
+
+private fun String?.toFeedAuthorFilterIds(): Set<String> {
+    return this
+        ?.split(',')
+        ?.map { it.trim() }
+        ?.filter { it.isNotEmpty() }
+        ?.toSet()
+        .orEmpty()
 }
 
 @Composable
@@ -184,6 +219,9 @@ private fun SolariApp(
     val friendInvitePreviewState = friendInvitePreviewViewModel.uiState
     val friendInviteFeedbackEvent = friendInvitePreviewViewModel.feedbackEvent
     var profileFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var conversationFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var capturedMediaForPreview by remember { mutableStateOf<CapturedMedia?>(null) }
+    var optimisticPostDraft by remember { mutableStateOf<OptimisticPostDraft?>(null) }
     var pendingFriendInviteConfirmation by remember { mutableStateOf<FriendInviteRelationship?>(null) }
     var inviteFeedbackVisible by remember { mutableStateOf(false) }
     var inviteFeedbackMessage by remember { mutableStateOf("") }
@@ -398,6 +436,7 @@ private fun SolariApp(
             MainScreen(
                 initialPage = page,
                 profileFeedbackMessage = profileFeedbackMessage,
+                conversationFeedbackMessage = conversationFeedbackMessage,
                 settingsViewModel = settingsViewModel,
                 viewModelFactory = appContainer.viewModelFactory,
                 onNavigateToChat = { conversation -> navController.navigateToChat(conversation) },
@@ -406,20 +445,60 @@ private fun SolariApp(
                 onNavigateToChangePassword = { navController.navigate(SolariRoute.Screen.PasswordReset.name + "/true") },
                 onNavigateToChangeTheme = { navController.navigate(SolariRoute.Screen.ChangeTheme.name) },
                 onNavigateToFeedBrowse = { authorId -> navController.navigateToFeedBrowse(authorId) },
-                onCapture = { navController.navigate(SolariRoute.Screen.CameraAfter.name) },
+                optimisticPostDraft = optimisticPostDraft,
+                onOptimisticPostDraftConsumed = { consumedId ->
+                    if (optimisticPostDraft?.id == consumedId) {
+                        optimisticPostDraft = null
+                    }
+                },
+                onCapture = { media ->
+                    capturedMediaForPreview = media
+                    navController.currentBackStackEntry?.savedStateHandle?.apply {
+                        set(CapturedMediaUriKey, media.uri.toString())
+                        set(CapturedMediaTypeKey, media.contentType)
+                        set(CapturedMediaIsVideoKey, media.isVideo)
+                        set(CapturedMediaDurationKey, media.durationMs)
+                    }
+                    navController.navigate(SolariRoute.Screen.CameraAfter.name)
+                },
                 onLogout = {
                     navController.navigateToWelcomeAfterLogout(appAuthViewModel::signOutLocal)
                 },
-                onProfileFeedbackConsumed = { profileFeedbackMessage = null }
+                onProfileFeedbackConsumed = { profileFeedbackMessage = null },
+                onConversationFeedbackConsumed = { conversationFeedbackMessage = null }
             )
         }
-        composable(SolariRoute.Screen.Main.name + "/{page}/{postId}") { backStackEntry ->
+        composable(
+            route = SolariRoute.Screen.Main.name + "/{page}/{postId}?authorIds={authorIds}&sort={sort}",
+            arguments = listOf(
+                navArgument("authorIds") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("sort") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) { backStackEntry ->
             val page = backStackEntry.arguments?.getString("page")?.toIntOrNull() ?: 0
             val postId = backStackEntry.arguments?.getString("postId")
+            val feedAuthorFilterIds = backStackEntry.arguments
+                ?.getString("authorIds")
+                .toFeedAuthorFilterIds()
+            val feedSort = backStackEntry.arguments
+                ?.getString("sort")
+                ?.takeIf { it == "newest" || it == "oldest" }
+                ?: "default"
             MainScreen(
                 initialPage = page,
                 initialFeedPostId = postId,
+                initialFeedAuthorFilterIds = feedAuthorFilterIds,
+                initialFeedSort = feedSort,
                 profileFeedbackMessage = profileFeedbackMessage,
+                conversationFeedbackMessage = conversationFeedbackMessage,
                 settingsViewModel = settingsViewModel,
                 viewModelFactory = appContainer.viewModelFactory,
                 onNavigateToChat = { conversation -> navController.navigateToChat(conversation) },
@@ -428,20 +507,77 @@ private fun SolariApp(
                 onNavigateToChangePassword = { navController.navigate(SolariRoute.Screen.PasswordReset.name + "/true") },
                 onNavigateToChangeTheme = { navController.navigate(SolariRoute.Screen.ChangeTheme.name) },
                 onNavigateToFeedBrowse = { authorId -> navController.navigateToFeedBrowse(authorId) },
-                onCapture = { navController.navigate(SolariRoute.Screen.CameraAfter.name) },
+                onNavigateBackFromFeedPost = { navController.popBackStack() },
+                optimisticPostDraft = optimisticPostDraft,
+                onOptimisticPostDraftConsumed = { consumedId ->
+                    if (optimisticPostDraft?.id == consumedId) {
+                        optimisticPostDraft = null
+                    }
+                },
+                onCapture = { media ->
+                    capturedMediaForPreview = media
+                    navController.currentBackStackEntry?.savedStateHandle?.apply {
+                        set(CapturedMediaUriKey, media.uri.toString())
+                        set(CapturedMediaTypeKey, media.contentType)
+                        set(CapturedMediaIsVideoKey, media.isVideo)
+                        set(CapturedMediaDurationKey, media.durationMs)
+                    }
+                    navController.navigate(SolariRoute.Screen.CameraAfter.name)
+                },
                 onLogout = {
                     navController.navigateToWelcomeAfterLogout(appAuthViewModel::signOutLocal)
                 },
-                onProfileFeedbackConsumed = { profileFeedbackMessage = null }
+                onProfileFeedbackConsumed = { profileFeedbackMessage = null },
+                onConversationFeedbackConsumed = { conversationFeedbackMessage = null }
             )
         }
         composable(SolariRoute.Screen.CameraAfter.name) {
             val viewModel: HomepageAfterCapturingViewModel = viewModel(factory = appContainer.viewModelFactory)
+            val capturedMediaUri = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>(CapturedMediaUriKey)
+            val capturedMediaType = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>(CapturedMediaTypeKey)
+                ?: "image/jpeg"
+            val capturedMediaIsVideo = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<Boolean>(CapturedMediaIsVideoKey)
+                ?: false
+            val capturedMediaDuration = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<Long>(CapturedMediaDurationKey)
+            val routeCapturedMedia = capturedMediaForPreview ?: capturedMediaUri?.let { uriString ->
+                CapturedMedia(
+                    uri = Uri.parse(uriString),
+                    contentType = capturedMediaType,
+                    isVideo = capturedMediaIsVideo,
+                    durationMs = capturedMediaDuration
+                )
+            }
+            LaunchedEffect(
+                routeCapturedMedia
+            ) {
+                viewModel.updateCapturedMedia(routeCapturedMedia)
+            }
             HomepageAfterCapturingScreen(
                 viewModel = viewModel,
+                initialCapturedMedia = routeCapturedMedia,
                 onNavigateBack = { navController.popBackStack() },
-                onSend = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
-                onCancel = { navController.popBackStack() },
+                onSend = { draft ->
+                    optimisticPostDraft = draft
+                    capturedMediaForPreview = null
+                    navController.navigate(SolariRoute.Screen.Main.name + "/0") {
+                        launchSingleTop = true
+                        popUpTo(SolariRoute.Screen.CameraAfter.name) {
+                            inclusive = true
+                        }
+                    }
+                },
+                onCancel = {
+                    capturedMediaForPreview = null
+                    navController.popBackStack()
+                },
                 onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
                 onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
                 onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") }
@@ -466,7 +602,9 @@ private fun SolariApp(
                 onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
                 onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
                 onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") },
-                onNavigateToPost = { postId -> navController.navigate(SolariRoute.Screen.Main.name + "/1/$postId") }
+                onNavigateToPost = { postId, authorIds, sort ->
+                    navController.navigateToFeedPost(postId, authorIds, sort)
+                }
             )
         }
         composable(SolariRoute.Screen.Chat.name + "/{chatId}") { backStackEntry ->
@@ -478,7 +616,11 @@ private fun SolariApp(
 
             LaunchedEffect(chatId) {
                 selectedConversation?.let(viewModel::setInitialConversation)
-                viewModel.loadConversation(chatId)
+                if (selectedConversation?.isDraft == true) {
+                    viewModel.openDraftConversation(selectedConversation)
+                } else {
+                    viewModel.loadConversation(chatId)
+                }
             }
             ChatScreen(
                 chatId = chatId,
@@ -507,6 +649,12 @@ private fun SolariApp(
                 initialPartner = initialPartner,
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
+                onClearHistoryComplete = { message ->
+                    conversationFeedbackMessage = message
+                    navController.navigate(SolariRoute.Screen.Main.name + "/2") {
+                        popUpTo(SolariRoute.Screen.Chat.name + "/$chatId") { inclusive = true }
+                    }
+                },
                 onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
                 onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
                 onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
@@ -558,6 +706,7 @@ private fun SolariApp(
                 onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
                 onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
                 onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
+                onNavigateToConversation = { conversation -> navController.navigateToChat(conversation) },
                 onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") }
             )
         }
