@@ -5,6 +5,7 @@ import com.solari.app.data.local.auth.AuthSessionDao
 import com.solari.app.data.local.auth.AuthSessionEntity
 import com.solari.app.data.network.ApiExecutor
 import com.solari.app.data.network.ApiResult
+import com.solari.app.data.preferences.PushNotificationStore
 import com.solari.app.data.preferences.RecentEmojiStore
 import com.solari.app.data.remote.auth.AuthApi
 import com.solari.app.data.remote.auth.GoogleSignInRequestDto
@@ -27,7 +28,8 @@ class DefaultAuthRepository(
     private val apiExecutor: ApiExecutor,
     private val tokenCipher: TokenCipher,
     private val recentEmojiStore: RecentEmojiStore,
-    private val sessionInvalidationNotifier: AuthSessionInvalidationNotifier
+    private val sessionInvalidationNotifier: AuthSessionInvalidationNotifier,
+    private val pushNotificationStore: PushNotificationStore
 ) : AuthRepository {
     override val currentSession: Flow<AuthSession?> =
         authSessionDao.observeCurrentSession().map { entity -> entity?.toDomainOrNull() }
@@ -230,20 +232,24 @@ class DefaultAuthRepository(
     }
 
     override suspend fun signOut(deviceToken: String?): ApiResult<Unit> {
+        val resolvedDeviceToken = deviceToken?.trim()?.takeIf { it.isNotEmpty() }
+            ?: pushNotificationStore.getCurrentDeviceToken()
         val result = apiExecutor.execute {
             authApi.signOut(
-                SignOutRequestDto(deviceToken = deviceToken?.trim()?.takeIf { it.isNotEmpty() })
+                SignOutRequestDto(deviceToken = resolvedDeviceToken)
             )
         }
 
         return when (result) {
             is ApiResult.Success -> {
+                pushNotificationStore.clearRegisteredDeviceToken()
                 clearSession()
                 ApiResult.Success(Unit)
             }
 
             is ApiResult.Failure -> {
                 if (result.isSessionNotFoundFailure()) {
+                    pushNotificationStore.clearRegisteredDeviceToken()
                     clearSession()
                     sessionInvalidationNotifier.notifySessionInvalidated()
                     result
@@ -259,6 +265,7 @@ class DefaultAuthRepository(
     }
 
     override suspend fun clearSession() {
+        pushNotificationStore.clearRegisteredDeviceToken()
         authSessionDao.clear()
         recentEmojiStore.clear()
     }

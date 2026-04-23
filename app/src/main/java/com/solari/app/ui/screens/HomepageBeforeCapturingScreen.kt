@@ -400,13 +400,13 @@ fun HomepageBeforeCapturingScreen(
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
-
         if (viewModel.currentStreak >= 2) {
+            Spacer(modifier = Modifier.height(4.dp))
+
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 12.dp),
+                    .padding(bottom = 24.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Surface(
@@ -415,14 +415,16 @@ fun HomepageBeforeCapturingScreen(
                     shadowElevation = 8.dp
                 ) {
                     Text(
-                        text = "Current streak: ${viewModel.currentStreak}",
-                        color = SolariTheme.colors.onSurface,
+                        text = "\uD83D\uDD25 Current streak: ${viewModel.currentStreak}",
+                        color = SolariTheme.colors.primary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp)
                     )
                 }
             }
+        } else {
+            Spacer(modifier = Modifier.height(24.dp))
         }
 
         Box(

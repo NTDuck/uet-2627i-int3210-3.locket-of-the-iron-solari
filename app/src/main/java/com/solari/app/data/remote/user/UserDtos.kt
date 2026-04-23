@@ -58,6 +58,13 @@ data class UpdatePasswordResponseDto(
 )
 
 @Serializable
+data class RegisterDeviceRequestDto(
+    @SerialName("device_token")
+    val deviceToken: String,
+    val platform: String
+)
+
+@Serializable
 data class GetBlockedUsersResponseDto(
     val items: List<BlockedUserDto>,
     @SerialName("next_cursor")

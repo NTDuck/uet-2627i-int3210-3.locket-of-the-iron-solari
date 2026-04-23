@@ -12,6 +12,11 @@ data class GetFeedResponseDto(
 )
 
 @Serializable
+data class GetPostResponseDto(
+    val post: FeedPostDto
+)
+
+@Serializable
 data class FeedPostDto(
     val id: String,
     val caption: String? = null,

@@ -1,10 +1,14 @@
 package com.solari.app
 
+import android.Manifest
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.content.pm.PackageManager
 import android.view.Display
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -19,6 +23,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.Box
@@ -26,12 +31,14 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.core.content.ContextCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -50,6 +57,7 @@ import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.viewmodels.*
 import com.solari.app.ui.models.Conversation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 private const val FriendManagementTransitionMillis = 360
 private const val SelectedConversationKey = "selected_conversation"
@@ -216,6 +224,8 @@ private fun SolariApp(
     onFriendInviteDeepLinkConsumed: (Long) -> Unit
 ) {
     val navController = rememberNavController()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val appAuthViewModel: AppAuthViewModel = viewModel(factory = appContainer.viewModelFactory)
     val friendInvitePreviewViewModel: FriendInvitePreviewViewModel = viewModel(factory = appContainer.viewModelFactory)
     val authState by appAuthViewModel.uiState.collectAsState()
@@ -230,6 +240,29 @@ private fun SolariApp(
     var inviteFeedbackMessage by remember { mutableStateOf("") }
     var inviteFeedbackIsSuccess by remember { mutableStateOf(false) }
     var inviteFeedbackEventId by remember { mutableStateOf(0) }
+    var notificationPermissionGranted by remember {
+        mutableStateOf(
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationPermissionGranted = granted
+        if (granted) {
+            coroutineScope.launch {
+                appContainer.pushNotificationCoordinator.preparePushToken()
+                if (authState.isAuthenticated) {
+                    appContainer.pushNotificationCoordinator.registerStoredDeviceIfAuthenticated()
+                }
+            }
+        }
+    }
 
     if (authState.isCheckingSession) {
         Box(
@@ -295,6 +328,31 @@ private fun SolariApp(
         if (inviteFeedbackEventId > 0) {
             delay(1_000)
             inviteFeedbackVisible = false
+        }
+    }
+
+    LaunchedEffect(authState.isCheckingSession, authState.isAuthenticated) {
+        if (authState.isCheckingSession || !authState.isAuthenticated) return@LaunchedEffect
+
+        notificationPermissionGranted =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+
+        if (!notificationPermissionGranted &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !appContainer.pushNotificationCoordinator.hasRequestedNotificationPermission()
+        ) {
+            appContainer.pushNotificationCoordinator.markNotificationPermissionRequested()
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    LaunchedEffect(authState.isAuthenticated, notificationPermissionGranted) {
+        if (authState.isAuthenticated && notificationPermissionGranted) {
+            appContainer.pushNotificationCoordinator.registerStoredDeviceIfAuthenticated()
         }
     }
 

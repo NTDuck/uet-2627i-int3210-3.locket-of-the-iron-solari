@@ -71,9 +71,6 @@ fun ConversationScreen(
         SortSelection.Newest -> visibleConversations.sortedByDescending { it.timestamp }
         SortSelection.Oldest -> visibleConversations.sortedBy { it.timestamp }
     }
-    val isInitialLoading = viewModel.isLoading &&
-            viewModel.friendRequests.isEmpty() &&
-            viewModel.conversations.isEmpty()
 
     LaunchedEffect(viewModel.isLoading) {
         if (!viewModel.isLoading) {
@@ -145,14 +142,7 @@ fun ConversationScreen(
                 )
             }
 
-            if (isInitialLoading) {
-                CircularProgressIndicator(
-                    color = SolariTheme.colors.primary,
-                    trackColor = SolariTheme.colors.surface,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            } else {
-                Column(modifier = Modifier.fillMaxSize()) {
+            Column(modifier = Modifier.fillMaxSize()) {
                     Spacer(modifier = Modifier.height(24.dp))
 
                     LazyColumn(
@@ -193,7 +183,24 @@ fun ConversationScreen(
                             }
                         }
 
-                        if (viewModel.visibleFriendRequests.isNotEmpty()) {
+                        // Friend requests section: inline spinner or list
+                        if (viewModel.isLoadingFriendRequests) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.5.dp,
+                                        color = SolariTheme.colors.primary,
+                                        trackColor = SolariTheme.colors.surface
+                                    )
+                                }
+                            }
+                        } else if (viewModel.visibleFriendRequests.isNotEmpty()) {
                             item {
                                 Text(
                                     text = "FRIEND REQUESTS",
@@ -222,10 +229,10 @@ fun ConversationScreen(
                                     ) {
                                         FriendRequestTogglePill(
                                             text = when {
-                                                viewModel.isLoadingMoreFriendRequests -> "Loading..."
                                                 viewModel.canViewMoreFriendRequests -> "View more"
                                                 else -> "View less"
                                             },
+                                            isLoading = viewModel.isLoadingMoreFriendRequests,
                                             enabled = !viewModel.isLoadingMoreFriendRequests,
                                             onClick = {
                                                 if (viewModel.canViewMoreFriendRequests) {
@@ -240,6 +247,7 @@ fun ConversationScreen(
                             }
                         }
 
+                        // Conversations section header (always visible)
                         item {
                             Row(
                                 modifier = Modifier
@@ -267,15 +275,36 @@ fun ConversationScreen(
                             }
                         }
 
-                        items(sortedConversations) { conversation ->
-                            ConversationItem(
-                                conversation = conversation,
-                                onClick = { onNavigateToChat(conversation) }
-                            )
+                        // Conversations section: inline spinner or list
+                        if (viewModel.isLoadingConversations) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        strokeWidth = 2.5.dp,
+                                        color = SolariTheme.colors.primary,
+                                        trackColor = SolariTheme.colors.surface
+                                    )
+                                }
+                            }
+                        } else {
+                            items(sortedConversations) { conversation ->
+                                ConversationItem(
+                                    conversation = conversation,
+                                    onClick = {
+                                        viewModel.markConversationAsRead(conversation.id)
+                                        onNavigateToChat(conversation)
+                                    }
+                                )
+                            }
                         }
                     }
                 }
-            }
 
             AnimatedVisibility(
                 visible = feedbackPillVisible,
@@ -317,6 +346,7 @@ fun ConversationScreen(
 @Composable
 private fun FriendRequestTogglePill(
     text: String,
+    isLoading: Boolean,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
@@ -329,14 +359,29 @@ private fun FriendRequestTogglePill(
             onClick = onClick
         )
     ) {
-        Text(
-            text = text,
-            color = SolariTheme.colors.tertiary,
-            fontSize = 12.sp,
-            fontFamily = PlusJakartaSans,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-        )
+        Box(
+            modifier = Modifier
+                .defaultMinSize(minWidth = 84.dp)
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = SolariTheme.colors.tertiary,
+                    trackColor = Color.Transparent
+                )
+            } else {
+                Text(
+                    text = text,
+                    color = SolariTheme.colors.tertiary,
+                    fontSize = 12.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
     }
 }
 

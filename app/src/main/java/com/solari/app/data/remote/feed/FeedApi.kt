@@ -17,6 +17,11 @@ interface FeedApi {
         @Query("authors") authors: String? = null
     ): Response<GetFeedResponseDto>
 
+    @GET("posts/{postId}")
+    suspend fun getPost(
+        @Path("postId") postId: String
+    ): Response<GetPostResponseDto>
+
     @DELETE("posts/{postId}")
     suspend fun deletePost(
         @Path("postId") postId: String

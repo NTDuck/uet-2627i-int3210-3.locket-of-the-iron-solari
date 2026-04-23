@@ -37,6 +37,13 @@ class DefaultFeedRepository(
         }
     }
 
+    override suspend fun getPost(postId: String): ApiResult<Post> {
+        return when (val result = apiExecutor.execute { feedApi.getPost(postId) }) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(result.data.post.toUiPost())
+        }
+    }
+
     override suspend fun deletePost(postId: String): ApiResult<Unit> {
         return when (val result = apiExecutor.execute { feedApi.deletePost(postId) }) {
             is ApiResult.Failure -> result

@@ -7,6 +7,8 @@ import com.solari.app.ui.models.PostActivityEntry
 interface FeedRepository {
     suspend fun getFeed(authorIds: Set<String> = emptySet()): ApiResult<List<Post>>
 
+    suspend fun getPost(postId: String): ApiResult<Post>
+
     suspend fun deletePost(postId: String): ApiResult<Unit>
 
     suspend fun getPostViewers(postId: String): ApiResult<List<PostActivityEntry>>

@@ -15,6 +15,7 @@ data class Conversation(
     val isMuted: Boolean = false,
     val isReadOnly: Boolean = false,
     val isDraft: Boolean = false,
+    val partnerLastReadAt: Long? = null,
     val messages: List<Message> = emptyList()
 ) : Serializable
 

@@ -11,6 +11,7 @@ import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.FriendRequest
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 private const val FriendRequestPageSize = 4
@@ -32,8 +33,14 @@ class ConversationViewModel(
     var conversations by mutableStateOf<List<Conversation>>(emptyList())
         private set
 
-    var isLoading by mutableStateOf(false)
+    var isLoadingFriendRequests by mutableStateOf(false)
         private set
+
+    var isLoadingConversations by mutableStateOf(false)
+        private set
+
+    val isLoading: Boolean
+        get() = isLoadingFriendRequests || isLoadingConversations
 
     var errorMessage by mutableStateOf<String?>(null)
         private set
@@ -63,35 +70,50 @@ class ConversationViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            isLoading = true
             errorMessage = null
 
-            try {
-                when (
-                    val requestsResult = friendRepository.getFriendRequests(
-                        limit = FriendRequestPageSize,
-                        cursor = null
-                    )
-                ) {
-                    is ApiResult.Success -> {
-                        friendRequests = requestsResult.data.items
-                        friendRequestsNextCursor = requestsResult.data.nextCursor
-                        isFriendRequestsExpanded = false
+            val requestsJob = async {
+                isLoadingFriendRequests = true
+                try {
+                    when (
+                        val requestsResult = friendRepository.getFriendRequests(
+                            limit = FriendRequestPageSize,
+                            cursor = null
+                        )
+                    ) {
+                        is ApiResult.Success -> {
+                            friendRequests = requestsResult.data.items
+                            friendRequestsNextCursor = requestsResult.data.nextCursor
+                            isFriendRequestsExpanded = false
+                        }
+
+                        is ApiResult.Failure -> errorMessage = requestsResult.message
                     }
-
-                    is ApiResult.Failure -> errorMessage = requestsResult.message
+                } catch (throwable: Throwable) {
+                    if (throwable is CancellationException) throw throwable
+                    errorMessage = throwable.message ?: "Failed to load friend requests"
+                } finally {
+                    isLoadingFriendRequests = false
                 }
-
-                when (val conversationsResult = conversationRepository.getConversations()) {
-                    is ApiResult.Success -> conversations = conversationsResult.data
-                    is ApiResult.Failure -> if (errorMessage == null) errorMessage = conversationsResult.message
-                }
-            } catch (throwable: Throwable) {
-                if (throwable is CancellationException) throw throwable
-                errorMessage = throwable.message ?: "Failed to load conversations"
-            } finally {
-                isLoading = false
             }
+
+            val conversationsJob = async {
+                isLoadingConversations = true
+                try {
+                    when (val conversationsResult = conversationRepository.getConversations()) {
+                        is ApiResult.Success -> conversations = conversationsResult.data
+                        is ApiResult.Failure -> if (errorMessage == null) errorMessage = conversationsResult.message
+                    }
+                } catch (throwable: Throwable) {
+                    if (throwable is CancellationException) throw throwable
+                    errorMessage = throwable.message ?: "Failed to load conversations"
+                } finally {
+                    isLoadingConversations = false
+                }
+            }
+
+            requestsJob.await()
+            conversationsJob.await()
         }
     }
 
@@ -207,5 +229,16 @@ class ConversationViewModel(
     fun clearMessages() {
         successMessage = null
         errorMessage = null
+    }
+
+    // Optimistic update: clears unread highlight immediately without waiting for backend sync
+    fun markConversationAsRead(conversationId: String) {
+        conversations = conversations.map { conversation ->
+            if (conversation.id == conversationId && conversation.isUnread) {
+                conversation.copy(isUnread = false)
+            } else {
+                conversation
+            }
+        }
     }
 }

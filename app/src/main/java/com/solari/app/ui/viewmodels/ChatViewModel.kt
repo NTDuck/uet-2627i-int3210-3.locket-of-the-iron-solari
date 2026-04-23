@@ -14,6 +14,7 @@ import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.Message
 import com.solari.app.ui.models.MessageDeliveryState
 import com.solari.app.ui.models.MessageReaction
+import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.User
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.catch
@@ -26,6 +27,10 @@ class ChatViewModel(
     private val feedRepository: FeedRepository,
     private val recentEmojiStore: RecentEmojiStore
 ) : ViewModel() {
+    private val referencedPostsById = mutableMapOf<String, Post>()
+    // Monotonically increasing version per message; stale API callbacks are discarded when version has advanced
+    private val reactionVersionByMessageId = mutableMapOf<String, Long>()
+
     var conversation by mutableStateOf<Conversation?>(null)
         private set
 
@@ -245,12 +250,14 @@ class ChatViewModel(
     fun reactToMessage(messageId: String, emoji: String) {
         if (conversation?.isReadOnly == true) return
         val userId = currentUser?.id ?: return
-        val previousConversation = conversation
         val currentUserReaction = conversation
             ?.messages
             ?.firstOrNull { it.id == messageId }
             ?.reactions
             ?.firstOrNull { it.userId == userId }
+
+        // Bump version to invalidate any in-flight callbacks for this message
+        val version = reactionVersionByMessageId.merge(messageId, 1L) { old, inc -> old + inc }!!
 
         if (currentUserReaction?.emoji == emoji) {
             removeMessageReactionLocally(messageId, userId)
@@ -258,8 +265,11 @@ class ChatViewModel(
                 when (val result = conversationRepository.removeMessageReaction(messageId)) {
                     is ApiResult.Success -> Unit
                     is ApiResult.Failure -> {
-                        conversation = previousConversation
-                        errorMessage = result.message
+                        // Only revert if no newer reaction operation has started
+                        if (reactionVersionByMessageId[messageId] == version) {
+                            replaceMessageReaction(messageId, currentUserReaction)
+                            errorMessage = result.message
+                        }
                     }
                 }
             }
@@ -270,10 +280,21 @@ class ChatViewModel(
 
         viewModelScope.launch {
             when (val result = conversationRepository.reactToMessage(messageId, emoji)) {
-                is ApiResult.Success -> replaceMessageReaction(messageId, result.data)
+                is ApiResult.Success -> {
+                    // Only apply server response if no newer reaction operation has started
+                    if (reactionVersionByMessageId[messageId] == version) {
+                        replaceMessageReaction(messageId, result.data)
+                    }
+                }
                 is ApiResult.Failure -> {
-                    conversation = previousConversation
-                    errorMessage = result.message
+                    if (reactionVersionByMessageId[messageId] == version) {
+                        if (currentUserReaction != null) {
+                            replaceMessageReaction(messageId, currentUserReaction)
+                        } else {
+                            removeMessageReactionLocally(messageId, userId)
+                        }
+                        errorMessage = result.message
+                    }
                 }
             }
         }
@@ -335,23 +356,25 @@ class ChatViewModel(
     }
 
     private suspend fun List<Message>.withReferencedPostThumbnails(): List<Message> {
-        val referencedPostIds = mapNotNull { it.referencedPostId }.toSet()
-        if (referencedPostIds.isEmpty()) return this
+        val missingPostIds = mapNotNull { it.referencedPostId }
+            .filterNot(referencedPostsById::containsKey)
+            .toSet()
 
-        return when (val feedResult = feedRepository.getFeed()) {
-            is ApiResult.Failure -> this
-            is ApiResult.Success -> {
-                val postsById = feedResult.data.associateBy { it.id }
-                map { message ->
-                    val post = message.referencedPostId?.let(postsById::get)
-                    if (post == null) {
-                        message
-                    } else {
-                        message.copy(
-                            referencedPostThumbnailUrl = post.thumbnailUrl.ifBlank { post.imageUrl }
-                        )
-                    }
-                }
+        missingPostIds.forEach { postId ->
+            when (val result = feedRepository.getPost(postId)) {
+                is ApiResult.Success -> referencedPostsById[postId] = result.data
+                is ApiResult.Failure -> Unit
+            }
+        }
+
+        return map { message ->
+            val post = message.referencedPostId?.let(referencedPostsById::get)
+            if (post == null) {
+                message
+            } else {
+                message.copy(
+                    referencedPostThumbnailUrl = post.thumbnailUrl.ifBlank { post.imageUrl }
+                )
             }
         }
     }

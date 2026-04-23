@@ -425,6 +425,7 @@ fun ChatScreen(
                                     isFromMe = isFromMe,
                                     isLastBlock = lastMessage?.id == lastBlockMessage.id,
                                     currentUserId = currentUserId,
+                                    partnerLastReadAt = currentConversation?.partnerLastReadAt,
                                     highlightedMessageId = highlightedMessageId,
                                     recentEmojis = recentEmojis,
                                     areMessageActionsEnabled = !isReadOnly,
@@ -597,6 +598,7 @@ private fun ChatMessageBlockRow(
     isFromMe: Boolean,
     isLastBlock: Boolean,
     currentUserId: String?,
+    partnerLastReadAt: Long?,
     highlightedMessageId: String?,
     recentEmojis: List<String>,
     areMessageActionsEnabled: Boolean,
@@ -637,8 +639,8 @@ private fun ChatMessageBlockRow(
 
             if (isLastBlock) {
                 Text(
-                    text = lastMessage.deliveryFooterText(),
-                    color = ChatReadText,
+                    text = lastMessage.deliveryFooterText(partnerLastReadAt),
+                    color = ChatMuted,
                     fontSize = 13.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Medium,
@@ -1764,11 +1766,26 @@ private suspend fun LazyListState.restoreViewportAnchor(anchor: ChatViewportAnch
     )
 }
 
-private fun Message.deliveryFooterText(): String {
+private fun Message.deliveryFooterText(partnerLastReadAt: Long?): String {
     return when (deliveryState) {
         MessageDeliveryState.Sending -> "sending"
-        MessageDeliveryState.Sent -> sentFooterText(timestamp)
+        MessageDeliveryState.Sent -> {
+            // Show "seen at" if partner's read marker is at or past this message's timestamp
+            if (partnerLastReadAt != null && partnerLastReadAt >= timestamp) {
+                seenFooterText(partnerLastReadAt)
+            } else {
+                sentFooterText(timestamp)
+            }
+        }
     }
+}
+
+private fun seenFooterText(readAtMillis: Long): String {
+    val time = Instant.ofEpochMilli(readAtMillis)
+        .atZone(ZoneId.systemDefault())
+        .toLocalTime()
+    val formatter = DateTimeFormatter.ofPattern("h:mma")
+    return "seen at ${time.format(formatter).lowercase()}"
 }
 
 private fun sentFooterText(timestamp: Long): String {

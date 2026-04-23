@@ -16,6 +16,7 @@ import com.solari.app.data.friend.DefaultFriendRepository
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.local.SolariDatabase
 import com.solari.app.data.network.ApiExecutor
+import com.solari.app.data.preferences.PushNotificationStore
 import com.solari.app.data.preferences.RecentEmojiStore
 import com.solari.app.data.remote.conversation.ConversationApi
 import com.solari.app.data.remote.auth.AuthApi
@@ -25,6 +26,7 @@ import com.solari.app.data.remote.user.UserApi
 import com.solari.app.data.security.TokenCipher
 import com.solari.app.data.user.DefaultUserRepository
 import com.solari.app.data.user.UserRepository
+import com.solari.app.notifications.PushNotificationCoordinator
 import com.solari.app.ui.viewmodels.SolariViewModelFactory
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
@@ -52,6 +54,7 @@ class AppContainer(
 
     private val tokenCipher = TokenCipher()
     private val recentEmojiStore = RecentEmojiStore(applicationContext)
+    private val pushNotificationStore = PushNotificationStore(applicationContext)
     private val authSessionInvalidationNotifier = AuthSessionInvalidationNotifier()
     private val apiExecutor = ApiExecutor(json)
 
@@ -99,18 +102,19 @@ class AppContainer(
     private val friendApi: FriendApi = retrofit.create(FriendApi::class.java)
     private val conversationApi: ConversationApi = retrofit.create(ConversationApi::class.java)
 
+    private val userRepository: UserRepository = DefaultUserRepository(
+        userApi = userApi,
+        apiExecutor = apiExecutor
+    )
+
     val authRepository: AuthRepository = DefaultAuthRepository(
         authApi = authApi,
         authSessionDao = database.authSessionDao(),
         apiExecutor = apiExecutor,
         tokenCipher = tokenCipher,
         recentEmojiStore = recentEmojiStore,
-        sessionInvalidationNotifier = authSessionInvalidationNotifier
-    )
-
-    private val userRepository: UserRepository = DefaultUserRepository(
-        userApi = userApi,
-        apiExecutor = apiExecutor
+        sessionInvalidationNotifier = authSessionInvalidationNotifier,
+        pushNotificationStore = pushNotificationStore
     )
 
     private val feedRepository: FeedRepository = DefaultFeedRepository(
@@ -126,6 +130,13 @@ class AppContainer(
     private val conversationRepository: ConversationRepository = DefaultConversationRepository(
         conversationApi = conversationApi,
         apiExecutor = apiExecutor
+    )
+
+    val pushNotificationCoordinator = PushNotificationCoordinator(
+        context = applicationContext,
+        pushNotificationStore = pushNotificationStore,
+        authRepository = authRepository,
+        userRepository = userRepository
     )
 
     val viewModelFactory = SolariViewModelFactory(
