@@ -12,7 +12,8 @@ import kotlinx.coroutines.launch
 
 data class AppAuthUiState(
     val isCheckingSession: Boolean = true,
-    val isAuthenticated: Boolean = false
+    val isAuthenticated: Boolean = false,
+    val sessionInvalidationMessage: String? = null
 )
 
 class AppAuthViewModel(
@@ -22,7 +23,22 @@ class AppAuthViewModel(
     val uiState: StateFlow<AppAuthUiState> = _uiState.asStateFlow()
 
     init {
+        observeSessionInvalidation()
         restoreSession()
+    }
+
+    private fun observeSessionInvalidation() {
+        viewModelScope.launch {
+            authRepository.sessionInvalidationEvents.collect { event ->
+                if (event == null) return@collect
+                _uiState.update {
+                    it.copy(
+                        isCheckingSession = false,
+                        sessionInvalidationMessage = event.message
+                    )
+                }
+            }
+        }
     }
 
     private fun restoreSession() {
@@ -50,16 +66,35 @@ class AppAuthViewModel(
     }
 
     fun onSignedIn() {
-        _uiState.update { it.copy(isAuthenticated = true) }
+        authRepository.clearSessionInvalidation()
+        _uiState.update {
+            it.copy(
+                isAuthenticated = true,
+                sessionInvalidationMessage = null
+            )
+        }
+    }
+
+    fun acknowledgeSessionInvalidation() {
+        authRepository.clearSessionInvalidation()
+        _uiState.update {
+            it.copy(
+                isCheckingSession = false,
+                isAuthenticated = false,
+                sessionInvalidationMessage = null
+            )
+        }
     }
 
     fun signOutLocal() {
         viewModelScope.launch {
             authRepository.clearSession()
+            authRepository.clearSessionInvalidation()
             _uiState.update {
                 it.copy(
                     isCheckingSession = false,
-                    isAuthenticated = false
+                    isAuthenticated = false,
+                    sessionInvalidationMessage = null
                 )
             }
         }

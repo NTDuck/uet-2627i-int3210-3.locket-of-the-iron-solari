@@ -49,6 +49,7 @@ fun PasswordResetScreen(
     val newPasswordFocusRequester = remember { FocusRequester() }
     val confirmPasswordFocusRequester = remember { FocusRequester() }
     var showConfirmation by remember { mutableStateOf(false) }
+    var showSuccessDialog by remember { mutableStateOf(false) }
     var errorPillVisible by remember { mutableStateOf(false) }
     var errorEventId by remember { mutableStateOf(0) }
 
@@ -86,7 +87,7 @@ fun PasswordResetScreen(
     LaunchedEffect(viewModel.successMessage) {
         if (viewModel.successMessage != null) {
             viewModel.clearSuccess()
-            onResetComplete()
+            showSuccessDialog = true
         }
     }
 
@@ -214,6 +215,38 @@ fun PasswordResetScreen(
                 viewModel.submit()
             },
             onDismiss = { showConfirmation = false }
+        )
+    }
+
+    if (showSuccessDialog) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = {
+                Text(
+                    text = "Password updated",
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Text(
+                    text = "Password updated successfully, please sign in again.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showSuccessDialog = false
+                        onResetComplete()
+                    }
+                ) {
+                    Text(
+                        text = "OK",
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface
         )
     }
 }

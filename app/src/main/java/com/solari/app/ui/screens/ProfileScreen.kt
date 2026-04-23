@@ -538,7 +538,11 @@ fun ProfileScreen(
                     SettingsRow(
                         icon = Icons.AutoMirrored.Filled.Logout,
                         title = "Log Out",
-                        onClick = { showLogoutConfirm = true },
+                        onClick = {
+                            if (!viewModel.isSigningOut) {
+                                showLogoutConfirm = true
+                            }
+                        },
                         trailing = { }
                     )
                 }
@@ -678,12 +682,17 @@ fun ProfileScreen(
         SolariConfirmationDialog(
             title = "Log out?",
             message = "You will need to sign in again to use Solari.",
-            confirmText = "Log Out",
+            confirmText = if (viewModel.isSigningOut) "Logging Out..." else "Log Out",
             onConfirm = {
+                if (viewModel.isSigningOut) return@SolariConfirmationDialog
                 showLogoutConfirm = false
-                onLogout()
+                viewModel.signOut(onSuccess = onLogout)
             },
-            onDismiss = { showLogoutConfirm = false }
+            onDismiss = {
+                if (!viewModel.isSigningOut) {
+                    showLogoutConfirm = false
+                }
+            }
         )
     }
 }

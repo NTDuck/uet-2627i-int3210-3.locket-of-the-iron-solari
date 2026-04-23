@@ -29,6 +29,8 @@ class ProfileViewModel(
         private set
     var isDeletingAccount by mutableStateOf(false)
         private set
+    var isSigningOut by mutableStateOf(false)
+        private set
     var isSignedInWithGoogle by mutableStateOf(false)
         private set
 
@@ -177,6 +179,40 @@ class ProfileViewModel(
     fun clearMessages() {
         successMessage = null
         errorMessage = null
+    }
+
+    fun signOut(onSuccess: () -> Unit) {
+        if (isSigningOut) return
+
+        viewModelScope.launch {
+            isSigningOut = true
+            errorMessage = null
+            successMessage = null
+            try {
+                when (val result = authRepository.signOut()) {
+                    is ApiResult.Success -> {
+                        onSuccess()
+                    }
+
+                    is ApiResult.Failure -> {
+                        if (!result.isSessionNotFoundFailure()) {
+                            errorMessage = result.message
+                        }
+                    }
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to log out"
+            } finally {
+                isSigningOut = false
+            }
+        }
+    }
+
+    private fun ApiResult.Failure.isSessionNotFoundFailure(): Boolean {
+        return statusCode == 404 ||
+                type == "SESSION_NOT_FOUND" ||
+                message.contains("session not found", ignoreCase = true)
     }
 
     fun deleteAccount(

@@ -14,6 +14,7 @@ import com.solari.app.data.remote.auth.PasswordResetVerifyRequestDto
 import com.solari.app.data.remote.auth.RefreshSessionRequestDto
 import com.solari.app.data.remote.auth.SignInRequestDto
 import com.solari.app.data.remote.auth.SignInResponseDto
+import com.solari.app.data.remote.auth.SignOutRequestDto
 import com.solari.app.data.remote.auth.SignUpRequestDto
 import com.solari.app.data.security.TokenCipher
 import java.security.GeneralSecurityException
@@ -25,10 +26,12 @@ class DefaultAuthRepository(
     private val authSessionDao: AuthSessionDao,
     private val apiExecutor: ApiExecutor,
     private val tokenCipher: TokenCipher,
-    private val recentEmojiStore: RecentEmojiStore
+    private val recentEmojiStore: RecentEmojiStore,
+    private val sessionInvalidationNotifier: AuthSessionInvalidationNotifier
 ) : AuthRepository {
     override val currentSession: Flow<AuthSession?> =
         authSessionDao.observeCurrentSession().map { entity -> entity?.toDomainOrNull() }
+    override val sessionInvalidationEvents = sessionInvalidationNotifier.events
 
     override suspend fun signUp(
         username: String,
@@ -217,10 +220,36 @@ class DefaultAuthRepository(
                 fallbackSignInMethod = currentSession.signInMethod
             )
             is ApiResult.Failure -> {
-                if (result.statusCode == 400 || result.statusCode == 401) {
+                if (result.isInvalidSessionFailure()) {
                     authSessionDao.clear()
+                    sessionInvalidationNotifier.notifySessionInvalidated()
                 }
                 result
+            }
+        }
+    }
+
+    override suspend fun signOut(deviceToken: String?): ApiResult<Unit> {
+        val result = apiExecutor.execute {
+            authApi.signOut(
+                SignOutRequestDto(deviceToken = deviceToken?.trim()?.takeIf { it.isNotEmpty() })
+            )
+        }
+
+        return when (result) {
+            is ApiResult.Success -> {
+                clearSession()
+                ApiResult.Success(Unit)
+            }
+
+            is ApiResult.Failure -> {
+                if (result.isSessionNotFoundFailure()) {
+                    clearSession()
+                    sessionInvalidationNotifier.notifySessionInvalidated()
+                    result
+                } else {
+                    result
+                }
             }
         }
     }
@@ -232,6 +261,10 @@ class DefaultAuthRepository(
     override suspend fun clearSession() {
         authSessionDao.clear()
         recentEmojiStore.clear()
+    }
+
+    override fun clearSessionInvalidation() {
+        sessionInvalidationNotifier.clear()
     }
 
     private suspend fun storeSession(
@@ -290,5 +323,17 @@ class DefaultAuthRepository(
             message = "Signed in, but the session could not be stored securely.",
             cause = cause
         )
+    }
+
+    private fun ApiResult.Failure.isInvalidSessionFailure(): Boolean {
+        return statusCode == 400 ||
+                statusCode == 401 ||
+                isSessionNotFoundFailure()
+    }
+
+    private fun ApiResult.Failure.isSessionNotFoundFailure(): Boolean {
+        return statusCode == 404 ||
+                type == "SESSION_NOT_FOUND" ||
+                message.contains("session not found", ignoreCase = true)
     }
 }

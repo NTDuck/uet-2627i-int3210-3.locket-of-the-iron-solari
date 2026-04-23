@@ -5,7 +5,9 @@ import androidx.room.Room
 import com.solari.app.BuildConfig
 import com.solari.app.data.auth.AuthInterceptor
 import com.solari.app.data.auth.AuthRepository
+import com.solari.app.data.auth.AuthSessionInvalidationNotifier
 import com.solari.app.data.auth.DefaultAuthRepository
+import com.solari.app.data.auth.TokenRefreshAuthenticator
 import com.solari.app.data.conversation.ConversationRepository
 import com.solari.app.data.conversation.DefaultConversationRepository
 import com.solari.app.data.feed.DefaultFeedRepository
@@ -50,8 +52,34 @@ class AppContainer(
 
     private val tokenCipher = TokenCipher()
     private val recentEmojiStore = RecentEmojiStore(applicationContext)
+    private val authSessionInvalidationNotifier = AuthSessionInvalidationNotifier()
+    private val apiExecutor = ApiExecutor(json)
+
+    private val refreshOkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS)
+        .build()
+
+    private val refreshRetrofit = Retrofit.Builder()
+        .baseUrl(BuildConfig.SOLARI_BACKEND_URL)
+        .client(refreshOkHttpClient)
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build()
+
+    private val refreshAuthApi: AuthApi = refreshRetrofit.create(AuthApi::class.java)
 
     private val okHttpClient = OkHttpClient.Builder()
+        .authenticator(
+            TokenRefreshAuthenticator(
+                authApi = refreshAuthApi,
+                authSessionDao = database.authSessionDao(),
+                apiExecutor = apiExecutor,
+                tokenCipher = tokenCipher,
+                sessionInvalidationNotifier = authSessionInvalidationNotifier
+            )
+        )
         .addInterceptor(AuthInterceptor(database.authSessionDao(), tokenCipher))
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -70,14 +98,14 @@ class AppContainer(
     private val feedApi: FeedApi = retrofit.create(FeedApi::class.java)
     private val friendApi: FriendApi = retrofit.create(FriendApi::class.java)
     private val conversationApi: ConversationApi = retrofit.create(ConversationApi::class.java)
-    private val apiExecutor = ApiExecutor(json)
 
     val authRepository: AuthRepository = DefaultAuthRepository(
         authApi = authApi,
         authSessionDao = database.authSessionDao(),
         apiExecutor = apiExecutor,
         tokenCipher = tokenCipher,
-        recentEmojiStore = recentEmojiStore
+        recentEmojiStore = recentEmojiStore,
+        sessionInvalidationNotifier = authSessionInvalidationNotifier
     )
 
     private val userRepository: UserRepository = DefaultUserRepository(

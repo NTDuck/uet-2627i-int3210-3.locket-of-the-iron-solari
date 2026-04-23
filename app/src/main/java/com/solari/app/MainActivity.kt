@@ -28,7 +28,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -243,10 +246,22 @@ private fun SolariApp(
         return
     }
 
-    val startDestination = if (authState.isAuthenticated) {
-        SolariRoute.Screen.Main.name + "/0"
-    } else {
-        SolariRoute.Screen.Welcome.name
+    val startDestination = remember {
+        if (authState.isAuthenticated) {
+            SolariRoute.Screen.Main.name + "/0"
+        } else {
+            SolariRoute.Screen.Welcome.name
+        }
+    }
+
+    fun acknowledgeSessionInvalidation() {
+        capturedMediaForPreview = null
+        optimisticPostDraft = null
+        navController.navigate(SolariRoute.Screen.Welcome.name) {
+            launchSingleTop = true
+            popUpTo(0)
+        }
+        appAuthViewModel.acknowledgeSessionInvalidation()
     }
 
     LaunchedEffect(authState.isAuthenticated, pendingFriendInviteDeepLink?.sequence) {
@@ -391,10 +406,13 @@ private fun SolariApp(
                 onNavigateBack = { navController.popBackStack() },
                 onResetComplete = { 
                     if (showTopBar) {
-                        profileFeedbackMessage = "Password changed successfully"
-                        navController.popBackStack()
+                        navController.navigateToWelcomeAfterLogout(appAuthViewModel::signOutLocal)
                     } else {
-                        navController.navigate(SolariRoute.Screen.SignIn.name)
+                        navController.navigate(SolariRoute.Screen.Welcome.name) {
+                            popUpTo(SolariRoute.Screen.PasswordRecovery.name) {
+                                inclusive = true
+                            }
+                        }
                     }
                 }
             )
@@ -787,6 +805,33 @@ private fun SolariApp(
                 friendInvitePreviewViewModel.unblock()
             },
             onDismiss = { pendingFriendInviteConfirmation = null }
+        )
+    }
+
+    authState.sessionInvalidationMessage?.let { message ->
+        AlertDialog(
+            onDismissRequest = {},
+            containerColor = SolariTheme.colors.surface,
+            title = {
+                Text(
+                    text = "Sign in again",
+                    color = SolariTheme.colors.onSurface
+                )
+            },
+            text = {
+                Text(
+                    text = message,
+                    color = SolariTheme.colors.tertiary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = ::acknowledgeSessionInvalidation) {
+                    Text(
+                        text = "OK",
+                        color = SolariTheme.colors.primary
+                    )
+                }
+            }
         )
     }
 }

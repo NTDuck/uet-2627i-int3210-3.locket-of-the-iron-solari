@@ -36,6 +36,12 @@ data class RefreshSessionRequestDto(
 )
 
 @Serializable
+data class SignOutRequestDto(
+    @SerialName("device_token")
+    val deviceToken: String? = null
+)
+
+@Serializable
 data class PasswordResetRequestDto(
     val email: String
 )

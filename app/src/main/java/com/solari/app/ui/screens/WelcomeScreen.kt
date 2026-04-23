@@ -31,6 +31,7 @@ import com.solari.app.BuildConfig
 import com.solari.app.R
 import com.solari.app.data.auth.AuthRepository
 import com.solari.app.data.auth.AuthSession
+import com.solari.app.data.auth.AuthSessionInvalidationEvent
 import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.components.SolariButton
 import com.solari.app.ui.components.SolariFeedbackPill
@@ -42,6 +43,8 @@ import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.WelcomeViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
@@ -217,6 +220,8 @@ fun WelcomeScreen(
 
 private class WelcomePreviewAuthRepository : AuthRepository {
     override val currentSession: Flow<AuthSession?> = flowOf(null)
+    override val sessionInvalidationEvents: StateFlow<AuthSessionInvalidationEvent?> =
+        MutableStateFlow(null)
 
     override suspend fun signUp(
         username: String,
@@ -284,9 +289,15 @@ private class WelcomePreviewAuthRepository : AuthRepository {
         )
     }
 
+    override suspend fun signOut(deviceToken: String?): ApiResult<Unit> {
+        return ApiResult.Success(Unit)
+    }
+
     override suspend fun getCurrentSession(): AuthSession? = null
 
     override suspend fun clearSession() = Unit
+
+    override fun clearSessionInvalidation() = Unit
 }
 
 @Preview(

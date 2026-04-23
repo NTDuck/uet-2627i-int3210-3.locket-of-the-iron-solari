@@ -38,7 +38,10 @@ import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.SignInViewModel
+import com.solari.app.data.auth.AuthSessionInvalidationEvent
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flowOf
 
 @Composable
@@ -233,6 +236,8 @@ private fun SignInScreenPreview() {
 
 private class PreviewAuthRepository : AuthRepository {
     override val currentSession: Flow<AuthSession?> = flowOf(null)
+    override val sessionInvalidationEvents: StateFlow<AuthSessionInvalidationEvent?> =
+        MutableStateFlow(null)
 
     override suspend fun signUp(
         username: String,
@@ -300,7 +305,13 @@ private class PreviewAuthRepository : AuthRepository {
         )
     }
 
+    override suspend fun signOut(deviceToken: String?): ApiResult<Unit> {
+        return ApiResult.Success(Unit)
+    }
+
     override suspend fun getCurrentSession(): AuthSession? = null
 
     override suspend fun clearSession() = Unit
+
+    override fun clearSessionInvalidation() = Unit
 }
