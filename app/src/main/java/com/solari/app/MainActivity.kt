@@ -73,13 +73,20 @@ private data class FriendInviteDeepLink(
     val sequence: Long
 )
 
+private data class FcmDeepLink(
+    val route: String,
+    val sequence: Long
+)
+
 class MainActivity : ComponentActivity() {
     private var pendingFriendInviteDeepLink by mutableStateOf<FriendInviteDeepLink?>(null)
+    private var pendingFcmDeepLink by mutableStateOf<FcmDeepLink?>(null)
     private var friendInviteDeepLinkSequence = 0L
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingFriendInviteDeepLink = intent.extractFriendInviteDeepLink()
+        pendingFcmDeepLink = intent.extractFcmDeepLink()
         preferHighestRefreshRate()
         enableEdgeToEdge()
         setContent {
@@ -102,6 +109,12 @@ class MainActivity : ComponentActivity() {
                         if (pendingFriendInviteDeepLink?.sequence == consumedSequence) {
                             pendingFriendInviteDeepLink = null
                         }
+                    },
+                    pendingFcmDeepLink = pendingFcmDeepLink,
+                    onFcmDeepLinkConsumed = { consumedSequence ->
+                        if (pendingFcmDeepLink?.sequence == consumedSequence) {
+                            pendingFcmDeepLink = null
+                        }
                     }
                 )
             }
@@ -112,6 +125,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         pendingFriendInviteDeepLink = intent.extractFriendInviteDeepLink()
+        pendingFcmDeepLink = intent.extractFcmDeepLink()
     }
 
     @Suppress("DEPRECATION")
@@ -140,6 +154,29 @@ class MainActivity : ComponentActivity() {
             username = username,
             sequence = friendInviteDeepLinkSequence
         )
+    }
+
+    private var fcmDeepLinkSequence = 0L
+
+    private fun Intent.extractFcmDeepLink(): FcmDeepLink? {
+        val type = extras?.getString("type") ?: return null
+        fcmDeepLinkSequence += 1
+
+        val route = when (type) {
+            "NEW_FRIEND_REQUEST" -> SolariRoute.Screen.Main.name + "/2"
+            "FRIEND_REQUEST_ACCEPTED", "STREAK_MILESTONE" -> SolariRoute.Screen.Main.name + "/0"
+            "NEW_POST_REACTION" -> {
+                val postId = extras?.getString("postId") ?: return null
+                SolariRoute.Screen.Main.name + "/1/${Uri.encode(postId)}"
+            }
+            "NEW_MESSAGE", "NEW_MESSAGE_REACTION" -> {
+                val conversationId = extras?.getString("conversationId") ?: return null
+                SolariRoute.Screen.Chat.name + "/${Uri.encode(conversationId)}"
+            }
+            else -> return null
+        }
+
+        return FcmDeepLink(route, fcmDeepLinkSequence)
     }
 }
 
@@ -221,7 +258,9 @@ private fun SolariApp(
     settingsViewModel: SettingsViewModel,
     appContainer: AppContainer,
     pendingFriendInviteDeepLink: FriendInviteDeepLink?,
-    onFriendInviteDeepLinkConsumed: (Long) -> Unit
+    onFriendInviteDeepLinkConsumed: (Long) -> Unit,
+    pendingFcmDeepLink: FcmDeepLink?,
+    onFcmDeepLinkConsumed: (Long) -> Unit
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -306,6 +345,14 @@ private fun SolariApp(
             friendInvitePreviewViewModel.show(friendInvite.username)
         }
         onFriendInviteDeepLinkConsumed(friendInvite.sequence)
+    }
+
+    LaunchedEffect(authState.isAuthenticated, pendingFcmDeepLink?.sequence) {
+        val fcmLink = pendingFcmDeepLink
+        if (fcmLink == null || !authState.isAuthenticated) return@LaunchedEffect
+
+        navController.navigate(fcmLink.route)
+        onFcmDeepLinkConsumed(fcmLink.sequence)
     }
 
     LaunchedEffect(authState.isAuthenticated) {
