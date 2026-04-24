@@ -1,7 +1,12 @@
 package com.solari.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,6 +34,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
@@ -60,18 +66,22 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -88,6 +98,7 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -132,29 +143,80 @@ private val EmojiPickerPanel = Color(0xFF303234)
 private val EmojiPickerSearch = Color(0xFF46484B)
 private val EmojiPickerMuted = Color(0xFFB5B5B7)
 private const val MaxScrollToBottomPasses = 12
-private const val MessageSendScrollDeltaPx = 1_000_000f
+private const val OlderMessagesTriggerRemainingMessageCount = 30
 private const val MinuteMillis = 60_000L
 private const val HourMillis = 60L * MinuteMillis
 private const val DayMillis = 24L * HourMillis
 
 private val QuickReactionEmojis = listOf("❤️", "😂", "😮", "😢", "😡", "👍")
 
-private data class ChatMessageBlock(
-    val senderId: String,
-    val messages: List<Message>
-)
+private sealed interface ChatListItem {
+    val key: String
+}
 
-private data class ChatDaySection(
+private data class ChatDayHeaderItem(
     val date: LocalDate,
-    val label: String,
-    val blocks: List<ChatMessageBlock>
-)
+    val label: String
+) : ChatListItem {
+    override val key: String = chatDayItemKey(date)
+}
+
+private data class ChatMessageItem(
+    val message: Message,
+    val isFromMe: Boolean,
+    val showIncomingAvatar: Boolean,
+    val showDeliveryFooter: Boolean
+) : ChatListItem {
+    override val key: String = chatMessageItemKey(message.id)
+}
 
 private data class ChatViewportAnchor(
     val firstVisibleItemIndex: Int,
     val firstVisibleItemScrollOffset: Int,
     val isScrolledToBottom: Boolean
 )
+
+private data class ChatListItemAnchor(
+    val itemKey: String,
+    val itemScrollOffset: Int
+)
+
+private data class ChatScrollSnapshot(
+    val totalItemsCount: Int,
+    val firstVisibleItemIndex: Int,
+    val firstVisibleItemScrollOffset: Int,
+    val isScrolledToBottom: Boolean
+)
+
+private data class ChatListModel(
+    val items: List<ChatListItem>,
+    val messageItemIndexes: Map<String, Int>,
+    val messageOrdinalsById: Map<String, Int>,
+    val listItemIndexes: Map<String, Int>,
+    val lastListItemIndex: Int,
+    val messageListItemCount: Int
+)
+
+private data class ChatContentPaddingState(
+    val bottomPadding: Dp,
+    val isKeyboardAboveBottomBar: Boolean
+)
+
+private class ChatMessageListState(
+    val listState: LazyListState,
+    initialMessageCount: Int,
+    initialLastMessageId: String?
+) {
+    var previousMessageCount by mutableStateOf(initialMessageCount)
+    var previousLastMessageId by mutableStateOf(initialLastMessageId)
+    var lastBottomVisibleMessageId by mutableStateOf(initialLastMessageId)
+    var shouldKeepChatPinnedToBottom by mutableStateOf(false)
+    var isMessageScrollInitialized by mutableStateOf(false)
+    var hasSeenInitialMessageLoad by mutableStateOf(false)
+    var hasFinishedInitialMessageLoad by mutableStateOf(false)
+    var highlightedMessageId by mutableStateOf<String?>(null)
+    var olderMessageRestoreAnchor by mutableStateOf<ChatListItemAnchor?>(null)
+}
 
 @Composable
 fun ChatScreen(
@@ -188,104 +250,52 @@ fun ChatScreen(
     } else {
         partner
     }
+    val canSendTypingState = !isReadOnly && !isDraftConversation && currentConversation != null
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
     val keyboardBottomPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
     val allMessages = currentConversation?.messages.orEmpty()
     val sortedMessages = remember(allMessages) { allMessages.sortedBy { it.timestamp } }
-    val daySections = remember(sortedMessages) { buildChatDaySections(sortedMessages) }
     val lastMessage = sortedMessages.lastOrNull()
+    val isPartnerTyping = viewModel.isPartnerTyping && !isReadOnly
     val recentEmojis = viewModel.recentEmojis
-    val messageListState = rememberLazyListState()
+    val chatListModel = rememberChatListModel(
+        sortedMessages = sortedMessages,
+        currentUserId = currentUserId,
+        isPartnerTyping = isPartnerTyping
+    )
+    val chatMessageListState = rememberChatMessageListState(
+        chatId = chatId,
+        initialMessageCount = sortedMessages.size,
+        initialLastMessageId = lastMessage?.id
+    )
+    val messageListState = chatMessageListState.listState
     val coroutineScope = rememberCoroutineScope()
-    var previousMessageCount by remember(chatId) { mutableStateOf(sortedMessages.size) }
-    var isMessageScrollInitialized by remember(chatId) { mutableStateOf(false) }
-    var hasSeenInitialMessageLoad by remember(chatId) { mutableStateOf(false) }
-    var hasFinishedInitialMessageLoad by remember(chatId) { mutableStateOf(false) }
+    var keyboardAnchorResetToken by remember(chatId) { mutableStateOf(0) }
     var replyingToMessage by remember(chatId) { mutableStateOf<Message?>(null) }
-    var highlightedMessageId by remember(chatId) { mutableStateOf<String?>(null) }
-    val messageItemIndexes = remember(daySections) {
-        buildMessageItemIndexMap(daySections)
-    }
-    val lastMessageItemIndex = remember(daySections) {
-        daySections.sumOf { section -> 1 + section.blocks.size } - 1
-    }
+    val jumpToMessage = rememberJumpToMessage(
+        messageItemIndexes = chatListModel.messageItemIndexes,
+        messageListState = messageListState,
+        onHighlightMessage = { chatMessageListState.highlightedMessageId = it }
+    )
 
-    fun jumpToMessage(messageId: String) {
-        val targetIndex = messageItemIndexes[messageId] ?: return
-        highlightedMessageId = messageId
-        coroutineScope.launch {
-            val layoutInfo = messageListState.layoutInfo
-            val targetItemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
-            if (targetItemInfo != null &&
-                targetItemInfo.offset < layoutInfo.viewportEndOffset &&
-                targetItemInfo.offset + targetItemInfo.size > layoutInfo.viewportStartOffset
-            ) {
-                return@launch
-            }
+    BindChatMessageListEffects(
+        state = chatMessageListState,
+        activeChatId = activeChatId,
+        viewModel = viewModel,
+        sortedMessages = sortedMessages,
+        lastMessage = lastMessage,
+        currentUserId = currentUserId,
+        isReadOnly = isReadOnly,
+        isDraftConversation = isDraftConversation,
+        isPartnerTyping = isPartnerTyping,
+        lastListItemIndex = chatListModel.lastListItemIndex,
+        messageListItemCount = chatListModel.messageListItemCount,
+        messageOrdinalsById = chatListModel.messageOrdinalsById,
+        listItemIndexes = chatListModel.listItemIndexes
+    )
 
-            val topHalfOffset = -(messageListState.layoutInfo.viewportSize.height / 4)
-            messageListState.animateScrollToItem(targetIndex, scrollOffset = topHalfOffset)
-        }
-    }
-
-    LaunchedEffect(highlightedMessageId) {
-        if (highlightedMessageId == null) return@LaunchedEffect
-        delay(1_250)
-        highlightedMessageId = null
-    }
-
-    LaunchedEffect(isDraftConversation) {
-        if (isDraftConversation) {
-            hasSeenInitialMessageLoad = true
-            hasFinishedInitialMessageLoad = true
-            isMessageScrollInitialized = sortedMessages.isEmpty()
-        }
-    }
-
-    LaunchedEffect(viewModel.isLoadingMessages) {
-        if (viewModel.isLoadingMessages) {
-            hasSeenInitialMessageLoad = true
-            hasFinishedInitialMessageLoad = false
-            isMessageScrollInitialized = false
-        } else if (hasSeenInitialMessageLoad) {
-            hasFinishedInitialMessageLoad = true
-        }
-    }
-
-    LaunchedEffect(
-        sortedMessages.size,
-        lastMessage?.id,
-        currentUserId,
-        viewModel.isLoadingMessages,
-        hasFinishedInitialMessageLoad
-    ) {
-        if (viewModel.isLoadingMessages) return@LaunchedEffect
-        if (!hasFinishedInitialMessageLoad) return@LaunchedEffect
-        if (lastMessageItemIndex < 0) {
-            previousMessageCount = sortedMessages.size
-            isMessageScrollInitialized = true
-            return@LaunchedEffect
-        }
-
-        if (!isMessageScrollInitialized) {
-            previousMessageCount = sortedMessages.size
-            messageListState.scrollToMessageBottom(lastMessageItemIndex)
-            isMessageScrollInitialized = true
-            return@LaunchedEffect
-        }
-
-        val newMessageFromCurrentUser = sortedMessages.size > previousMessageCount &&
-                lastMessage?.senderId == currentUserId
-
-        previousMessageCount = sortedMessages.size
-
-        if (newMessageFromCurrentUser) {
-            messageListState.scrollToBottomFromCurrentPosition()
-        }
-    }
-
-    Scaffold(
+        Scaffold(
         containerColor = ChatBackground,
         bottomBar = {
             SolariBottomNavBar(
@@ -306,58 +316,16 @@ fun ChatScreen(
             keyboardBottomPadding.value,
             scaffoldBottomPadding.value
         ).dp
-        var displayedContentBottomPadding by remember(chatId) {
-            mutableStateOf(targetContentBottomPadding)
-        }
-        val isKeyboardAboveBottomBar = displayedContentBottomPadding > scaffoldBottomPadding
-        var previousTargetContentBottomPadding by remember(chatId) {
-            mutableStateOf(targetContentBottomPadding)
-        }
-        var keyboardRestoreAnchor by remember(chatId) {
-            mutableStateOf<ChatViewportAnchor?>(null)
-        }
-
-        LaunchedEffect(targetContentBottomPadding, scaffoldBottomPadding, viewModel.isLoadingMessages) {
-            if (viewModel.isLoadingMessages) {
-                previousTargetContentBottomPadding = targetContentBottomPadding
-                displayedContentBottomPadding = targetContentBottomPadding
-                keyboardRestoreAnchor = null
-                return@LaunchedEffect
-            }
-
-            val bottomInsetDelta = targetContentBottomPadding - previousTargetContentBottomPadding
-            previousTargetContentBottomPadding = targetContentBottomPadding
-
-            when {
-                bottomInsetDelta > 0.dp -> {
-                    if (keyboardRestoreAnchor == null) {
-                        keyboardRestoreAnchor = messageListState.viewportAnchor()
-                    }
-                    val shouldKeepBottomVisible = keyboardRestoreAnchor?.isScrolledToBottom == true
-                    displayedContentBottomPadding = targetContentBottomPadding
-                    if (shouldKeepBottomVisible) {
-                        messageListState.scrollToBottomFromCurrentPosition()
-                    } else {
-                        messageListState.scrollBy(
-                            with(density) { bottomInsetDelta.toPx() }
-                        )
-                    }
-                }
-
-                bottomInsetDelta < 0.dp -> {
-                    val restoreAnchor = keyboardRestoreAnchor
-                    if (restoreAnchor != null) {
-                        messageListState.restoreViewportAnchor(restoreAnchor)
-                    }
-                    displayedContentBottomPadding = scaffoldBottomPadding
-                    keyboardRestoreAnchor = null
-                }
-
-                targetContentBottomPadding == scaffoldBottomPadding -> {
-                    displayedContentBottomPadding = scaffoldBottomPadding
-                }
-            }
-        }
+        val contentPaddingState = rememberChatContentPaddingState(
+            chatId = chatId,
+            targetContentBottomPadding = targetContentBottomPadding,
+            scaffoldBottomPadding = scaffoldBottomPadding,
+            isLoadingMessages = viewModel.isLoadingMessages,
+            lastListItemIndex = chatListModel.lastListItemIndex,
+            lastMessageId = lastMessage?.id,
+            keyboardAnchorResetToken = keyboardAnchorResetToken,
+            state = chatMessageListState
+        )
 
         Column(
             modifier = Modifier
@@ -367,7 +335,7 @@ fun ChatScreen(
                     start = innerPadding.calculateStartPadding(layoutDirection),
                     top = innerPadding.calculateTopPadding(),
                     end = innerPadding.calculateEndPadding(layoutDirection),
-                    bottom = displayedContentBottomPadding
+                    bottom = contentPaddingState.bottomPadding
                 )
         ) {
             ChatHeaderBar(
@@ -393,7 +361,7 @@ fun ChatScreen(
                         trackColor = ChatInput
                     )
                 } else {
-                    val isMessageListVisible = isMessageScrollInitialized || sortedMessages.isEmpty()
+                    val isMessageListVisible = chatMessageListState.isMessageScrollInitialized || sortedMessages.isEmpty()
 
                     LazyColumn(
                         state = messageListState,
@@ -407,39 +375,49 @@ fun ChatScreen(
                             end = 24.dp,
                         )
                     ) {
-                        daySections.forEach { section ->
-                            item(key = "day-${section.date}") {
-                                ChatDayChip(text = section.label)
+                        items(
+                            items = chatListModel.items,
+                            key = { item -> item.key }
+                        ) { item ->
+                            when (item) {
+                                is ChatDayHeaderItem -> {
+                                    ChatDayChip(text = item.label)
+                                }
+
+                                is ChatMessageItem -> {
+                                    ChatMessageRow(
+                                        item = item,
+                                        partner = visiblePartner,
+                                        currentUserId = currentUserId,
+                                        partnerLastReadAt = currentConversation?.partnerLastReadAt,
+                                        highlightedMessageId = chatMessageListState.highlightedMessageId,
+                                        recentEmojis = recentEmojis,
+                                        areMessageActionsEnabled = !isReadOnly,
+                                        onRecordRecentEmoji = viewModel::recordRecentEmoji,
+                                        onUnsendMessage = { message ->
+                                            viewModel.unsendMessage(activeChatId, message.id)
+                                        },
+                                        onReactToMessage = { message, emoji ->
+                                            viewModel.reactToMessage(message.id, emoji)
+                                        },
+                                        onReplyToMessage = { message ->
+                                            replyingToMessage = message
+                                        },
+                                        onJumpToMessage = { messageId ->
+                                            jumpToMessage(messageId)
+                                        }
+                                    )
+                                }
                             }
+                        }
 
-                            items(
-                                items = section.blocks,
-                                key = { block -> "${section.date}-${block.messages.first().id}" }
-                            ) { block ->
-                                val isFromMe = block.senderId == currentUserId
-                                val lastBlockMessage = block.messages.last()
-
-                                ChatMessageBlockRow(
-                                    block = block,
+                        if (isPartnerTyping) {
+                            item(key = TypingIndicatorItemKey) {
+                                TypingIndicatorRow(
                                     partner = visiblePartner,
-                                    isFromMe = isFromMe,
-                                    isLastBlock = lastMessage?.id == lastBlockMessage.id,
-                                    currentUserId = currentUserId,
-                                    partnerLastReadAt = currentConversation?.partnerLastReadAt,
-                                    highlightedMessageId = highlightedMessageId,
-                                    recentEmojis = recentEmojis,
-                                    areMessageActionsEnabled = !isReadOnly,
-                                    onRecordRecentEmoji = viewModel::recordRecentEmoji,
-                                    onUnsendMessage = { message ->
-                                        viewModel.unsendMessage(activeChatId, message.id)
-                                    },
-                                    onReactToMessage = { message, emoji ->
-                                        viewModel.reactToMessage(message.id, emoji)
-                                    },
-                                    onReplyToMessage = { message ->
-                                        replyingToMessage = message
-                                    },
-                                    onJumpToMessage = ::jumpToMessage
+                                    partnerName = displayPartnerName,
+                                    partnerUsername = displayPartnerUsername,
+                                    partnerAvatarUrl = displayPartnerAvatarUrl
                                 )
                             }
                         }
@@ -451,27 +429,63 @@ fun ChatScreen(
                             trackColor = ChatInput
                         )
                     }
+
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 4.dp)
+                    ) {
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = viewModel.isLoadingOlderMessages,
+                            enter = fadeIn(animationSpec = tween(durationMillis = 120)),
+                            exit = fadeOut(animationSpec = tween(durationMillis = 120))
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(22.dp),
+                                strokeWidth = 2.5.dp,
+                                color = ChatPrimary,
+                                trackColor = ChatInput
+                            )
+                        }
+                    }
                 }
             }
 
             if (!isReadOnly) {
                 ChatInputBar(
                     value = viewModel.messageText,
-                    onValueChange = { viewModel.messageText = it },
+                    onValueChange = { value ->
+                        viewModel.onMessageTextChanged(
+                            chatId = activeChatId,
+                            receiverId = partner?.id,
+                            value = value,
+                            canSendTypingState = canSendTypingState
+                        )
+                    },
                     replyingToMessage = replyingToMessage,
-                    isKeyboardAboveBottomBar = isKeyboardAboveBottomBar,
+                    isKeyboardAboveBottomBar = contentPaddingState.isKeyboardAboveBottomBar,
                     replyLabel = replyingToMessage?.let { message ->
                         if (message.senderId == currentUserId) {
                             "Replying to yourself"
                         } else {
-                            "Replying to ${displayPartnerName}"
+                            "Replying to $displayPartnerName"
                         }
                     },
                     onCancelReply = { replyingToMessage = null },
+                    onInputFocused = {
+                        chatMessageListState.shouldKeepChatPinnedToBottom = true
+                        if (chatMessageListState.isMessageScrollInitialized && chatListModel.lastListItemIndex >= 0) {
+                            coroutineScope.launch {
+                                messageListState.scrollToMessageBottom(chatListModel.lastListItemIndex)
+                                chatMessageListState.lastBottomVisibleMessageId = lastMessage?.id
+                            }
+                        }
+                    },
                     onSend = {
                         val trimmedMessage = viewModel.messageText.trim()
                         if (trimmedMessage.isNotEmpty()) {
-                            keyboardRestoreAnchor = null
+                            chatMessageListState.shouldKeepChatPinnedToBottom = true
+                            keyboardAnchorResetToken += 1
                             viewModel.sendMessage(activeChatId, repliedMessage = replyingToMessage)
                             replyingToMessage = null
                         }
@@ -480,6 +494,403 @@ fun ChatScreen(
             }
         }
     }
+}
+
+@Composable
+private fun rememberChatListModel(
+    sortedMessages: List<Message>,
+    currentUserId: String?,
+    isPartnerTyping: Boolean
+): ChatListModel {
+    return remember(sortedMessages, currentUserId, isPartnerTyping) {
+        val items = buildChatListItems(sortedMessages, currentUserId)
+        val lastMessageItemIndex = items.lastIndex
+        ChatListModel(
+            items = items,
+            messageItemIndexes = buildMessageItemIndexMap(items),
+            messageOrdinalsById = sortedMessages.withIndex().associate { indexedValue ->
+                indexedValue.value.id to indexedValue.index
+            },
+            listItemIndexes = buildListItemIndexMap(items, isPartnerTyping),
+            lastListItemIndex = lastMessageItemIndex + if (isPartnerTyping) 1 else 0,
+            messageListItemCount = max(0, lastMessageItemIndex + 1)
+        )
+    }
+}
+
+@Composable
+private fun rememberChatMessageListState(
+    chatId: String,
+    initialMessageCount: Int,
+    initialLastMessageId: String?
+): ChatMessageListState {
+    val listState = rememberLazyListState()
+    return remember(chatId, listState) {
+        ChatMessageListState(
+            listState = listState,
+            initialMessageCount = initialMessageCount,
+            initialLastMessageId = initialLastMessageId
+        )
+    }
+}
+
+@Composable
+private fun rememberJumpToMessage(
+    messageItemIndexes: Map<String, Int>,
+    messageListState: LazyListState,
+    onHighlightMessage: (String) -> Unit
+): (String) -> Unit {
+    val coroutineScope = rememberCoroutineScope()
+    return remember(messageItemIndexes, messageListState, coroutineScope, onHighlightMessage) {
+        { messageId ->
+            val targetIndex = messageItemIndexes[messageId]
+            if (targetIndex != null) {
+                onHighlightMessage(messageId)
+                coroutineScope.launch {
+                    val layoutInfo = messageListState.layoutInfo
+                    val targetItemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+                    if (targetItemInfo != null &&
+                        targetItemInfo.offset < layoutInfo.viewportEndOffset &&
+                        targetItemInfo.offset + targetItemInfo.size > layoutInfo.viewportStartOffset
+                    ) {
+                        return@launch
+                    }
+
+                    val topHalfOffset = -(messageListState.layoutInfo.viewportSize.height / 4)
+                    messageListState.animateScrollToItem(targetIndex, scrollOffset = topHalfOffset)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BindChatMessageListEffects(
+    state: ChatMessageListState,
+    activeChatId: String,
+    viewModel: ChatViewModel,
+    sortedMessages: List<Message>,
+    lastMessage: Message?,
+    currentUserId: String?,
+    isReadOnly: Boolean,
+    isDraftConversation: Boolean,
+    isPartnerTyping: Boolean,
+    lastListItemIndex: Int,
+    messageListItemCount: Int,
+    messageOrdinalsById: Map<String, Int>,
+    listItemIndexes: Map<String, Int>
+) {
+    val messageListState = state.listState
+    val latestLastMessageId by rememberUpdatedState(lastMessage?.id)
+
+    fun requestOlderMessagesLoad() {
+        if (!viewModel.canLoadOlderMessages ||
+            viewModel.isLoadingOlderMessages ||
+            viewModel.isLoadingMessages ||
+            !state.isMessageScrollInitialized
+        ) {
+            return
+        }
+
+        val restoreAnchor = messageListState.olderMessagesRestoreAnchor() ?: return
+        state.olderMessageRestoreAnchor = restoreAnchor
+        if (!viewModel.loadOlderMessages()) {
+            state.olderMessageRestoreAnchor = null
+        }
+    }
+
+    LaunchedEffect(state.highlightedMessageId) {
+        if (state.highlightedMessageId == null) return@LaunchedEffect
+        delay(1_250)
+        state.highlightedMessageId = null
+    }
+
+    DisposableEffect(activeChatId, isReadOnly, isDraftConversation) {
+        onDispose {
+            viewModel.stopTypingIndicator()
+        }
+    }
+
+    LaunchedEffect(isDraftConversation, sortedMessages.isEmpty()) {
+        if (isDraftConversation) {
+            state.hasSeenInitialMessageLoad = true
+            state.hasFinishedInitialMessageLoad = true
+            state.isMessageScrollInitialized = sortedMessages.isEmpty()
+        }
+    }
+
+    LaunchedEffect(viewModel.isLoadingMessages) {
+        if (viewModel.isLoadingMessages) {
+            state.hasSeenInitialMessageLoad = true
+            state.hasFinishedInitialMessageLoad = false
+            state.isMessageScrollInitialized = false
+        } else if (state.hasSeenInitialMessageLoad) {
+            state.hasFinishedInitialMessageLoad = true
+        }
+    }
+
+    LaunchedEffect(messageListState, state.isMessageScrollInitialized) {
+        if (!state.isMessageScrollInitialized) return@LaunchedEffect
+
+        var observedListItemCount = messageListState.layoutInfo.totalItemsCount
+        var observedTailMessageId = latestLastMessageId
+        snapshotFlow {
+            ChatScrollSnapshot(
+                totalItemsCount = messageListState.layoutInfo.totalItemsCount,
+                firstVisibleItemIndex = messageListState.firstVisibleItemIndex,
+                firstVisibleItemScrollOffset = messageListState.firstVisibleItemScrollOffset,
+                isScrolledToBottom = messageListState.isScrolledToBottom()
+            )
+        }.collect { snapshot ->
+            val didAppendListItem = snapshot.totalItemsCount > observedListItemCount
+            val didChangeTailMessage = latestLastMessageId != observedTailMessageId
+            observedListItemCount = snapshot.totalItemsCount
+            observedTailMessageId = latestLastMessageId
+
+            when {
+                snapshot.isScrolledToBottom -> {
+                    state.lastBottomVisibleMessageId = latestLastMessageId
+                    state.shouldKeepChatPinnedToBottom = true
+                }
+
+                !didAppendListItem && !didChangeTailMessage -> {
+                    state.lastBottomVisibleMessageId = null
+                    state.shouldKeepChatPinnedToBottom = false
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(
+        messageListState,
+        state.isMessageScrollInitialized,
+        viewModel.canLoadOlderMessages,
+        viewModel.isLoadingOlderMessages,
+        viewModel.isLoadingMessages,
+        messageListItemCount,
+        messageOrdinalsById
+    ) {
+        if (!state.isMessageScrollInitialized || viewModel.isLoadingMessages || messageListItemCount == 0) {
+            return@LaunchedEffect
+        }
+
+        snapshotFlow {
+            messageListState.layoutInfo.visibleItemsInfo
+                .firstOrNull { itemInfo ->
+                    (itemInfo.key as? String)?.startsWith("message-") == true
+                }
+                ?.key as? String
+        }.collect { firstVisibleMessageKey ->
+            val firstVisibleMessageId = firstVisibleMessageKey
+                ?.removePrefix("message-")
+                ?.takeIf { it != firstVisibleMessageKey }
+            val firstVisibleMessageOrdinal =
+                firstVisibleMessageId?.let(messageOrdinalsById::get) ?: return@collect
+
+            if (viewModel.canLoadOlderMessages &&
+                !viewModel.isLoadingOlderMessages &&
+                firstVisibleMessageOrdinal <= OlderMessagesTriggerRemainingMessageCount
+            ) {
+                requestOlderMessagesLoad()
+            }
+        }
+    }
+
+    LaunchedEffect(
+        viewModel.isLoadingOlderMessages,
+        state.isMessageScrollInitialized,
+        messageListState
+    ) {
+        if (!viewModel.isLoadingOlderMessages || !state.isMessageScrollInitialized) return@LaunchedEffect
+
+        snapshotFlow { messageListState.olderMessagesRestoreAnchor() }
+            .collect { anchor ->
+                if (anchor != null) {
+                    state.olderMessageRestoreAnchor = anchor
+                }
+            }
+    }
+
+    LaunchedEffect(
+        viewModel.isLoadingOlderMessages,
+        state.olderMessageRestoreAnchor,
+        listItemIndexes
+    ) {
+        if (viewModel.isLoadingOlderMessages) return@LaunchedEffect
+
+        state.olderMessageRestoreAnchor?.let { anchor ->
+            listItemIndexes[anchor.itemKey]?.let { itemIndex ->
+                messageListState.requestScrollToItem(
+                    index = itemIndex,
+                    scrollOffset = anchor.itemScrollOffset
+                )
+            }
+        }
+
+        state.olderMessageRestoreAnchor = null
+    }
+
+    LaunchedEffect(
+        sortedMessages.size,
+        lastMessage?.id,
+        currentUserId,
+        viewModel.isLoadingMessages,
+        state.hasFinishedInitialMessageLoad,
+        lastListItemIndex
+    ) {
+        if (viewModel.isLoadingMessages) return@LaunchedEffect
+        if (!state.hasFinishedInitialMessageLoad) return@LaunchedEffect
+        if (lastListItemIndex < 0) {
+            state.previousMessageCount = sortedMessages.size
+            state.previousLastMessageId = null
+            state.lastBottomVisibleMessageId = null
+            state.shouldKeepChatPinnedToBottom = true
+            state.isMessageScrollInitialized = true
+            return@LaunchedEffect
+        }
+
+        if (!state.isMessageScrollInitialized) {
+            state.previousMessageCount = sortedMessages.size
+            state.previousLastMessageId = lastMessage?.id
+            messageListState.scrollToMessageBottom(lastListItemIndex)
+            state.lastBottomVisibleMessageId = lastMessage?.id
+            state.shouldKeepChatPinnedToBottom = true
+            state.isMessageScrollInitialized = true
+            return@LaunchedEffect
+        }
+
+        val previousTailMessageId = state.previousLastMessageId
+        val hasNewTailMessage = sortedMessages.size > state.previousMessageCount &&
+            lastMessage?.id != previousTailMessageId
+        val shouldKeepBottomPinned = hasNewTailMessage &&
+            (state.shouldKeepChatPinnedToBottom ||
+                state.previousMessageCount == 0 ||
+                state.lastBottomVisibleMessageId == previousTailMessageId)
+        val newMessageFromCurrentUser = hasNewTailMessage && lastMessage?.senderId == currentUserId
+
+        state.previousMessageCount = sortedMessages.size
+        state.previousLastMessageId = lastMessage?.id
+
+        if (newMessageFromCurrentUser || shouldKeepBottomPinned) {
+            messageListState.scrollToMessageBottom(lastListItemIndex)
+            state.lastBottomVisibleMessageId = lastMessage?.id
+            state.shouldKeepChatPinnedToBottom = true
+        }
+    }
+
+    LaunchedEffect(
+        isPartnerTyping,
+        lastListItemIndex,
+        viewModel.isLoadingMessages,
+        state.hasFinishedInitialMessageLoad,
+        state.isMessageScrollInitialized,
+        sortedMessages.isEmpty(),
+        state.shouldKeepChatPinnedToBottom,
+        state.lastBottomVisibleMessageId,
+        lastMessage?.id
+    ) {
+        if (!isPartnerTyping) return@LaunchedEffect
+        if (viewModel.isLoadingMessages ||
+            !state.hasFinishedInitialMessageLoad ||
+            !state.isMessageScrollInitialized
+        ) {
+            return@LaunchedEffect
+        }
+
+        val shouldKeepBottomPinned = sortedMessages.isEmpty() ||
+            state.shouldKeepChatPinnedToBottom ||
+            state.lastBottomVisibleMessageId == lastMessage?.id
+        if (lastListItemIndex >= 0 && shouldKeepBottomPinned) {
+            messageListState.scrollToMessageBottom(lastListItemIndex)
+            state.lastBottomVisibleMessageId = lastMessage?.id
+            state.shouldKeepChatPinnedToBottom = true
+        }
+    }
+}
+
+@Composable
+private fun rememberChatContentPaddingState(
+    chatId: String,
+    targetContentBottomPadding: Dp,
+    scaffoldBottomPadding: Dp,
+    isLoadingMessages: Boolean,
+    lastListItemIndex: Int,
+    lastMessageId: String?,
+    keyboardAnchorResetToken: Int,
+    state: ChatMessageListState
+): ChatContentPaddingState {
+    val density = LocalDensity.current
+    var displayedContentBottomPadding by remember(chatId) {
+        mutableStateOf(targetContentBottomPadding)
+    }
+    var previousTargetContentBottomPadding by remember(chatId) {
+        mutableStateOf(targetContentBottomPadding)
+    }
+    var keyboardRestoreAnchor by remember(chatId) {
+        mutableStateOf<ChatViewportAnchor?>(null)
+    }
+
+    LaunchedEffect(keyboardAnchorResetToken) {
+        keyboardRestoreAnchor = null
+    }
+
+    LaunchedEffect(
+        targetContentBottomPadding,
+        scaffoldBottomPadding,
+        isLoadingMessages,
+        lastListItemIndex,
+        lastMessageId,
+        keyboardAnchorResetToken,
+        state.shouldKeepChatPinnedToBottom
+    ) {
+        if (isLoadingMessages) {
+            previousTargetContentBottomPadding = targetContentBottomPadding
+            displayedContentBottomPadding = targetContentBottomPadding
+            keyboardRestoreAnchor = null
+            return@LaunchedEffect
+        }
+
+        val bottomInsetDelta = targetContentBottomPadding - previousTargetContentBottomPadding
+        previousTargetContentBottomPadding = targetContentBottomPadding
+
+        when {
+            bottomInsetDelta > 0.dp -> {
+                if (keyboardRestoreAnchor == null) {
+                    keyboardRestoreAnchor = state.listState.viewportAnchor()
+                }
+                val shouldKeepBottomVisible = state.shouldKeepChatPinnedToBottom ||
+                    keyboardRestoreAnchor?.isScrolledToBottom == true
+                displayedContentBottomPadding = targetContentBottomPadding
+                if (shouldKeepBottomVisible && lastListItemIndex >= 0) {
+                    state.listState.scrollToMessageBottom(lastListItemIndex)
+                    state.lastBottomVisibleMessageId = lastMessageId
+                    state.shouldKeepChatPinnedToBottom = true
+                } else {
+                    state.listState.scrollBy(with(density) { bottomInsetDelta.toPx() })
+                }
+            }
+
+            bottomInsetDelta < 0.dp -> {
+                val restoreAnchor = keyboardRestoreAnchor
+                if (state.shouldKeepChatPinnedToBottom && lastListItemIndex >= 0) {
+                    state.listState.scrollToMessageBottom(lastListItemIndex)
+                } else if (restoreAnchor != null) {
+                    state.listState.restoreViewportAnchor(restoreAnchor)
+                }
+                displayedContentBottomPadding = scaffoldBottomPadding
+                keyboardRestoreAnchor = null
+            }
+
+            targetContentBottomPadding == scaffoldBottomPadding -> {
+                displayedContentBottomPadding = scaffoldBottomPadding
+            }
+        }
+    }
+
+    return ChatContentPaddingState(
+        bottomPadding = displayedContentBottomPadding,
+        isKeyboardAboveBottomBar = displayedContentBottomPadding > scaffoldBottomPadding
+    )
 }
 
 @Composable
@@ -568,6 +979,82 @@ private fun ChatHeaderBar(
 }
 
 @Composable
+private fun TypingIndicatorRow(
+    partner: User?,
+    partnerName: String,
+    partnerUsername: String,
+    partnerAvatarUrl: String?
+) {
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn(animationSpec = tween(durationMillis = 120)),
+        exit = fadeOut(animationSpec = tween(durationMillis = 160))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SolariAvatar(
+                imageUrl = partner?.profileImageUrl ?: partnerAvatarUrl,
+                username = partner?.username ?: partnerUsername,
+                contentDescription = "${partnerName.ifBlank { "Someone" }} avatar",
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape),
+                fontSize = 12.sp
+            )
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Surface(
+                color = ChatIncomingBubble,
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 14.dp, vertical = 11.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TypingDot(delayMillis = 0)
+                    TypingDot(delayMillis = 120)
+                    TypingDot(delayMillis = 240)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TypingDot(delayMillis: Int) {
+    val transition = rememberInfiniteTransition(label = "typingDotTransition")
+    val offsetY by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 900
+                0f at delayMillis
+                -4f at delayMillis + 150
+                0f at delayMillis + 300
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "typingDotOffset"
+    )
+
+    Box(
+        modifier = Modifier
+            .offset(y = offsetY.dp)
+            .size(6.dp)
+            .clip(CircleShape)
+            .background(ChatMuted)
+    )
+}
+
+@Composable
 private fun ChatDayChip(text: String) {
     Box(
         modifier = Modifier.fillMaxWidth(),
@@ -592,11 +1079,9 @@ private fun ChatDayChip(text: String) {
 }
 
 @Composable
-private fun ChatMessageBlockRow(
-    block: ChatMessageBlock,
+private fun ChatMessageRow(
+    item: ChatMessageItem,
     partner: User?,
-    isFromMe: Boolean,
-    isLastBlock: Boolean,
     currentUserId: String?,
     partnerLastReadAt: Long?,
     highlightedMessageId: String?,
@@ -608,38 +1093,31 @@ private fun ChatMessageBlockRow(
     onReplyToMessage: (Message) -> Unit,
     onJumpToMessage: (String) -> Unit
 ) {
-    val lastMessage = block.messages.last()
+    val message = item.message
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = if (isFromMe) Alignment.End else Alignment.Start
-    ) {
-        if (isFromMe) {
-            Column(
-                horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                block.messages.forEach { message ->
-                    ChatBubble(
-                        message = message,
-                        isFromMe = true,
-                        isHighlighted = message.id == highlightedMessageId,
-                        partnerName = partner?.displayName.orEmpty(),
-                        currentUserId = currentUserId,
-                        recentEmojis = recentEmojis,
-                        areActionsEnabled = areMessageActionsEnabled,
-                        onRecordRecentEmoji = onRecordRecentEmoji,
-                        onUnsendMessage = onUnsendMessage,
-                        onReactToMessage = onReactToMessage,
-                        onReplyToMessage = onReplyToMessage,
-                        onJumpToMessage = onJumpToMessage
-                    )
-                }
-            }
+    if (item.isFromMe) {
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.End
+        ) {
+            ChatBubble(
+                message = message,
+                isFromMe = true,
+                isHighlighted = message.id == highlightedMessageId,
+                partnerName = partner?.displayName.orEmpty(),
+                currentUserId = currentUserId,
+                recentEmojis = recentEmojis,
+                areActionsEnabled = areMessageActionsEnabled,
+                onRecordRecentEmoji = onRecordRecentEmoji,
+                onUnsendMessage = onUnsendMessage,
+                onReactToMessage = onReactToMessage,
+                onReplyToMessage = onReplyToMessage,
+                onJumpToMessage = onJumpToMessage
+            )
 
-            if (isLastBlock) {
+            if (item.showDeliveryFooter) {
                 Text(
-                    text = lastMessage.deliveryFooterText(partnerLastReadAt),
+                    text = message.deliveryFooterText(partnerLastReadAt),
                     color = ChatMuted,
                     fontSize = 13.sp,
                     fontFamily = PlusJakartaSans,
@@ -647,12 +1125,14 @@ private fun ChatMessageBlockRow(
                     modifier = Modifier.padding(top = 2.dp, end = 8.dp, bottom = 8.dp)
                 )
             }
-        } else {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Start,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Start,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            if (item.showIncomingAvatar) {
                 SolariAvatar(
                     imageUrl = partner?.profileImageUrl,
                     username = partner?.username.orEmpty(),
@@ -661,30 +1141,30 @@ private fun ChatMessageBlockRow(
                         .size(36.dp).clip(CircleShape),
                     fontSize = 14.sp
                 )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    block.messages.forEach { message ->
-                        ChatBubble(
-                            message = message,
-                            isFromMe = false,
-                            isHighlighted = message.id == highlightedMessageId,
-                            partnerName = partner?.displayName.orEmpty(),
-                            currentUserId = currentUserId,
-                            recentEmojis = recentEmojis,
-                            areActionsEnabled = areMessageActionsEnabled,
-                            onRecordRecentEmoji = onRecordRecentEmoji,
-                            onUnsendMessage = onUnsendMessage,
-                            onReactToMessage = onReactToMessage,
-                            onReplyToMessage = onReplyToMessage,
-                            onJumpToMessage = onJumpToMessage
-                        )
-                    }
-                }
+            } else {
+                Spacer(
+                    modifier = Modifier
+                        .width(36.dp)
+                        .height(1.dp)
+                )
             }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            ChatBubble(
+                message = message,
+                isFromMe = false,
+                isHighlighted = message.id == highlightedMessageId,
+                partnerName = partner?.displayName.orEmpty(),
+                currentUserId = currentUserId,
+                recentEmojis = recentEmojis,
+                areActionsEnabled = areMessageActionsEnabled,
+                onRecordRecentEmoji = onRecordRecentEmoji,
+                onUnsendMessage = onUnsendMessage,
+                onReactToMessage = onReactToMessage,
+                onReplyToMessage = onReplyToMessage,
+                onJumpToMessage = onJumpToMessage
+            )
         }
     }
 }
@@ -1574,6 +2054,7 @@ private fun ChatInputBar(
     isKeyboardAboveBottomBar: Boolean,
     replyLabel: String?,
     onCancelReply: () -> Unit,
+    onInputFocused: () -> Unit,
     onSend: () -> Unit
 ) {
     val bottomPadding = if (isKeyboardAboveBottomBar) 16.dp else 16.dp
@@ -1633,13 +2114,20 @@ private fun ChatInputBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .heightIn(min = 56.dp),
+            verticalAlignment = Alignment.Bottom
         ) {
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 17.dp)
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            onInputFocused()
+                        }
+                    },
                 textStyle = TextStyle(
                     color = ChatText,
                     fontSize = 15.sp,
@@ -1647,9 +2135,13 @@ private fun ChatInputBar(
                     fontWeight = FontWeight.Medium
                 ),
                 cursorBrush = SolidColor(ChatText),
-                singleLine = true,
+                singleLine = false,
+                maxLines = 5,
                 decorationBox = { innerTextField ->
-                    Box(contentAlignment = Alignment.CenterStart) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
                         if (value.isEmpty()) {
                             Text(
                                 text = "Type a message",
@@ -1668,6 +2160,7 @@ private fun ChatInputBar(
 
             Box(
                 modifier = Modifier
+                    .padding(bottom = 8.dp)
                     .size(40.dp)
                     .scaledClickable(pressedScale = 1.1f, onClick = onSend)
                     .clip(RoundedCornerShape(12.dp))
@@ -1685,67 +2178,95 @@ private fun ChatInputBar(
     }
 }
 
-private fun groupConsecutiveMessages(messages: List<Message>): List<ChatMessageBlock> {
-    if (messages.isEmpty()) return emptyList()
-
-    val blocks = mutableListOf<ChatMessageBlock>()
-    var currentSenderId = messages.first().senderId
-    val currentMessages = mutableListOf<Message>()
-
-    messages.forEach { message ->
-        if (message.senderId != currentSenderId && currentMessages.isNotEmpty()) {
-            blocks.add(ChatMessageBlock(currentSenderId, currentMessages.toList()))
-            currentMessages.clear()
-            currentSenderId = message.senderId
-        }
-        currentMessages.add(message)
-    }
-
-    if (currentMessages.isNotEmpty()) {
-        blocks.add(ChatMessageBlock(currentSenderId, currentMessages.toList()))
-    }
-
-    return blocks
-}
-
-private fun buildChatDaySections(messages: List<Message>): List<ChatDaySection> {
+private fun buildChatListItems(
+    messages: List<Message>,
+    currentUserId: String?
+): List<ChatListItem> {
     if (messages.isEmpty()) return emptyList()
 
     val zoneId = ZoneId.systemDefault()
-    return messages
-        .groupBy { message -> message.timestamp.toLocalDate(zoneId) }
-        .toSortedMap()
-        .map { (date, dayMessages) ->
-            ChatDaySection(
-                date = date,
-                label = date.toChatDayLabel(),
-                blocks = groupConsecutiveMessages(dayMessages.sortedBy { it.timestamp })
+    val items = mutableListOf<ChatListItem>()
+    var previousDate: LocalDate? = null
+
+    messages.forEachIndexed { index, message ->
+        val messageDate = message.timestamp.toLocalDate(zoneId)
+        if (messageDate != previousDate) {
+            items += ChatDayHeaderItem(
+                date = messageDate,
+                label = messageDate.toChatDayLabel()
             )
+            previousDate = messageDate
         }
+
+        val nextMessage = messages.getOrNull(index + 1)
+        val nextDate = nextMessage?.timestamp?.toLocalDate(zoneId)
+        val isLastInIncomingGroup = nextMessage == null ||
+            nextDate != messageDate ||
+            nextMessage.senderId != message.senderId
+
+        items += ChatMessageItem(
+            message = message,
+            isFromMe = message.senderId == currentUserId,
+            showIncomingAvatar = message.senderId != currentUserId && isLastInIncomingGroup,
+            showDeliveryFooter = message.senderId == currentUserId && index == messages.lastIndex
+        )
+    }
+
+    return items
 }
 
-private fun buildMessageItemIndexMap(daySections: List<ChatDaySection>): Map<String, Int> {
+private fun buildMessageItemIndexMap(chatItems: List<ChatListItem>): Map<String, Int> {
     val indexes = mutableMapOf<String, Int>()
-    var itemIndex = 0
 
-    daySections.forEach { section ->
-        itemIndex += 1 // Day chip.
-        section.blocks.forEach { block ->
-            block.messages.forEach { message ->
-                indexes[message.id] = itemIndex
-            }
-            itemIndex += 1
+    chatItems.forEachIndexed { index, item ->
+        if (item is ChatMessageItem) {
+            indexes[item.message.id] = index
         }
     }
 
     return indexes
 }
 
+private fun buildListItemIndexMap(
+    chatItems: List<ChatListItem>,
+    isPartnerTyping: Boolean
+): Map<String, Int> {
+    val indexes = mutableMapOf<String, Int>()
+
+    chatItems.forEachIndexed { index, item ->
+        indexes[item.key] = index
+    }
+
+    if (isPartnerTyping) {
+        indexes[TypingIndicatorItemKey] = chatItems.size
+    }
+
+    return indexes
+}
+
+private fun chatDayItemKey(date: LocalDate): String = "day-$date"
+
+private fun chatMessageItemKey(messageId: String): String = "message-$messageId"
+
+private const val TypingIndicatorItemKey = "typing-indicator"
+
 private fun LazyListState.viewportAnchor(): ChatViewportAnchor {
     return ChatViewportAnchor(
         firstVisibleItemIndex = firstVisibleItemIndex,
         firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
         isScrolledToBottom = isScrolledToBottom()
+    )
+}
+
+private fun LazyListState.olderMessagesRestoreAnchor(): ChatListItemAnchor? {
+    val layoutInfo = layoutInfo
+    val anchorItem = layoutInfo.visibleItemsInfo.firstOrNull { itemInfo ->
+        (itemInfo.key as? String)?.startsWith("message-") == true
+    } ?: layoutInfo.visibleItemsInfo.firstOrNull()
+    val itemKey = anchorItem?.key as? String ?: return null
+    return ChatListItemAnchor(
+        itemKey = itemKey,
+        itemScrollOffset = layoutInfo.viewportStartOffset - anchorItem.offset
     )
 }
 
@@ -1770,7 +2291,6 @@ private fun Message.deliveryFooterText(partnerLastReadAt: Long?): String {
     return when (deliveryState) {
         MessageDeliveryState.Sending -> "sending"
         MessageDeliveryState.Sent -> {
-            // Show "seen at" if partner's read marker is at or past this message's timestamp
             if (partnerLastReadAt != null && partnerLastReadAt >= timestamp) {
                 seenFooterText(partnerLastReadAt)
             } else {
@@ -1800,13 +2320,6 @@ private fun sentFooterText(timestamp: Long): String {
     return "sent $amount$suffix ago"
 }
 
-private suspend fun LazyListState.scrollToBottomFromCurrentPosition() {
-    repeat(MaxScrollToBottomPasses) {
-        val consumed = scrollBy(MessageSendScrollDeltaPx)
-        if (consumed == 0f) return
-    }
-}
-
 private suspend fun LazyListState.scrollToMessageBottom(itemIndex: Int) {
     scrollToItem(itemIndex)
 
@@ -1834,9 +2347,9 @@ private fun LocalDate.toChatDayLabel(): String {
     val today = LocalDate.now()
     val daysAgo = ChronoUnit.DAYS.between(this, today)
 
-    return when {
-        daysAgo == 0L -> "Today"
-        daysAgo in 1L..6L -> dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
+    return when (daysAgo) {
+        0L -> "Today"
+        in 1L..6L -> dayOfWeek.name.lowercase().replaceFirstChar { it.uppercase() }
         else -> format(ChatDateFormatter)
     }
 }

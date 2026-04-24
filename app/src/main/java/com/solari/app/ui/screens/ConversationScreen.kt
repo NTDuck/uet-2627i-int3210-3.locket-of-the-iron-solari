@@ -534,9 +534,20 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
     val displayName = if (conversation.isReadOnly) "Someone" else conversation.otherUser.displayName
     val avatarUsername = if (conversation.isReadOnly) "someone" else conversation.otherUser.username
     val avatarUrl = if (conversation.isReadOnly) null else conversation.otherUser.profileImageUrl
-    val lastMessagePreview = remember(conversation.lastMessage, conversation.lastMessageSenderId, conversation.otherUser.id) {
+    val lastMessagePreview = remember(
+        conversation.lastMessage,
+        conversation.lastMessageSenderId,
+        conversation.isLastMessageDeleted,
+        conversation.otherUser.id
+    ) {
         when {
             conversation.lastMessage.isBlank() -> ""
+            conversation.isLastMessageDeleted &&
+                    conversation.lastMessageSenderId != null &&
+                    conversation.lastMessageSenderId != conversation.otherUser.id -> {
+                "You unsent a message"
+            }
+            conversation.isLastMessageDeleted -> "Message unsent"
             conversation.lastMessageSenderId != null &&
                     conversation.lastMessageSenderId != conversation.otherUser.id -> {
                 "You: ${conversation.lastMessage}"
@@ -550,7 +561,7 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
         shape = itemShape,
         modifier = Modifier
             .fillMaxWidth()
-            .scaledClickable(pressedScale = 0.9f, onClick = onClick)
+            .scaledClickable(pressedScale = 0.95f, onClick = onClick)
             .clip(itemShape)
     ) {
         Row(

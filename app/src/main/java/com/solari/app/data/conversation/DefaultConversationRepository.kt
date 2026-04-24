@@ -49,15 +49,33 @@ class DefaultConversationRepository(
         }
     }
 
-    override suspend fun getMessages(conversationId: String): ApiResult<List<Message>> {
-        return when (val result = apiExecutor.execute { conversationApi.getMessages(conversationId) }) {
+    override suspend fun getMessages(
+        conversationId: String,
+        limit: Int,
+        cursor: String?
+    ): ApiResult<ConversationMessagesPage> {
+        return when (
+            val result = apiExecutor.execute {
+                conversationApi.getMessages(
+                    conversationId = conversationId,
+                    limit = limit,
+                    cursor = cursor
+                )
+            }
+        ) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> {
                 val messages = result.data.items
                     .map { it.toUiMessage() }
                     .sortedBy { it.timestamp }
                     .withReplyPreviews()
-                ApiResult.Success(messages)
+                ApiResult.Success(
+                    ConversationMessagesPage(
+                        messages = messages,
+                        nextCursor = result.data.nextCursor,
+                        partnerLastReadAt = result.data.partnerLastReadAt?.toEpochMillisOrNow()
+                    )
+                )
             }
         }
     }
@@ -149,11 +167,18 @@ class DefaultConversationRepository(
     }
 
     private fun ConversationDto.toUiConversation(): Conversation {
+        val lastMessagePreview = when {
+            lastMessage == null -> ""
+            lastMessage.isDeleted -> "Message unsent"
+            else -> lastMessage.content.orEmpty()
+        }
+
         return Conversation(
             id = id,
             otherUser = partner.toUiUser(),
-            lastMessage = lastMessage?.content?.takeUnless { lastMessage.isDeleted }.orEmpty(),
+            lastMessage = lastMessagePreview,
             lastMessageSenderId = lastMessage?.senderId,
+            isLastMessageDeleted = lastMessage?.isDeleted == true,
             timestamp = (updatedAt ?: lastMessage?.createdAt ?: createdAt).toEpochMillisOrNow(),
             isUnread = lastMessage?.senderId != null &&
                     currentUserLastReadAt != null &&

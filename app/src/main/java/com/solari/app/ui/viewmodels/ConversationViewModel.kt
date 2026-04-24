@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.solari.app.data.conversation.ConversationRepository
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
+import com.solari.app.data.websocket.WebSocketEvent
+import com.solari.app.data.websocket.WebSocketManager
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.FriendRequest
 import kotlinx.coroutines.CancellationException
@@ -19,7 +21,8 @@ private const val CollapsedFriendRequestCount = 3
 
 class ConversationViewModel(
     private val conversationRepository: ConversationRepository,
-    private val friendRepository: FriendRepository
+    private val friendRepository: FriendRepository,
+    private val webSocketManager: WebSocketManager
 ) : ViewModel() {
     var friendRequests by mutableStateOf<List<FriendRequest>>(emptyList())
         private set
@@ -66,6 +69,71 @@ class ConversationViewModel(
 
     init {
         refresh()
+
+        viewModelScope.launch {
+            webSocketManager.events.collect { event -> handleWebSocketEvent(event) }
+        }
+    }
+
+    private fun handleWebSocketEvent(event: WebSocketEvent) {
+        when (event) {
+            is WebSocketEvent.NewMessage -> {
+                val targetId = event.conversationId
+                val existing = conversations.firstOrNull { it.id == targetId }
+                if (existing != null) {
+                    // Bump to top with updated preview; mark as unread unless the sender is the current user.
+                    // The sender is the "other user" when senderId == otherUser.id.
+                    val isFromPartner = event.message.senderId == existing.otherUser.id
+                    val updated = existing.copy(
+                        lastMessage = event.message.text,
+                        lastMessageSenderId = event.message.senderId,
+                        isLastMessageDeleted = false,
+                        timestamp = event.message.timestamp,
+                        isUnread = isFromPartner
+                    )
+                    conversations = listOf(updated) + conversations.filter { it.id != targetId }
+                }
+                // If the conversation is not in the list, the user will see it after next refresh.
+            }
+
+            is WebSocketEvent.MessageUnsent -> {
+                val targetId = event.conversationId
+                conversations = conversations.map { conversation ->
+                    if (conversation.id == targetId) {
+                        // Only update preview if the unsent message was the last message
+                        // We can't know for certain without the message list, so we always update to be safe
+                        conversation.copy(
+                            lastMessage = "Message unsent",
+                            isLastMessageDeleted = true
+                        )
+                    } else {
+                        conversation
+                    }
+                }
+            }
+
+            is WebSocketEvent.ConversationRead -> {
+                // When the current user reads a conversation, clear unread highlight
+                conversations = conversations.map { conversation ->
+                    if (conversation.id == event.conversationId &&
+                        conversation.isUnread &&
+                        event.userId != conversation.otherUser.id
+                    ) {
+                        conversation.copy(isUnread = false)
+                    } else {
+                        conversation
+                    }
+                }
+            }
+
+            // Reaction events don't affect the conversation list UI
+            is WebSocketEvent.NewReaction,
+            is WebSocketEvent.ReactionUpdated,
+            is WebSocketEvent.ReactionRemoved,
+            is WebSocketEvent.TypingIndicator,
+            is WebSocketEvent.PostProcessed,
+            is WebSocketEvent.PostFailed -> Unit
+        }
     }
 
     fun refresh() {

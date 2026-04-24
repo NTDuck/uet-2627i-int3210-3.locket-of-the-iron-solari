@@ -28,6 +28,7 @@ import coil.compose.AsyncImage
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.FeedBrowseViewModel
@@ -255,7 +256,9 @@ fun FeedBrowseScreen(
                             modifier = Modifier
                                 .aspectRatio(1f)
                                 .scaledClickable(pressedScale = 0.9f) {
-                                    viewModel.registerPostView(post.id)
+                                    if (post.uploadStatus == PostUploadStatus.None) {
+                                        viewModel.registerPostView(post.id)
+                                    }
                                     onNavigateToPost(post.id, selectedFriendIds, selectedSort)
                                 }
                                 .clip(RoundedCornerShape(8.dp))
@@ -267,6 +270,43 @@ fun FeedBrowseScreen(
                                 modifier = Modifier.fillMaxSize(),
                                 contentScale = ContentScale.Crop
                             )
+
+                            when (post.uploadStatus) {
+                                PostUploadStatus.Uploading,
+                                PostUploadStatus.Processing -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = 0.18f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        CircularProgressIndicator(
+                                            color = Color.White,
+                                            trackColor = Color.White.copy(alpha = 0.18f),
+                                            modifier = Modifier.size(24.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    }
+                                }
+
+                                PostUploadStatus.Failed -> {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(Color.Black.copy(alpha = 0.36f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Failed",
+                                            color = Color.White,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+
+                                PostUploadStatus.None -> Unit
+                            }
                         }
                     }
                 }

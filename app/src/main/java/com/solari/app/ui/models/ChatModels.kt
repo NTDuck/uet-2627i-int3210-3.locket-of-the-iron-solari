@@ -10,6 +10,7 @@ data class Conversation(
     val otherUser: User,
     val lastMessage: String,
     val lastMessageSenderId: String? = null,
+    val isLastMessageDeleted: Boolean = false,
     val timestamp: Long = System.currentTimeMillis(),
     val isUnread: Boolean = false,
     val isMuted: Boolean = false,

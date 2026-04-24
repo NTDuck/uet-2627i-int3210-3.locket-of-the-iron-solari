@@ -389,7 +389,7 @@ fun FriendManagementScreen(
                         menuContainerColor = FriendsSurface,
                         menuContentColor = FriendsText,
                         modifier = Modifier.size(28.dp),
-                        iconSize = 14
+                        iconSize = 17
                     )
                 }
             }

@@ -5,6 +5,12 @@ import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.Message
 import com.solari.app.ui.models.MessageReaction
 
+data class ConversationMessagesPage(
+    val messages: List<Message>,
+    val nextCursor: String?,
+    val partnerLastReadAt: Long?
+)
+
 interface ConversationRepository {
     suspend fun createConversation(targetUserId: String): ApiResult<String>
 
@@ -12,7 +18,11 @@ interface ConversationRepository {
 
     suspend fun getConversation(conversationId: String): ApiResult<Conversation>
 
-    suspend fun getMessages(conversationId: String): ApiResult<List<Message>>
+    suspend fun getMessages(
+        conversationId: String,
+        limit: Int = 50,
+        cursor: String? = null
+    ): ApiResult<ConversationMessagesPage>
 
     suspend fun sendMessage(
         conversationId: String,

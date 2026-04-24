@@ -8,10 +8,13 @@ import com.solari.app.data.auth.AuthRepository
 import com.solari.app.data.auth.AuthSessionInvalidationNotifier
 import com.solari.app.data.auth.DefaultAuthRepository
 import com.solari.app.data.auth.TokenRefreshAuthenticator
+import com.solari.app.data.websocket.WebSocketEventParser
+import com.solari.app.data.websocket.WebSocketManager
 import com.solari.app.data.conversation.ConversationRepository
 import com.solari.app.data.conversation.DefaultConversationRepository
 import com.solari.app.data.feed.DefaultFeedRepository
 import com.solari.app.data.feed.FeedRepository
+import com.solari.app.data.feed.PostUploadCoordinator
 import com.solari.app.data.friend.DefaultFriendRepository
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.local.SolariDatabase
@@ -132,6 +135,22 @@ class AppContainer(
         apiExecutor = apiExecutor
     )
 
+    private val webSocketEventParser = WebSocketEventParser(json)
+
+    val webSocketManager = WebSocketManager(
+        baseUrl = BuildConfig.SOLARI_BACKEND_URL,
+        authSessionDao = database.authSessionDao(),
+        tokenCipher = tokenCipher,
+        json = json,
+        eventParser = webSocketEventParser
+    )
+
+    private val postUploadCoordinator = PostUploadCoordinator(
+        context = applicationContext,
+        feedRepository = feedRepository,
+        webSocketManager = webSocketManager
+    )
+
     val pushNotificationCoordinator = PushNotificationCoordinator(
         context = applicationContext,
         pushNotificationStore = pushNotificationStore,
@@ -145,6 +164,8 @@ class AppContainer(
         feedRepository = feedRepository,
         friendRepository = friendRepository,
         conversationRepository = conversationRepository,
-        recentEmojiStore = recentEmojiStore
+        recentEmojiStore = recentEmojiStore,
+        postUploadCoordinator = postUploadCoordinator,
+        webSocketManager = webSocketManager
     )
 }
