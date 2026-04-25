@@ -12,6 +12,7 @@ import com.solari.app.data.websocket.WebSocketEvent
 import com.solari.app.data.websocket.WebSocketManager
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.FriendRequest
+import com.solari.app.ui.models.User
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
@@ -126,6 +127,53 @@ class ConversationViewModel(
                 }
             }
 
+            is WebSocketEvent.NewFriendRequest -> {
+                refreshFriendRequestsFromRealtime()
+            }
+
+            is WebSocketEvent.FriendRequestAccepted -> {
+                val acceptedRequest = friendRequests.firstOrNull { it.id == event.requestId }
+                friendRequests = friendRequests.filterNot { it.id == event.requestId }
+                acceptedRequest?.user?.id?.let { partnerId ->
+                    updateConversationFriendshipStatus(partnerId = partnerId, isFriend = true)
+                }
+                refreshFriendRequestsFromRealtime()
+                refreshConversationsFromRealtime()
+            }
+
+            is WebSocketEvent.FriendRequestRemoved -> {
+                friendRequests = friendRequests.filterNot { it.id == event.requestId }
+                refreshFriendRequestsFromRealtime()
+            }
+
+            is WebSocketEvent.FriendshipStatusChanged -> {
+                updateConversationFriendshipStatus(
+                    partnerId = event.partnerId,
+                    isFriend = event.isFriend
+                )
+                if (!event.isFriend) {
+                    friendRequests = friendRequests.filterNot { it.user.id == event.partnerId }
+                }
+                refreshConversationsFromRealtime()
+            }
+
+            is WebSocketEvent.FriendProfileUpdated -> {
+                conversations = conversations.map { conversation ->
+                    if (conversation.otherUser.id == event.userId) {
+                        conversation.copy(otherUser = conversation.otherUser.withProfileUpdate(event))
+                    } else {
+                        conversation
+                    }
+                }
+                friendRequests = friendRequests.map { request ->
+                    if (request.user.id == event.userId) {
+                        request.copy(user = request.user.withProfileUpdate(event))
+                    } else {
+                        request
+                    }
+                }
+            }
+
             // Reaction events don't affect the conversation list UI
             is WebSocketEvent.NewReaction,
             is WebSocketEvent.ReactionUpdated,
@@ -133,6 +181,53 @@ class ConversationViewModel(
             is WebSocketEvent.TypingIndicator,
             is WebSocketEvent.PostProcessed,
             is WebSocketEvent.PostFailed -> Unit
+        }
+    }
+
+    private fun refreshFriendRequestsFromRealtime() {
+        viewModelScope.launch {
+            try {
+                when (
+                    val result = friendRepository.getFriendRequests(
+                        limit = FriendRequestPageSize,
+                        cursor = null
+                    )
+                ) {
+                    is ApiResult.Success -> {
+                        friendRequests = result.data.items
+                        friendRequestsNextCursor = result.data.nextCursor
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to refresh friend requests"
+            }
+        }
+    }
+
+    private fun refreshConversationsFromRealtime() {
+        viewModelScope.launch {
+            try {
+                when (val result = conversationRepository.getConversations()) {
+                    is ApiResult.Success -> conversations = result.data
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to refresh conversations"
+            }
+        }
+    }
+
+    private fun updateConversationFriendshipStatus(partnerId: String, isFriend: Boolean) {
+        conversations = conversations.map { conversation ->
+            if (conversation.otherUser.id == partnerId) {
+                conversation.copy(isReadOnly = !isFriend)
+            } else {
+                conversation
+            }
         }
     }
 
@@ -308,5 +403,15 @@ class ConversationViewModel(
                 conversation
             }
         }
+    }
+
+    private fun User.withProfileUpdate(event: WebSocketEvent.FriendProfileUpdated): User {
+        val updatedUsername = event.username ?: username
+        val profileDisplayName = event.displayName ?: updatedUsername
+        return copy(
+            username = updatedUsername,
+            displayName = nickname?.takeIf { it.isNotBlank() } ?: profileDisplayName,
+            profileImageUrl = event.avatarUrl
+        )
     }
 }

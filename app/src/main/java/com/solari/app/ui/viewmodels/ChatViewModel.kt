@@ -171,6 +171,30 @@ class ChatViewModel(
                 updatePartnerTypingState(event.isTyping)
             }
 
+            is WebSocketEvent.FriendshipStatusChanged -> {
+                if (event.partnerId != currentConversation.otherUser.id) return
+                if (!event.isFriend) {
+                    stopTypingIndicator()
+                    updatePartnerTypingState(false)
+                    messageText = ""
+                }
+                conversation = currentConversation.copy(isReadOnly = !event.isFriend)
+            }
+
+            is WebSocketEvent.FriendProfileUpdated -> {
+                if (event.userId == currentConversation.otherUser.id) {
+                    conversation = currentConversation.copy(
+                        otherUser = currentConversation.otherUser.withProfileUpdate(event)
+                    )
+                }
+                if (event.userId == currentSenderId()) {
+                    currentUser = currentUser?.withProfileUpdate(event)
+                }
+            }
+
+            is WebSocketEvent.NewFriendRequest,
+            is WebSocketEvent.FriendRequestAccepted,
+            is WebSocketEvent.FriendRequestRemoved,
             is WebSocketEvent.PostProcessed,
             is WebSocketEvent.PostFailed -> Unit
         }
@@ -700,6 +724,16 @@ class ChatViewModel(
 
     private fun currentSenderId(): String? {
         return currentUser?.id ?: currentUserId
+    }
+
+    private fun User.withProfileUpdate(event: WebSocketEvent.FriendProfileUpdated): User {
+        val updatedUsername = event.username ?: username
+        val profileDisplayName = event.displayName ?: updatedUsername
+        return copy(
+            username = updatedUsername,
+            displayName = nickname?.takeIf { it.isNotBlank() } ?: profileDisplayName,
+            profileImageUrl = event.avatarUrl
+        )
     }
 
     private fun Conversation?.hasMessage(messageId: String): Boolean {

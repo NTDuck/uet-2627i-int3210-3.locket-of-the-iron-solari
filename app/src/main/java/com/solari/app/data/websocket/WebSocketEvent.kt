@@ -58,4 +58,36 @@ sealed interface WebSocketEvent {
         val postId: String,
         val error: String
     ) : WebSocketEvent
+
+    data class NewFriendRequest(
+        val requestId: String,
+        val requesterId: String,
+        val receiverId: String,
+        val createdAtMillis: Long
+    ) : WebSocketEvent
+
+    data class FriendRequestAccepted(
+        val requestId: String,
+        val requesterId: String,
+        val receiverId: String,
+        val createdAtMillis: Long
+    ) : WebSocketEvent
+
+    data class FriendRequestRemoved(
+        val requestId: String,
+        val requesterId: String,
+        val receiverId: String
+    ) : WebSocketEvent
+
+    data class FriendshipStatusChanged(
+        val partnerId: String,
+        val isFriend: Boolean
+    ) : WebSocketEvent
+
+    data class FriendProfileUpdated(
+        val userId: String,
+        val username: String?,
+        val displayName: String?,
+        val avatarUrl: String?
+    ) : WebSocketEvent
 }

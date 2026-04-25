@@ -95,6 +95,51 @@ data class PostFailedPayloadDto(
     val error: String
 )
 
+@Serializable
+data class FriendRequestCreatedPayloadDto(
+    val id: String,
+    @SerialName("requesterId") val requesterId: String,
+    @SerialName("receiverId") val receiverId: String,
+    @SerialName("createdAt") val createdAt: String
+)
+
+@Serializable
+data class FriendRequestAcceptedPayloadDto(
+    val id: String,
+    @SerialName("requesterId") val requesterId: String,
+    @SerialName("receiverId") val receiverId: String,
+    @SerialName("createdAt") val createdAt: String
+)
+
+@Serializable
+data class FriendRequestRemovedPayloadDto(
+    @SerialName("requestId") val requestId: String,
+    @SerialName("requesterId") val requesterId: String,
+    @SerialName("receiverId") val receiverId: String
+)
+
+@Serializable
+data class FriendshipStatusChangedPayloadDto(
+    @SerialName("partnerId") val partnerId: String,
+    @SerialName("isFriend") val isFriend: Boolean
+)
+
+@Serializable
+data class FriendProfileUpdatedPayloadDto(
+    @SerialName("userId") val userId: String,
+    val username: String? = null,
+    @SerialName("displayName") val displayName: String? = null,
+    @SerialName("display_name") val snakeCaseDisplayName: String? = null,
+    @SerialName("avatarUrl") val avatarUrl: String? = null,
+    @SerialName("avatar_url") val snakeCaseAvatarUrl: String? = null
+) {
+    val effectiveDisplayName: String?
+        get() = displayName ?: snakeCaseDisplayName
+
+    val effectiveAvatarUrl: String?
+        get() = avatarUrl ?: snakeCaseAvatarUrl
+}
+
 // -- Client-to-server action envelope --
 
 @Serializable

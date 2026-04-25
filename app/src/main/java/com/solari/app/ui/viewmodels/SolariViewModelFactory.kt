@@ -99,7 +99,8 @@ class SolariViewModelFactory(
             modelClass.isAssignableFrom(FriendManagementViewModel::class.java) -> {
                 FriendManagementViewModel(
                     friendRepository = friendRepository,
-                    userRepository = userRepository
+                    userRepository = userRepository,
+                    webSocketManager = webSocketManager
                 )
             }
 
