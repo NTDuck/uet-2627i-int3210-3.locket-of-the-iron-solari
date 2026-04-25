@@ -218,6 +218,7 @@ private class ChatMessageListState(
     var hasFinishedInitialMessageLoad by mutableStateOf(false)
     var highlightedMessageId by mutableStateOf<String?>(null)
     var olderMessageRestoreAnchor by mutableStateOf<ChatListItemAnchor?>(null)
+    var pendingJumpToMessageId by mutableStateOf<String?>(null)
 }
 
 @Composable
@@ -406,7 +407,9 @@ fun ChatScreen(
                                             replyingToMessage = message
                                         },
                                         onJumpToMessage = { messageId ->
-                                            jumpToMessage(messageId)
+                                            if (!jumpToMessage(messageId)) {
+                                                chatMessageListState.pendingJumpToMessageId = messageId
+                                            }
                                         }
                                     )
                                 }
@@ -541,7 +544,7 @@ private fun rememberJumpToMessage(
     messageItemIndexes: Map<String, Int>,
     messageListState: LazyListState,
     onHighlightMessage: (String) -> Unit
-): (String) -> Unit {
+): (String) -> Boolean {
     val coroutineScope = rememberCoroutineScope()
     return remember(messageItemIndexes, messageListState, coroutineScope, onHighlightMessage) {
         { messageId ->
@@ -561,6 +564,9 @@ private fun rememberJumpToMessage(
                     val topHalfOffset = -(messageListState.layoutInfo.viewportSize.height / 4)
                     messageListState.animateScrollToItem(targetIndex, scrollOffset = topHalfOffset)
                 }
+                true
+            } else {
+                false
             }
         }
     }
@@ -605,6 +611,10 @@ private fun BindChatMessageListEffects(
         if (state.highlightedMessageId == null) return@LaunchedEffect
         delay(MessageJumpHighlightDurationMillis.toLong())
         state.highlightedMessageId = null
+    }
+
+    LaunchedEffect(activeChatId) {
+        state.pendingJumpToMessageId = null
     }
 
     DisposableEffect(activeChatId, isReadOnly, isDraftConversation) {
@@ -672,6 +682,7 @@ private fun BindChatMessageListEffects(
         messageListItemCount,
         messageOrdinalsById
     ) {
+        if (state.pendingJumpToMessageId != null) return@LaunchedEffect
         if (!state.isMessageScrollInitialized || viewModel.isLoadingMessages || messageListItemCount == 0) {
             return@LaunchedEffect
         }
@@ -703,6 +714,7 @@ private fun BindChatMessageListEffects(
         state.isMessageScrollInitialized,
         messageListState
     ) {
+        if (state.pendingJumpToMessageId != null) return@LaunchedEffect
         if (!viewModel.isLoadingOlderMessages || !state.isMessageScrollInitialized) return@LaunchedEffect
 
         snapshotFlow { messageListState.olderMessagesRestoreAnchor() }
@@ -716,9 +728,14 @@ private fun BindChatMessageListEffects(
     LaunchedEffect(
         viewModel.isLoadingOlderMessages,
         state.olderMessageRestoreAnchor,
-        listItemIndexes
+        listItemIndexes,
+        state.pendingJumpToMessageId
     ) {
         if (viewModel.isLoadingOlderMessages) return@LaunchedEffect
+        if (state.pendingJumpToMessageId != null) {
+            state.olderMessageRestoreAnchor = null
+            return@LaunchedEffect
+        }
 
         state.olderMessageRestoreAnchor?.let { anchor ->
             listItemIndexes[anchor.itemKey]?.let { itemIndex ->
@@ -730,6 +747,44 @@ private fun BindChatMessageListEffects(
         }
 
         state.olderMessageRestoreAnchor = null
+    }
+
+    LaunchedEffect(
+        activeChatId,
+        state.pendingJumpToMessageId,
+        listItemIndexes,
+        viewModel.canLoadOlderMessages,
+        viewModel.isLoadingOlderMessages,
+        viewModel.isLoadingMessages,
+        state.isMessageScrollInitialized
+    ) {
+        val targetMessageId = state.pendingJumpToMessageId ?: return@LaunchedEffect
+        if (!state.isMessageScrollInitialized || viewModel.isLoadingMessages) return@LaunchedEffect
+
+        val targetIndex = listItemIndexes[chatMessageItemKey(targetMessageId)]
+        if (targetIndex != null) {
+            state.olderMessageRestoreAnchor = null
+            state.highlightedMessageId = targetMessageId
+            val topHalfOffset = -(messageListState.layoutInfo.viewportSize.height / 4)
+            messageListState.animateScrollToItem(targetIndex, scrollOffset = topHalfOffset)
+            state.pendingJumpToMessageId = null
+            return@LaunchedEffect
+        }
+
+        if (!viewModel.canLoadOlderMessages) {
+            state.pendingJumpToMessageId = null
+            return@LaunchedEffect
+        }
+
+        if (viewModel.isLoadingOlderMessages) return@LaunchedEffect
+
+        state.olderMessageRestoreAnchor = null
+        if (messageListState.firstVisibleItemIndex > 0) {
+            messageListState.animateScrollToItem(0)
+        }
+        if (!viewModel.loadOlderMessages()) {
+            state.pendingJumpToMessageId = null
+        }
     }
 
     LaunchedEffect(
