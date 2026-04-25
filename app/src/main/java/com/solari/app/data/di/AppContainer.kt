@@ -76,7 +76,7 @@ class AppContainer(
 
     private val refreshAuthApi: AuthApi = refreshRetrofit.create(AuthApi::class.java)
 
-    private val okHttpClient = OkHttpClient.Builder()
+    val okHttpClient = OkHttpClient.Builder()
         .authenticator(
             TokenRefreshAuthenticator(
                 authApi = refreshAuthApi,

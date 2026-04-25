@@ -19,6 +19,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.channels.awaitClose
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -247,6 +250,11 @@ private fun SolariApp(
     var inviteFeedbackMessage by remember { mutableStateOf("") }
     var inviteFeedbackIsSuccess by remember { mutableStateOf(false) }
     var inviteFeedbackEventId by remember { mutableStateOf(0) }
+    var internetFeedbackVisible by remember { mutableStateOf(false) }
+    var internetFeedbackMessage by remember { mutableStateOf("") }
+    var internetFeedbackIsSuccess by remember { mutableStateOf(false) }
+    var internetFeedbackIsLoading by remember { mutableStateOf(false) }
+    var internetFeedbackEventId by remember { mutableStateOf(0) }
     var notificationPermissionGranted by remember {
         mutableStateOf(
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
@@ -338,6 +346,82 @@ private fun SolariApp(
         if (inviteFeedbackEventId > 0) {
             delay(1_000)
             inviteFeedbackVisible = false
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val connectivityManager = context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val networkChanges = callbackFlow {
+            val callback = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    trySend(Unit)
+                }
+                override fun onLost(network: android.net.Network) {
+                    trySend(Unit)
+                }
+            }
+            val request = android.net.NetworkRequest.Builder()
+                .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .build()
+            connectivityManager.registerNetworkCallback(request, callback)
+            awaitClose {
+                connectivityManager.unregisterNetworkCallback(callback)
+            }
+        }
+        
+        networkChanges.collectLatest {
+            delay(1000)
+            
+            val request = okhttp3.Request.Builder()
+                .url("${com.solari.app.BuildConfig.SOLARI_BACKEND_URL}health")
+                .build()
+                
+            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                runCatching {
+                    appContainer.okHttpClient.newCall(request).execute().use { it.isSuccessful }
+                }.getOrDefault(false)
+            }
+            
+            if (!result) {
+                internetFeedbackMessage = "No internet connection. Reconnecting..."
+                internetFeedbackIsSuccess = false
+                internetFeedbackIsLoading = true
+                internetFeedbackVisible = true
+                
+                while(true) {
+                    delay(1000)
+                    val pollResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        runCatching {
+                            appContainer.okHttpClient.newCall(request).execute().use { it.isSuccessful }
+                        }.getOrDefault(false)
+                    }
+                    if (pollResult) {
+                        internetFeedbackVisible = false
+                        delay(400)
+                        internetFeedbackMessage = "Reconnected successfully"
+                        internetFeedbackIsSuccess = true
+                        internetFeedbackIsLoading = false
+                        internetFeedbackVisible = true
+                        internetFeedbackEventId += 1
+                        break
+                    }
+                }
+            } else if (internetFeedbackVisible && !internetFeedbackIsSuccess) {
+                internetFeedbackVisible = false
+                delay(400)
+                internetFeedbackMessage = "Reconnected successfully"
+                internetFeedbackIsSuccess = true
+                internetFeedbackIsLoading = false
+                internetFeedbackVisible = true
+                internetFeedbackEventId += 1
+            }
+        }
+    }
+
+    LaunchedEffect(internetFeedbackEventId) {
+        if (internetFeedbackEventId > 0) {
+            delay(2000)
+            internetFeedbackVisible = false
         }
     }
 
@@ -827,6 +911,28 @@ private fun SolariApp(
             SolariFeedbackPill(
                 message = inviteFeedbackMessage,
                 isSuccess = inviteFeedbackIsSuccess
+            )
+        }
+        
+        AnimatedVisibility(
+            visible = internetFeedbackVisible,
+            enter = slideInVertically(
+                initialOffsetY = { -it * 2 },
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+            ),
+            exit = slideOutVertically(
+                targetOffsetY = { -it * 2 },
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+            ),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+        ) {
+            SolariFeedbackPill(
+                message = internetFeedbackMessage,
+                isSuccess = internetFeedbackIsSuccess,
+                isLoading = internetFeedbackIsLoading
             )
         }
     }

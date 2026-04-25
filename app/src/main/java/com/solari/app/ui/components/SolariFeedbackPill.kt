@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -26,7 +27,8 @@ import com.solari.app.ui.theme.PlusJakartaSans
 fun SolariFeedbackPill(
     message: String,
     isSuccess: Boolean,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    isLoading: Boolean = false
 ) {
     val backgroundColor = if (isSuccess) Color(0xFF163624) else Color(0xFF3C1E22)
     val iconTint = if (isSuccess) Color(0xFF77E0A1) else Color(0xFFFF8A80)
@@ -42,12 +44,20 @@ fun SolariFeedbackPill(
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = if (isSuccess) Icons.Default.Check else Icons.Default.Close,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(24.dp)
-            )
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = iconTint,
+                    strokeWidth = 2.5.dp,
+                    modifier = Modifier.size(24.dp)
+                )
+            } else {
+                Icon(
+                    imageVector = if (isSuccess) Icons.Default.Check else Icons.Default.Close,
+                    contentDescription = null,
+                    tint = iconTint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -56,7 +66,7 @@ fun SolariFeedbackPill(
                 color = Color.White,
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
