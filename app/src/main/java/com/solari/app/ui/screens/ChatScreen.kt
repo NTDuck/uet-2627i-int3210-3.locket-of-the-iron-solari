@@ -113,6 +113,7 @@ import com.solari.app.ui.models.MessageDeliveryState
 import com.solari.app.ui.models.MessageReaction
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
+import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.EmojiCatalog
 import com.solari.app.ui.util.EmojiCatalogCategory
 import com.solari.app.ui.util.scaleOnPress
@@ -147,6 +148,7 @@ private const val OlderMessagesTriggerRemainingMessageCount = 30
 private const val MinuteMillis = 60_000L
 private const val HourMillis = 60L * MinuteMillis
 private const val DayMillis = 24L * HourMillis
+private const val MessageJumpHighlightDurationMillis = 1_500
 
 private val QuickReactionEmojis = listOf("❤️", "😂", "😮", "😢", "😡", "👍")
 
@@ -601,7 +603,7 @@ private fun BindChatMessageListEffects(
 
     LaunchedEffect(state.highlightedMessageId) {
         if (state.highlightedMessageId == null) return@LaunchedEffect
-        delay(1_250)
+        delay(MessageJumpHighlightDurationMillis.toLong())
         state.highlightedMessageId = null
     }
 
@@ -1195,11 +1197,21 @@ private fun ChatBubble(
     val hapticFeedback = LocalHapticFeedback.current
     val replySwipeThresholdPx = with(LocalDensity.current) { 180.dp.toPx() }
     val bubbleShape = RoundedCornerShape(12.dp)
-    val highlightAlpha by animateFloatAsState(
-        targetValue = if (isHighlighted) 0.12f else 0f,
+    val highlightScale by animateFloatAsState(
+        targetValue = if (isHighlighted) 1.1f else 1f,
         animationSpec = tween(durationMillis = 220),
-        label = "messageHighlightAlpha"
+        label = "messageHighlightScale"
     )
+    val bubbleBackgroundColor = when {
+        isHighlighted -> SolariTheme.colors.primary
+        isFromMe -> ChatOutgoingBubble
+        else -> ChatIncomingBubble
+    }
+    val messageTextColor = when {
+        isHighlighted -> SolariTheme.colors.onPrimary
+        message.isDeleted -> ChatText.copy(alpha = 0.8f)
+        else -> ChatText
+    }
     val currentUserReactionEmoji = message.reactions
         .firstOrNull { it.userId == currentUserId }
         ?.emoji
@@ -1260,6 +1272,7 @@ private fun ChatBubble(
         Box {
             Box(
                 modifier = Modifier
+                    .scale(highlightScale)
                     .scaleOnPress(
                         interactionSource = bubbleInteractionSource,
                         pressedScale = 1.1f
@@ -1267,20 +1280,17 @@ private fun ChatBubble(
                     .clip(bubbleShape)
                     .then(
                         if (message.isDeleted) {
-                            Modifier.border(
-                                width = 1.dp,
-                                color = ChatMuted.copy(alpha = 0.45f),
-                                shape = bubbleShape
-                            )
+                            if (isHighlighted) {
+                                Modifier.background(bubbleBackgroundColor, bubbleShape)
+                            } else {
+                                Modifier.border(
+                                    width = 1.dp,
+                                    color = ChatMuted.copy(alpha = 0.45f),
+                                    shape = bubbleShape
+                                )
+                            }
                         } else {
-                            Modifier.background(if (isFromMe) ChatOutgoingBubble else ChatIncomingBubble)
-                        }
-                    )
-                    .then(
-                        if (highlightAlpha > 0f) {
-                            Modifier.background(Color.White.copy(alpha = highlightAlpha), bubbleShape)
-                        } else {
-                            Modifier
+                            Modifier.background(bubbleBackgroundColor, bubbleShape)
                         }
                     )
                     .then(
@@ -1313,7 +1323,7 @@ private fun ChatBubble(
 
                     Text(
                         text = message.text,
-                        color = if (message.isDeleted) ChatText.copy(alpha = 0.8f) else ChatText,
+                        color = messageTextColor,
                         fontSize = 14.sp,
                         lineHeight = 20.sp,
                         fontFamily = PlusJakartaSans,

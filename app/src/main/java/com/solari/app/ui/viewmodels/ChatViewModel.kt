@@ -31,6 +31,8 @@ private const val LocalTypingHeartbeatMs = 1_500L
 private const val RemoteTypingExpiryMs = 4_000L
 private const val MessagePageSize = 50
 private const val ChatViewModelLogTag = "ChatViewModel"
+private const val MessageUnsentPreviewText = "Message unsent"
+private const val UnknownMessagePreviewText = "Unknown message"
 
 class ChatViewModel(
     private val conversationRepository: ConversationRepository,
@@ -40,6 +42,8 @@ class ChatViewModel(
     private val webSocketManager: WebSocketManager
 ) : ViewModel() {
     private val referencedPostsById = mutableMapOf<String, Post>()
+    private val replyPreviewByMessageId = mutableMapOf<String, String>()
+    private val pendingReplyPreviewMessageIds = mutableSetOf<String>()
     // Monotonically increasing version per message; stale API callbacks are discarded when version has advanced
     private val reactionVersionByMessageId = mutableMapOf<String, Long>()
 
@@ -125,19 +129,12 @@ class ChatViewModel(
                 if (isPartnerMessage) {
                     markActiveConversationRead(activeChatId)
                 }
+                resolveMissingReplyPreviews(activeChatId)
             }
 
             is WebSocketEvent.MessageUnsent -> {
                 if (event.conversationId != activeChatId) return
-                conversation = currentConversation.copy(
-                    messages = currentConversation.messages.map { message ->
-                        if (message.id == event.messageId) {
-                            message.copy(text = "Message unsent", isDeleted = true, reactions = emptyList())
-                        } else {
-                            message
-                        }
-                    }
-                )
+                markMessageUnsentLocally(event.messageId)
             }
 
             is WebSocketEvent.NewReaction -> {
@@ -213,6 +210,128 @@ class ChatViewModel(
         )
     }
 
+    private fun resolveMissingReplyPreviews(conversationId: String) {
+        val currentConversation = conversation ?: return
+        if (currentConversation.id != conversationId) return
+
+        val messagesWithLoadedPreviews = currentConversation.messages.withLoadedReplyPreviews()
+        if (messagesWithLoadedPreviews != currentConversation.messages) {
+            conversation = currentConversation.copy(messages = messagesWithLoadedPreviews)
+        }
+
+        val latestConversation = conversation ?: return
+        if (latestConversation.id != conversationId) return
+
+        val missingRepliedMessageIds = latestConversation.messages
+            .asSequence()
+            .filter { it.repliedMessageId != null && it.repliedMessagePreview == null }
+            .mapNotNull { it.repliedMessageId }
+            .distinct()
+            .toList()
+
+        missingRepliedMessageIds.forEach { repliedMessageId ->
+            val cachedPreview = replyPreviewByMessageId[repliedMessageId]
+            if (cachedPreview != null) {
+                applyReplyPreview(
+                    conversationId = conversationId,
+                    repliedMessageId = repliedMessageId,
+                    preview = cachedPreview
+                )
+                return@forEach
+            }
+
+            if (!pendingReplyPreviewMessageIds.add(repliedMessageId)) return@forEach
+
+            viewModelScope.launch {
+                val preview = try {
+                    when (val result = conversationRepository.getMessage(repliedMessageId)) {
+                        is ApiResult.Success -> result.data.toReplyPreviewText()
+                        is ApiResult.Failure -> {
+                            if (result.type == "MESSAGE_NOT_FOUND") {
+                                UnknownMessagePreviewText
+                            } else {
+                                Log.w(
+                                    ChatViewModelLogTag,
+                                    "Failed to resolve replied message $repliedMessageId: ${result.message}"
+                                )
+                                null
+                            }
+                        }
+                    }
+                } catch (throwable: Throwable) {
+                    if (throwable is CancellationException) throw throwable
+                    Log.w(
+                        ChatViewModelLogTag,
+                        "Failed to resolve replied message $repliedMessageId",
+                        throwable
+                    )
+                    null
+                } finally {
+                    pendingReplyPreviewMessageIds.remove(repliedMessageId)
+                }
+
+                if (preview != null) {
+                    val effectivePreview = if (replyPreviewByMessageId[repliedMessageId] == MessageUnsentPreviewText) {
+                        MessageUnsentPreviewText
+                    } else {
+                        preview
+                    }
+                    replyPreviewByMessageId[repliedMessageId] = effectivePreview
+                    applyReplyPreview(
+                        conversationId = conversationId,
+                        repliedMessageId = repliedMessageId,
+                        preview = effectivePreview
+                    )
+                }
+            }
+        }
+    }
+
+    private fun applyReplyPreview(
+        conversationId: String,
+        repliedMessageId: String,
+        preview: String
+    ) {
+        val currentConversation = conversation ?: return
+        if (currentConversation.id != conversationId) return
+
+        conversation = currentConversation.copy(
+            messages = currentConversation.messages.map { message ->
+                if (message.repliedMessageId == repliedMessageId && message.repliedMessagePreview == null) {
+                    message.copy(repliedMessagePreview = preview)
+                } else {
+                    message
+                }
+            }
+        )
+    }
+
+    private fun markMessageUnsentLocally(messageId: String) {
+        replyPreviewByMessageId[messageId] = MessageUnsentPreviewText
+        pendingReplyPreviewMessageIds.remove(messageId)
+
+        val currentConversation = conversation ?: return
+        conversation = currentConversation.copy(
+            messages = currentConversation.messages.map { message ->
+                when {
+                    message.id == messageId -> {
+                        message.copy(
+                            text = MessageUnsentPreviewText,
+                            isDeleted = true,
+                            reactions = emptyList()
+                        )
+                    }
+
+                    message.repliedMessageId == messageId -> {
+                        message.copy(repliedMessagePreview = MessageUnsentPreviewText)
+                    }
+
+                    else -> message
+                }
+            }
+        )
+    }
+
     private fun markActiveConversationRead(conversationId: String) {
         viewModelScope.launch {
             try {
@@ -281,6 +400,7 @@ class ChatViewModel(
                                 ?: conversationResult.data.partnerLastReadAt,
                             messages = messagesPage.messages.withReferencedPostThumbnails()
                         )
+                        resolveMissingReplyPreviews(chatId)
                         errorMessage = null
                     }
 
@@ -333,6 +453,7 @@ class ChatViewModel(
                                 ?: latestConversation.partnerLastReadAt,
                             messages = mergedMessages
                         )
+                        resolveMissingReplyPreviews(currentConversation.id)
                     }
 
                     is ApiResult.Failure -> {
@@ -484,15 +605,8 @@ class ChatViewModel(
     fun unsendMessage(chatId: String, messageId: String) {
         if (conversation?.isReadOnly == true) return
         val previousConversation = conversation
-        conversation = previousConversation?.copy(
-            messages = previousConversation.messages.map { message ->
-                if (message.id == messageId) {
-                    message.copy(text = "Message unsent", isDeleted = true, reactions = emptyList())
-                } else {
-                    message
-                }
-            }
-        )
+        val previousReplyPreview = replyPreviewByMessageId[messageId]
+        markMessageUnsentLocally(messageId)
 
         viewModelScope.launch {
             when (val result = conversationRepository.unsendMessage(chatId, messageId)) {
@@ -500,6 +614,11 @@ class ChatViewModel(
 
                 is ApiResult.Failure -> {
                     conversation = previousConversation
+                    if (previousReplyPreview == null) {
+                        replyPreviewByMessageId.remove(messageId)
+                    } else {
+                        replyPreviewByMessageId[messageId] = previousReplyPreview
+                    }
                     errorMessage = result.message
                 }
             }
@@ -828,6 +947,31 @@ class ChatViewModel(
                 .filterNot { it.userId == reaction.userId }
                 .plus(reaction)
         )
+    }
+
+    private fun List<Message>.withLoadedReplyPreviews(): List<Message> {
+        val messagesById = associateBy { it.id }
+        messagesById.values.forEach { message ->
+            replyPreviewByMessageId[message.id] = message.toReplyPreviewText()
+        }
+
+        return map { message ->
+            val repliedMessageId = message.repliedMessageId ?: return@map message
+            if (message.repliedMessagePreview != null) return@map message
+
+            val preview = messagesById[repliedMessageId]?.toReplyPreviewText()
+                ?: replyPreviewByMessageId[repliedMessageId]
+                ?: return@map message
+            message.copy(repliedMessagePreview = preview)
+        }
+    }
+
+    private fun Message.toReplyPreviewText(): String {
+        return if (isDeleted || text.isBlank()) {
+            MessageUnsentPreviewText
+        } else {
+            text
+        }
     }
 
     private suspend fun List<Message>.withReferencedPostThumbnails(): List<Message> {

@@ -80,6 +80,13 @@ class DefaultConversationRepository(
         }
     }
 
+    override suspend fun getMessage(messageId: String): ApiResult<Message> {
+        return when (val result = apiExecutor.execute { conversationApi.getMessage(messageId) }) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(result.data.message.toUiMessage())
+        }
+    }
+
     override suspend fun sendMessage(
         conversationId: String,
         content: String,

@@ -24,6 +24,8 @@ interface ConversationRepository {
         cursor: String? = null
     ): ApiResult<ConversationMessagesPage>
 
+    suspend fun getMessage(messageId: String): ApiResult<Message>
+
     suspend fun sendMessage(
         conversationId: String,
         content: String,
