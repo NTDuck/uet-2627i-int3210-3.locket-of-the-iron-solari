@@ -175,10 +175,17 @@ private fun NavController.navigateToWelcomeAfterLogout(onNavigated: () -> Unit) 
 }
 
 private fun NavController.navigateToFeedBrowse(authorId: String?) {
+    val feedBrowseRoutePattern = SolariRoute.Screen.FeedBrowse.name + "?authorId={authorId}"
     val route = if (authorId.isNullOrBlank()) {
         SolariRoute.Screen.FeedBrowse.name
     } else {
         "${SolariRoute.Screen.FeedBrowse.name}?authorId=$authorId"
+    }
+    if (authorId.isNullOrBlank() &&
+        (popBackStack(SolariRoute.Screen.FeedBrowse.name, false) ||
+                popBackStack(feedBrowseRoutePattern, false))
+    ) {
+        return
     }
     navigate(route)
 }

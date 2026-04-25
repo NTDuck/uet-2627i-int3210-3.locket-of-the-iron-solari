@@ -8,10 +8,12 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -32,6 +34,10 @@ import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.FeedBrowseViewModel
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
+
+private const val FeedBrowseScrollTopButtonThresholdIndex = 24
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -44,14 +50,22 @@ fun FeedBrowseScreen(
     onNavigateToProfile: () -> Unit,
     onNavigateToPost: (postId: String, authorIds: Set<String>, sort: String) -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
     val posts = viewModel.posts
     val friends = viewModel.friends
     val currentUser = viewModel.currentUser
-    var selectedSort by remember { mutableStateOf("default") }
-    var selectedFriendIds by remember(initialAuthorId) {
-        mutableStateOf(initialAuthorId?.let { setOf(it) } ?: emptySet())
-    }
+    val selectedSort = viewModel.selectedSort
+    val selectedFriendIds = viewModel.selectedFriendIds
     var isUserRefreshing by remember { mutableStateOf(false) }
+    val feedListState = rememberLazyGridState(
+        initialFirstVisibleItemIndex = viewModel.feedListFirstVisibleItemIndex,
+        initialFirstVisibleItemScrollOffset = viewModel.feedListFirstVisibleItemScrollOffset
+    )
+    val showScrollTopButton by remember {
+        derivedStateOf {
+            feedListState.firstVisibleItemIndex >= FeedBrowseScrollTopButtonThresholdIndex
+        }
+    }
     val visibleFriends = remember(friends, currentUser?.id) {
         friends.filterNot { it.id == currentUser?.id }
     }
@@ -67,6 +81,27 @@ fun FeedBrowseScreen(
             "newest" -> filteredPosts.sortedByDescending { it.timestamp }
             "oldest" -> filteredPosts.sortedBy { it.timestamp }
             else -> filteredPosts
+        }
+    }
+
+    LaunchedEffect(initialAuthorId) {
+        viewModel.applyInitialAuthorFilter(initialAuthorId)
+    }
+
+    LaunchedEffect(feedListState) {
+        snapshotFlow {
+            feedListState.firstVisibleItemIndex to feedListState.firstVisibleItemScrollOffset
+        }
+            .distinctUntilChanged()
+            .collect { (index, offset) ->
+                viewModel.updateFeedListScroll(index, offset)
+            }
+    }
+
+    fun scrollFeedListToTop() {
+        viewModel.resetFeedListScroll()
+        coroutineScope.launch {
+            feedListState.animateScrollToItem(0)
         }
     }
 
@@ -117,9 +152,18 @@ fun FeedBrowseScreen(
                 )
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SortChip("default", isSelected = selectedSort == "default") { selectedSort = "default" }
-                    SortChip("newest", isSelected = selectedSort == "newest") { selectedSort = "newest" }
-                    SortChip("oldest", isSelected = selectedSort == "oldest") { selectedSort = "oldest" }
+                    SortChip("default", isSelected = selectedSort == "default") {
+                        viewModel.updateSelectedSort("default")
+                        scrollFeedListToTop()
+                    }
+                    SortChip("newest", isSelected = selectedSort == "newest") {
+                        viewModel.updateSelectedSort("newest")
+                        scrollFeedListToTop()
+                    }
+                    SortChip("oldest", isSelected = selectedSort == "oldest") {
+                        viewModel.updateSelectedSort("oldest")
+                        scrollFeedListToTop()
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
@@ -142,7 +186,10 @@ fun FeedBrowseScreen(
                             Box(
                                 modifier = Modifier
                                     .size(64.dp)
-                                    .scaledClickable(pressedScale = 1.1f) { selectedFriendIds = emptySet() }
+                                    .scaledClickable(pressedScale = 1.1f) {
+                                        viewModel.clearFriendFilters()
+                                        scrollFeedListToTop()
+                                    }
                                     .clip(CircleShape)
                                     .border(
                                         width = 2.dp,
@@ -179,11 +226,8 @@ fun FeedBrowseScreen(
                                     modifier = Modifier
                                         .size(64.dp)
                                         .scaledClickable(pressedScale = 1.1f) {
-                                            selectedFriendIds = if (isSelected) {
-                                                selectedFriendIds - user.id
-                                            } else {
-                                                selectedFriendIds + user.id
-                                            }
+                                            viewModel.toggleFriendFilter(user.id)
+                                            scrollFeedListToTop()
                                         }
                                         .border(
                                             width = 2.dp,
@@ -215,11 +259,8 @@ fun FeedBrowseScreen(
                                 modifier = Modifier
                                     .size(64.dp)
                                     .scaledClickable(pressedScale = 1.1f) {
-                                        selectedFriendIds = if (isSelected) {
-                                            selectedFriendIds - friend.id
-                                        } else {
-                                            selectedFriendIds + friend.id
-                                        }
+                                        viewModel.toggleFriendFilter(friend.id)
+                                        scrollFeedListToTop()
                                     }
                                     .border(
                                         width = 2.dp,
@@ -244,73 +285,118 @@ fun FeedBrowseScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                LazyVerticalGrid(
-                    columns = GridCells.Fixed(3),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 24.dp)
-                ) {
-                    items(filteredSortedPosts) { post ->
-                        Box(
-                            modifier = Modifier
-                                .aspectRatio(1f)
-                                .scaledClickable(pressedScale = 0.9f) {
-                                    if (post.uploadStatus == PostUploadStatus.None) {
-                                        viewModel.registerPostView(post.id)
+                Box(modifier = Modifier.fillMaxSize()) {
+                    LazyVerticalGrid(
+                        state = feedListState,
+                        columns = GridCells.Fixed(3),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 24.dp)
+                    ) {
+                        items(filteredSortedPosts) { post ->
+                            Box(
+                                modifier = Modifier
+                                    .aspectRatio(1f)
+                                    .scaledClickable(pressedScale = 0.9f) {
+                                        if (post.uploadStatus == PostUploadStatus.None) {
+                                            viewModel.registerPostView(post.id)
+                                        }
+                                        onNavigateToPost(post.id, selectedFriendIds, selectedSort)
                                     }
-                                    onNavigateToPost(post.id, selectedFriendIds, selectedSort)
-                                }
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(SolariTheme.colors.surface)
-                        ) {
-                            AsyncImage(
-                                model = post.thumbnailUrl.ifBlank { post.imageUrl },
-                                contentDescription = "Browse Image",
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(SolariTheme.colors.surface)
+                            ) {
+                                AsyncImage(
+                                    model = post.thumbnailUrl.ifBlank { post.imageUrl },
+                                    contentDescription = "Browse Image",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop
+                                )
 
-                            when (post.uploadStatus) {
-                                PostUploadStatus.Uploading,
-                                PostUploadStatus.Processing -> {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Color.Black.copy(alpha = 0.18f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        CircularProgressIndicator(
-                                            color = Color.White,
-                                            trackColor = Color.White.copy(alpha = 0.18f),
-                                            modifier = Modifier.size(24.dp),
-                                            strokeWidth = 2.dp
-                                        )
+                                when (post.uploadStatus) {
+                                    PostUploadStatus.Uploading,
+                                    PostUploadStatus.Processing -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.18f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                color = Color.White,
+                                                trackColor = Color.White.copy(alpha = 0.18f),
+                                                modifier = Modifier.size(24.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        }
                                     }
-                                }
 
-                                PostUploadStatus.Failed -> {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(Color.Black.copy(alpha = 0.36f)),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Failed",
-                                            color = Color.White,
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                    PostUploadStatus.Failed -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(Color.Black.copy(alpha = 0.36f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "Failed",
+                                                color = Color.White,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
-                                }
 
-                                PostUploadStatus.None -> Unit
+                                    PostUploadStatus.None -> Unit
+                                }
                             }
                         }
                     }
+
+                    if (showScrollTopButton) {
+                        FeedBrowseScrollTopButton(
+                            onClick = ::scrollFeedListToTop,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 12.dp)
+                        )
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun FeedBrowseScrollTopButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(20.dp),
+        color = SolariTheme.colors.surface.copy(alpha = 0.94f),
+        shadowElevation = 8.dp,
+        modifier = modifier
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Filled.KeyboardArrowUp,
+                contentDescription = null,
+                tint = SolariTheme.colors.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = "Top",
+                color = SolariTheme.colors.onSurface,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }

@@ -24,6 +24,18 @@ class FeedBrowseViewModel(
     private val userRepository: UserRepository,
     private val postUploadCoordinator: PostUploadCoordinator
 ) : ViewModel() {
+    var selectedSort by mutableStateOf("default")
+        private set
+
+    var selectedFriendIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    var feedListFirstVisibleItemIndex by mutableStateOf(0)
+        private set
+
+    var feedListFirstVisibleItemScrollOffset by mutableStateOf(0)
+        private set
+
     var friends by mutableStateOf<List<User>>(emptyList())
         private set
 
@@ -42,6 +54,7 @@ class FeedBrowseViewModel(
     private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
     private var remotePosts: List<Post> = emptyList()
     private var uploadEntries: List<PostUploadEntry> = emptyList()
+    private var hasAppliedInitialAuthorFilter = false
 
     init {
         viewModelScope.launch {
@@ -52,6 +65,47 @@ class FeedBrowseViewModel(
         }
 
         refresh()
+    }
+
+    fun applyInitialAuthorFilter(authorId: String?) {
+        if (hasAppliedInitialAuthorFilter) return
+        hasAppliedInitialAuthorFilter = true
+        selectedFriendIds = authorId?.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty()
+        resetFeedListScroll()
+    }
+
+    fun updateSelectedSort(sort: String) {
+        if (sort == selectedSort) return
+        selectedSort = sort
+        resetFeedListScroll()
+    }
+
+    fun toggleFriendFilter(userId: String) {
+        selectedFriendIds = if (userId in selectedFriendIds) {
+            selectedFriendIds - userId
+        } else {
+            selectedFriendIds + userId
+        }
+        resetFeedListScroll()
+    }
+
+    fun clearFriendFilters() {
+        if (selectedFriendIds.isEmpty()) return
+        selectedFriendIds = emptySet()
+        resetFeedListScroll()
+    }
+
+    fun updateFeedListScroll(
+        firstVisibleItemIndex: Int,
+        firstVisibleItemScrollOffset: Int
+    ) {
+        feedListFirstVisibleItemIndex = firstVisibleItemIndex.coerceAtLeast(0)
+        feedListFirstVisibleItemScrollOffset = firstVisibleItemScrollOffset.coerceAtLeast(0)
+    }
+
+    fun resetFeedListScroll() {
+        feedListFirstVisibleItemIndex = 0
+        feedListFirstVisibleItemScrollOffset = 0
     }
 
     fun refresh() {
