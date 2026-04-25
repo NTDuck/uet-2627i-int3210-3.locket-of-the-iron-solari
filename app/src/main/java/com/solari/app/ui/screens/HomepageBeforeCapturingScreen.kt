@@ -1,11 +1,11 @@
 package com.solari.app.ui.screens
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.graphics.PathMeasure
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.util.Log
-import android.util.Rational
 import android.view.Surface
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -13,12 +13,18 @@ import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
+import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.MirrorMode
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.core.ViewPort
+import android.util.Rational
+import androidx.camera.extensions.ExtensionMode
+import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.video.FallbackStrategy
 import androidx.camera.video.FileOutputOptions
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
@@ -33,6 +39,9 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
@@ -77,10 +86,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -99,8 +111,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.concurrent.TimeUnit
+import kotlin.math.roundToInt
 
 private const val MaxVideoDurationMs = 3_000
+private const val TapMovementSlopPx = 24f
+private val PreferredExtensionModes = listOf(
+    ExtensionMode.HDR,
+    ExtensionMode.NIGHT,
+    ExtensionMode.BOKEH
+)
 private val CapturePreviewCornerRadius = 24.dp
 
 private enum class CaptureMode {
@@ -129,15 +149,24 @@ fun HomepageBeforeCapturingScreen(
     }
     val imageCapture = remember {
         ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
             .build()
     }
     val recorder = remember {
         Recorder.Builder()
-            .setQualitySelector(QualitySelector.from(Quality.SD))
+            .setQualitySelector(
+                QualitySelector.fromOrderedList(
+                    listOf(Quality.UHD, Quality.FHD, Quality.HD, Quality.SD),
+                    FallbackStrategy.lowerQualityOrHigherThan(Quality.SD)
+                )
+            )
             .build()
     }
-    val videoCapture = remember(recorder) { VideoCapture.withOutput(recorder) }
+    val videoCapture = remember(recorder) {
+        VideoCapture.Builder(recorder)
+            .setMirrorMode(MirrorMode.MIRROR_MODE_ON_FRONT_ONLY)
+            .build()
+    }
     val recordingProgress = remember { Animatable(0f) }
 
     var lensFacing by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
@@ -160,6 +189,7 @@ fun HomepageBeforeCapturingScreen(
     var isStoppingRecording by remember { mutableStateOf(false) }
     var recordingProgressJob by remember { mutableStateOf<Job?>(null) }
     var isCaptureInFlight by remember { mutableStateOf(false) }
+    var focusIndicatorPosition by remember { mutableStateOf<Offset?>(null) }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -204,33 +234,102 @@ fun HomepageBeforeCapturingScreen(
         recording.stop()
     }
 
+    fun focusAt(position: Offset) {
+        val camera = boundCamera ?: return
+        val meteringPoint = previewView.meteringPointFactory.createPoint(position.x, position.y)
+        val action = FocusMeteringAction.Builder(
+            meteringPoint,
+            FocusMeteringAction.FLAG_AF or
+                    FocusMeteringAction.FLAG_AE or
+                    FocusMeteringAction.FLAG_AWB
+        )
+            .setAutoCancelDuration(3, TimeUnit.SECONDS)
+            .build()
+
+        camera.cameraControl.startFocusAndMetering(action)
+        focusIndicatorPosition = position
+        scope.launch {
+            delay(800)
+            if (focusIndicatorPosition == position) {
+                focusIndicatorPosition = null
+            }
+        }
+    }
+
+    fun zoomBy(zoomChange: Float) {
+        val camera = boundCamera ?: return
+        val zoomState = camera.cameraInfo.zoomState.value ?: return
+        val targetZoomRatio = (zoomState.zoomRatio * zoomChange)
+            .coerceIn(zoomState.minZoomRatio, zoomState.maxZoomRatio)
+        camera.cameraControl.setZoomRatio(targetZoomRatio)
+    }
+
     fun bindCamera() {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
-            val preview = Preview.Builder().build().also {
+            val rotation = previewView.display?.rotation ?: Surface.ROTATION_0
+            val preview = Preview.Builder()
+                .setTargetRotation(rotation)
+                .build()
+                .also {
                 it.setSurfaceProvider(previewView.surfaceProvider)
             }
-            val rotation = previewView.display?.rotation ?: Surface.ROTATION_0
+            imageCapture.targetRotation = rotation
+            videoCapture.targetRotation = rotation
+
+            val baseCameraSelector = CameraSelector.Builder()
+                .requireLensFacing(lensFacing)
+                .build()
+            val (cameraSelector, extensionMode) = runCatching {
+                val extensionsManager = ExtensionsManager.getInstanceAsync(context, cameraProvider).get()
+                val extensionMode = PreferredExtensionModes.firstOrNull { mode ->
+                    extensionsManager.isExtensionAvailable(baseCameraSelector, mode)
+                }
+                if (extensionMode == null) {
+                    baseCameraSelector to null
+                } else {
+                    extensionsManager.getExtensionEnabledCameraSelector(
+                        baseCameraSelector,
+                        extensionMode
+                    ) to extensionMode
+                }
+            }.getOrElse { error ->
+                Log.w("HomepageBeforeCapture", "Camera extensions unavailable; using base camera", error)
+                baseCameraSelector to null
+            }
+
+            val viewPort = previewView.viewPort ?: ViewPort.Builder(Rational(1, 1), rotation).build()
             val useCaseGroup = UseCaseGroup.Builder()
                 .addUseCase(preview)
                 .addUseCase(imageCapture)
                 .addUseCase(videoCapture)
-                .setViewPort(
-                    ViewPort.Builder(Rational(1, 1), rotation)
-                        .build()
-                )
+                .setViewPort(viewPort)
                 .build()
 
             try {
                 cameraProvider.unbindAll()
                 boundCamera = cameraProvider.bindToLifecycle(
                     lifecycleOwner,
-                    CameraSelector.Builder().requireLensFacing(lensFacing).build(),
+                    cameraSelector,
                     useCaseGroup
                 )
             } catch (error: Exception) {
-                Log.e("HomepageBeforeCapture", "Failed to bind camera use cases", error)
+                if (extensionMode != null) {
+                    Log.w("HomepageBeforeCapture", "Extension bind failed; retrying base camera", error)
+                    runCatching {
+                        cameraProvider.unbindAll()
+                        boundCamera = cameraProvider.bindToLifecycle(
+                            lifecycleOwner,
+                            baseCameraSelector,
+                            useCaseGroup
+                        )
+                    }.onFailure { fallbackError ->
+                        Log.e("HomepageBeforeCapture", "Failed to bind camera use cases", fallbackError)
+                    }
+                } else {
+                    Log.e("HomepageBeforeCapture", "Failed to bind camera use cases", error)
+                }
             }
         }, mainExecutor)
     }
@@ -433,7 +532,44 @@ fun HomepageBeforeCapturingScreen(
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(CapturePreviewCornerRadius))
                 .background(Color.Black)
-                .border(1.dp, Color.DarkGray, RoundedCornerShape(CapturePreviewCornerRadius)),
+                .border(1.dp, Color.DarkGray, RoundedCornerShape(CapturePreviewCornerRadius))
+                .pointerInput(boundCamera) {
+                    awaitEachGesture {
+                        val firstDown = awaitFirstDown(requireUnconsumed = false)
+                        val firstPosition = firstDown.position
+                        var maxPointerCount = 1
+                        var totalZoomChange = 1f
+                        var didMovePastTapSlop = false
+
+                        do {
+                            val event = awaitPointerEvent()
+                            maxPointerCount = maxOf(maxPointerCount, event.changes.size)
+
+                            if (event.changes.size >= 2) {
+                                val zoomChange = event.calculateZoom()
+                                if (zoomChange.isFinite() && zoomChange > 0f) {
+                                    totalZoomChange *= zoomChange
+                                    zoomBy(zoomChange)
+                                    event.changes.forEach { it.consume() }
+                                }
+                            } else {
+                                val currentPosition = event.changes.firstOrNull()?.position
+                                if (currentPosition != null &&
+                                    (currentPosition - firstPosition).getDistance() > TapMovementSlopPx
+                                ) {
+                                    didMovePastTapSlop = true
+                                }
+                            }
+                        } while (event.changes.any { it.pressed })
+
+                        if (maxPointerCount == 1 &&
+                            !didMovePastTapSlop &&
+                            totalZoomChange in 0.98f..1.02f
+                        ) {
+                            focusAt(firstPosition)
+                        }
+                    }
+                },
             contentAlignment = Alignment.Center
         ) {
             if (isCameraPermissionGranted) {
@@ -454,6 +590,13 @@ fun HomepageBeforeCapturingScreen(
 
             if (activeRecording != null) {
                 RecordingProgressBorder(progress = recordingProgress.value)
+            }
+
+            focusIndicatorPosition?.let { position ->
+                FocusIndicator(
+                    position = position,
+                    modifier = Modifier.fillMaxSize()
+                )
             }
 
             if (isTimerRunning) {
@@ -593,6 +736,32 @@ fun HomepageBeforeCapturingScreen(
     }
 }
 
+@Composable
+private fun FocusIndicator(
+    position: Offset,
+    modifier: Modifier = Modifier
+) {
+    Layout(
+        content = {
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .border(2.dp, SolariTheme.colors.primary, CircleShape)
+            )
+        },
+        modifier = modifier
+    ) { measurables, constraints ->
+        val placeable = measurables.first().measure(constraints.copy(minWidth = 0, minHeight = 0))
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            placeable.place(
+                x = position.x.roundToInt() - placeable.width / 2,
+                y = position.y.roundToInt() - placeable.height / 2
+            )
+        }
+    }
+}
+
+@SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
 private fun CaptureModePill(
     selectedMode: CaptureMode,
