@@ -62,8 +62,7 @@ class ConversationViewModel(
         }
 
     val canViewMoreFriendRequests: Boolean
-        get() = !isFriendRequestsExpanded &&
-                (friendRequests.size > CollapsedFriendRequestCount || friendRequestsNextCursor != null)
+        get() = !isFriendRequestsExpanded && (friendRequests.size > CollapsedFriendRequestCount || friendRequestsNextCursor != null)
 
     val canViewLessFriendRequests: Boolean
         get() = isFriendRequestsExpanded && friendRequests.size > CollapsedFriendRequestCount
@@ -134,6 +133,7 @@ class ConversationViewModel(
             is WebSocketEvent.FriendRequestAccepted -> {
                 val acceptedRequest = friendRequests.firstOrNull { it.id == event.requestId }
                 friendRequests = friendRequests.filterNot { it.id == event.requestId }
+                checkAndResetExpandedState()
                 acceptedRequest?.user?.id?.let { partnerId ->
                     updateConversationFriendshipStatus(partnerId = partnerId, isFriend = true)
                 }
@@ -143,6 +143,7 @@ class ConversationViewModel(
 
             is WebSocketEvent.FriendRequestRemoved -> {
                 friendRequests = friendRequests.filterNot { it.id == event.requestId }
+                checkAndResetExpandedState()
                 refreshFriendRequestsFromRealtime()
             }
 
@@ -153,6 +154,7 @@ class ConversationViewModel(
                 )
                 if (!event.isFriend) {
                     friendRequests = friendRequests.filterNot { it.user.id == event.partnerId }
+                    checkAndResetExpandedState()
                 }
                 refreshConversationsFromRealtime()
             }
@@ -187,15 +189,21 @@ class ConversationViewModel(
     private fun refreshFriendRequestsFromRealtime() {
         viewModelScope.launch {
             try {
+                val limit = if (isFriendRequestsExpanded) {
+                    friendRequests.size.coerceAtLeast(FriendRequestPageSize)
+                } else {
+                    FriendRequestPageSize
+                }
                 when (
                     val result = friendRepository.getFriendRequests(
-                        limit = FriendRequestPageSize,
+                        limit = limit,
                         cursor = null
                     )
                 ) {
                     is ApiResult.Success -> {
                         friendRequests = result.data.items
                         friendRequestsNextCursor = result.data.nextCursor
+                        checkAndResetExpandedState()
                     }
 
                     is ApiResult.Failure -> errorMessage = result.message
@@ -237,17 +245,22 @@ class ConversationViewModel(
 
             val requestsJob = async {
                 isLoadingFriendRequests = true
+                isFriendRequestsExpanded = false
                 try {
+                    val limit = if (isFriendRequestsExpanded) {
+                        friendRequests.size.coerceAtLeast(FriendRequestPageSize)
+                    } else {
+                        FriendRequestPageSize
+                    }
                     when (
                         val requestsResult = friendRepository.getFriendRequests(
-                            limit = FriendRequestPageSize,
+                            limit = limit,
                             cursor = null
                         )
                     ) {
                         is ApiResult.Success -> {
                             friendRequests = requestsResult.data.items
                             friendRequestsNextCursor = requestsResult.data.nextCursor
-                            isFriendRequestsExpanded = false
                         }
 
                         is ApiResult.Failure -> errorMessage = requestsResult.message
@@ -325,24 +338,28 @@ class ConversationViewModel(
         val previousRequests = friendRequests
         if (previousRequests.none { it.id == requestId }) return
         friendRequests = previousRequests.filterNot { it.id == requestId }
+        checkAndResetExpandedState()
 
         viewModelScope.launch {
             try {
                 when (val result = friendRepository.acceptFriendRequest(requestId)) {
                     is ApiResult.Success -> {
                         successMessage = "Friend request accepted"
-                        refresh()
+                        refreshFriendRequestsFromRealtime()
+                        refreshConversationsFromRealtime()
                     }
 
                     is ApiResult.Failure -> {
                         friendRequests = previousRequests
                         errorMessage = result.message
+                        checkAndResetExpandedState()
                     }
                 }
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 friendRequests = previousRequests
                 errorMessage = throwable.message ?: "Failed to accept friend request"
+                checkAndResetExpandedState()
             }
         }
     }
@@ -371,6 +388,7 @@ class ConversationViewModel(
         val previousRequests = friendRequests
         if (previousRequests.none { it.id == requestId }) return
         friendRequests = previousRequests.filterNot { it.id == requestId }
+        checkAndResetExpandedState()
 
         viewModelScope.launch {
             try {
@@ -379,13 +397,21 @@ class ConversationViewModel(
                     is ApiResult.Failure -> {
                         friendRequests = previousRequests
                         errorMessage = result.message
+                        checkAndResetExpandedState()
                     }
                 }
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 friendRequests = previousRequests
                 errorMessage = throwable.message ?: fallbackErrorMessage
+                checkAndResetExpandedState()
             }
+        }
+    }
+
+    private fun checkAndResetExpandedState() {
+        if (isFriendRequestsExpanded && friendRequests.size <= CollapsedFriendRequestCount) {
+            isFriendRequestsExpanded = false
         }
     }
 
