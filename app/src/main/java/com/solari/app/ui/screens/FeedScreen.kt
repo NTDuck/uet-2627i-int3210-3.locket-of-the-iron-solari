@@ -92,6 +92,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import coil.request.ImageRequest
 import java.io.File
 import java.net.URL
 import java.util.concurrent.TimeUnit
@@ -1453,7 +1454,10 @@ private fun FeedImage(
 
     Box(modifier = modifier) {
         AsyncImage(
-            model = url,
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(url)
+                .crossfade(true)
+                .build(),
             contentDescription = "Post Image",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,

@@ -51,6 +51,14 @@ class FeedBrowseViewModel(
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
+    var isFetchingNextPage by mutableStateOf(false)
+        private set
+
+    var hasReachedEnd by mutableStateOf(false)
+        private set
+
+    private var nextCursor: String? = null
+
     private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
     private var remotePosts: List<Post> = emptyList()
     private var uploadEntries: List<PostUploadEntry> = emptyList()
@@ -78,6 +86,7 @@ class FeedBrowseViewModel(
         if (sort == selectedSort) return
         selectedSort = sort
         resetFeedListScroll()
+        refresh(resetPagination = true)
     }
 
     fun toggleFriendFilter(userId: String) {
@@ -87,12 +96,19 @@ class FeedBrowseViewModel(
             selectedFriendIds + userId
         }
         resetFeedListScroll()
+        refresh(resetPagination = true)
     }
 
     fun clearFriendFilters() {
         if (selectedFriendIds.isEmpty()) return
         selectedFriendIds = emptySet()
         resetFeedListScroll()
+        refresh(resetPagination = true)
+    }
+
+    fun loadNextPage() {
+        if (isLoading || isFetchingNextPage || hasReachedEnd) return
+        refresh(resetPagination = false)
     }
 
     fun updateFeedListScroll(
@@ -108,34 +124,50 @@ class FeedBrowseViewModel(
         feedListFirstVisibleItemScrollOffset = 0
     }
 
-    fun refresh() {
+    fun refresh(resetPagination: Boolean = true) {
         viewModelScope.launch {
-            isLoading = true
-            errorMessage = null
+            if (resetPagination) {
+                isLoading = true
+                nextCursor = null
+                hasReachedEnd = false
+                remotePosts = emptyList()
+                errorMessage = null
 
-            when (val meResult = userRepository.getMe()) {
+                when (val meResult = userRepository.getMe()) {
+                    is ApiResult.Success -> currentUser = meResult.data
+                    is ApiResult.Failure -> errorMessage = meResult.message
+                }
+                when (val friendsResult = friendRepository.getFriends()) {
+                    is ApiResult.Success -> friends = friendsResult.data
+                    is ApiResult.Failure -> errorMessage = friendsResult.message
+                }
+            } else {
+                isFetchingNextPage = true
+            }
+
+            when (
+                val feedResult = feedRepository.getFeed(
+                    authorIds = selectedFriendIds,
+                    sort = selectedSort,
+                    limit = 15,
+                    cursor = nextCursor
+                )
+            ) {
                 is ApiResult.Success -> {
-                    currentUser = meResult.data
+                    val newPosts = feedResult.data.posts
+                    nextCursor = feedResult.data.nextCursor
+                    hasReachedEnd = nextCursor == null
+
+                    remotePosts = if (resetPagination) newPosts else remotePosts + newPosts
+                    postUploadCoordinator.removeSyncedUploads(newPosts.map { it.id }.toSet())
                     applyDisplayPosts()
                 }
-                is ApiResult.Failure -> errorMessage = meResult.message
-            }
-
-            when (val friendsResult = friendRepository.getFriends()) {
-                is ApiResult.Success -> friends = friendsResult.data
-                is ApiResult.Failure -> errorMessage = friendsResult.message
-            }
-
-            when (val feedResult = feedRepository.getFeed()) {
-                is ApiResult.Success -> {
-                    remotePosts = feedResult.data
-                    postUploadCoordinator.removeSyncedUploads(feedResult.data.map { it.id }.toSet())
-                    applyDisplayPosts()
+                is ApiResult.Failure -> {
+                    if (errorMessage == null) errorMessage = feedResult.message
                 }
-                is ApiResult.Failure -> if (errorMessage == null) errorMessage = feedResult.message
             }
 
-            isLoading = false
+            if (resetPagination) isLoading = false else isFetchingNextPage = false
         }
     }
 

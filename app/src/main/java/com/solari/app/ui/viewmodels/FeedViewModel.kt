@@ -86,8 +86,9 @@ class FeedViewModel(
 
             when (val feedResult = feedRepository.getFeed()) {
                 is ApiResult.Success -> {
-                    remotePosts = feedResult.data
-                    val livePostIds = feedResult.data.map { it.id }.toSet()
+                    remotePosts = feedResult.data.posts
+                    val livePostIds = feedResult.data.posts.map { it.id }.toSet()
+
                     postUploadCoordinator.removeSyncedUploads(livePostIds)
                     applyDisplayPosts()
                     val displayedPostIds = posts.map(Post::id).toSet()

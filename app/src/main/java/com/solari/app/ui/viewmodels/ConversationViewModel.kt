@@ -81,8 +81,6 @@ class ConversationViewModel(
                 val targetId = event.conversationId
                 val existing = conversations.firstOrNull { it.id == targetId }
                 if (existing != null) {
-                    // Bump to top with updated preview; mark as unread unless the sender is the current user.
-                    // The sender is the "other user" when senderId == otherUser.id.
                     val isFromPartner = event.message.senderId == existing.otherUser.id
                     val updated = existing.copy(
                         lastMessage = event.message.text,
@@ -93,23 +91,9 @@ class ConversationViewModel(
                     )
                     conversations = listOf(updated) + conversations.filter { it.id != targetId }
                 }
-                // If the conversation is not in the list, the user will see it after next refresh.
             }
 
             is WebSocketEvent.MessageUnsent -> {
-                val targetId = event.conversationId
-                conversations = conversations.map { conversation ->
-                    if (conversation.id == targetId) {
-                        // Only update preview if the unsent message was the last message
-                        // We can't know for certain without the message list, so we always update to be safe
-                        conversation.copy(
-                            lastMessage = "Message unsent",
-                            isLastMessageDeleted = true
-                        )
-                    } else {
-                        conversation
-                    }
-                }
             }
 
             is WebSocketEvent.ConversationRead -> {

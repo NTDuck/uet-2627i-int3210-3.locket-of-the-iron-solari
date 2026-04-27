@@ -29,11 +29,25 @@ class DefaultFeedRepository(
 ) : FeedRepository {
     private val uploadLogTag = "SolariUpload"
 
-    override suspend fun getFeed(authorIds: Set<String>): ApiResult<List<Post>> {
+    override suspend fun getFeed(
+        authorIds: Set<String>,
+        sort: String,
+        limit: Int,
+        cursor: String?
+    ): ApiResult<PaginatedFeed> {
         val authors = authorIds.takeIf { it.isNotEmpty() }?.joinToString(",")
-        return when (val result = apiExecutor.execute { feedApi.getFeed(authors = authors) }) {
+        return when (
+            val result = apiExecutor.execute {
+                feedApi.getFeed(limit = limit, cursor = cursor, authors = authors, sort = sort)
+            }
+        ) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiPost() })
+            is ApiResult.Success -> ApiResult.Success(
+                PaginatedFeed(
+                    posts = result.data.items.map { it.toUiPost() },
+                    nextCursor = result.data.nextCursor
+                )
+            )
         }
     }
 

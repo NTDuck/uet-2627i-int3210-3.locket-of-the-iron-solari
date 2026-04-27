@@ -23,10 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
@@ -88,14 +90,20 @@ fun FeedBrowseScreen(
         viewModel.applyInitialAuthorFilter(initialAuthorId)
     }
 
-    LaunchedEffect(feedListState) {
-        snapshotFlow {
-            feedListState.firstVisibleItemIndex to feedListState.firstVisibleItemScrollOffset
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val layoutInfo = feedListState.layoutInfo
+            val totalItems = layoutInfo.totalItemsCount
+            val lastVisibleIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+
+            totalItems > 0 && lastVisibleIndex >= totalItems - 6
         }
-            .distinctUntilChanged()
-            .collect { (index, offset) ->
-                viewModel.updateFeedListScroll(index, offset)
-            }
+    }
+
+    LaunchedEffect(shouldLoadMore, viewModel.isLoading) {
+        if (shouldLoadMore && !viewModel.isLoading) {
+            viewModel.loadNextPage()
+        }
     }
 
     fun scrollFeedListToTop() {
@@ -109,6 +117,16 @@ fun FeedBrowseScreen(
         if (!viewModel.isLoading) {
             isUserRefreshing = false
         }
+    }
+
+    LaunchedEffect(feedListState) {
+        snapshotFlow { feedListState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .distinctUntilChanged()
+            .collect { lastVisibleIndex ->
+                if (lastVisibleIndex != null && lastVisibleIndex >= posts.size - 6) {
+                    viewModel.loadNextPage()
+                }
+            }
     }
 
     Scaffold(
@@ -294,7 +312,7 @@ fun FeedBrowseScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
-                        items(filteredSortedPosts) { post ->
+                        items(posts, key = { it.id }) { post ->
                             Box(
                                 modifier = Modifier
                                     .aspectRatio(1f)
@@ -308,7 +326,10 @@ fun FeedBrowseScreen(
                                     .background(SolariTheme.colors.surface)
                             ) {
                                 AsyncImage(
-                                    model = post.thumbnailUrl.ifBlank { post.imageUrl },
+                                    model = ImageRequest.Builder(LocalContext.current)
+                                        .data(post.thumbnailUrl.ifBlank { post.imageUrl })
+                                        .crossfade(true)
+                                        .build(),
                                     contentDescription = "Browse Image",
                                     modifier = Modifier.fillMaxSize(),
                                     contentScale = ContentScale.Crop
@@ -349,6 +370,22 @@ fun FeedBrowseScreen(
                                     }
 
                                     PostUploadStatus.None -> Unit
+                                }
+                            }
+                        }
+
+                        if (viewModel.isFetchingNextPage) {
+                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = SolariTheme.colors.primary,
+                                        modifier = Modifier.size(24.dp)
+                                    )
                                 }
                             }
                         }

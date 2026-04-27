@@ -4,8 +4,18 @@ import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostActivityEntry
 
+data class PaginatedFeed(
+    val posts: List<Post>,
+    val nextCursor: String?
+)
+
 interface FeedRepository {
-    suspend fun getFeed(authorIds: Set<String> = emptySet()): ApiResult<List<Post>>
+    suspend fun getFeed(
+        authorIds: Set<String> = emptySet(),
+        sort: String = "default",
+        limit: Int = 15,
+        cursor: String? = null
+    ): ApiResult<PaginatedFeed>
 
     suspend fun getPost(postId: String): ApiResult<Post>
 

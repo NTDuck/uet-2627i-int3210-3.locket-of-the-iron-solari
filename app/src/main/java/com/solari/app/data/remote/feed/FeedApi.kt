@@ -12,9 +12,10 @@ import com.solari.app.data.remote.common.MessageResponseDto
 interface FeedApi {
     @GET("feed")
     suspend fun getFeed(
-        @Query("limit") limit: Int = 100,
+        @Query("limit") limit: Int = 15,
         @Query("cursor") cursor: String? = null,
-        @Query("authors") authors: String? = null
+        @Query("authors") authors: String? = null,
+        @Query("sort") sort: String? = null
     ): Response<GetFeedResponseDto>
 
     @GET("posts/{postId}")
