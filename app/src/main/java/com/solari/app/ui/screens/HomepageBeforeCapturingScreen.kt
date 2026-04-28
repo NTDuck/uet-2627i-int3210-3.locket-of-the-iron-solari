@@ -171,8 +171,8 @@ fun HomepageBeforeCapturingScreen(
 
     var lensFacing by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
     var captureMode by remember { mutableStateOf(CaptureMode.Photo) }
-    var isFlashEnabled by remember { mutableStateOf(false) }
-    var timerValue by remember { mutableIntStateOf(0) }
+    val isFlashEnabled = viewModel.isFlashEnabled
+    val timerValue = viewModel.timerValue
     var isTimerRunning by remember { mutableStateOf(false) }
     var countdownValue by remember { mutableIntStateOf(0) }
     var isCameraPermissionGranted by remember {
@@ -628,7 +628,7 @@ fun HomepageBeforeCapturingScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RoundControlButton(onClick = { isFlashEnabled = !isFlashEnabled }) {
+                RoundControlButton(onClick = viewModel::toggleFlash) {
                     Icon(
                         imageVector = if (isFlashEnabled) Icons.Default.FlashOn else Icons.Default.FlashOff,
                         contentDescription = "Flash",
@@ -647,15 +647,7 @@ fun HomepageBeforeCapturingScreen(
                     }
                 )
 
-                RoundControlButton(
-                    onClick = {
-                        timerValue = when (timerValue) {
-                            0 -> 3
-                            3 -> 10
-                            else -> 0
-                        }
-                    }
-                ) {
+                RoundControlButton(onClick = viewModel::rotateTimer) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Timer,

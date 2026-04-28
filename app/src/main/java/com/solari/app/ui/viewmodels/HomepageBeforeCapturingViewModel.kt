@@ -7,13 +7,17 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.solari.app.data.network.ApiResult
+import com.solari.app.data.preferences.UserPreferencesStore
 import com.solari.app.data.user.UserRepository
 import java.util.TimeZone
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 class HomepageBeforeCapturingViewModel(
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val userPreferencesStore: UserPreferencesStore
 ) : ViewModel() {
     var currentStreak by mutableIntStateOf(0)
         private set
@@ -21,8 +25,20 @@ class HomepageBeforeCapturingViewModel(
     var streakErrorMessage by mutableStateOf<String?>(null)
         private set
 
+    var isFlashEnabled by mutableStateOf(false)
+        private set
+
+    var timerValue by mutableIntStateOf(0)
+        private set
+
     init {
         loadCurrentStreak()
+        userPreferencesStore.userPreferencesFlow
+            .onEach { preferences ->
+                isFlashEnabled = preferences.isFlashEnabled
+                timerValue = preferences.timerValue
+            }
+            .launchIn(viewModelScope)
     }
 
     fun loadCurrentStreak() {
@@ -41,6 +57,23 @@ class HomepageBeforeCapturingViewModel(
                 if (throwable is CancellationException) throw throwable
                 streakErrorMessage = throwable.message ?: "Failed to load streak"
             }
+        }
+    }
+
+    fun toggleFlash() {
+        viewModelScope.launch {
+            userPreferencesStore.updateFlashEnabled(!isFlashEnabled)
+        }
+    }
+
+    fun rotateTimer() {
+        val nextValue = when (timerValue) {
+            0 -> 3
+            3 -> 10
+            else -> 0
+        }
+        viewModelScope.launch {
+            userPreferencesStore.updateTimerValue(nextValue)
         }
     }
 }

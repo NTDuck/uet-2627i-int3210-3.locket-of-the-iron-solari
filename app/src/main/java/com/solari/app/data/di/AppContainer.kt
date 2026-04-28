@@ -21,6 +21,7 @@ import com.solari.app.data.local.SolariDatabase
 import com.solari.app.data.network.ApiExecutor
 import com.solari.app.data.preferences.PushNotificationStore
 import com.solari.app.data.preferences.RecentEmojiStore
+import com.solari.app.data.preferences.UserPreferencesStore
 import com.solari.app.data.remote.conversation.ConversationApi
 import com.solari.app.data.remote.auth.AuthApi
 import com.solari.app.data.remote.feed.FeedApi
@@ -60,6 +61,7 @@ class AppContainer(
     private val pushNotificationStore = PushNotificationStore(applicationContext)
     private val authSessionInvalidationNotifier = AuthSessionInvalidationNotifier()
     private val apiExecutor = ApiExecutor(json)
+    private val userPreferencesStore = UserPreferencesStore(applicationContext)
 
     private val refreshOkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -166,6 +168,7 @@ class AppContainer(
         conversationRepository = conversationRepository,
         recentEmojiStore = recentEmojiStore,
         postUploadCoordinator = postUploadCoordinator,
-        webSocketManager = webSocketManager
+        webSocketManager = webSocketManager,
+        userPreferencesStore = userPreferencesStore
     )
 }

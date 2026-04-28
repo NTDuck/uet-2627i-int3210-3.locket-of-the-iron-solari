@@ -87,12 +87,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val appContainer = (application as SolariApplication).appContainer
-            val settingsViewModel: SettingsViewModel = viewModel()
-            val isSystemDark = isSystemInDarkTheme()
-            
-            LaunchedEffect(Unit) {
-                settingsViewModel.isDarkMode = isSystemDark
-            }
+            val settingsViewModel: SettingsViewModel = viewModel(factory = appContainer.viewModelFactory)
             
             SolariTheme(
                 variant = settingsViewModel.activeThemeVariant
