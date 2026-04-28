@@ -445,7 +445,7 @@ private fun CapturePreviewCard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.12f))
+                .background(SolariTheme.colors.background.copy(alpha = 0.12f))
         )
 
         PreviewTopActionButton(
@@ -457,13 +457,13 @@ private fun CapturePreviewCard(
             Icon(
                 imageVector = Icons.Default.FileDownload,
                 contentDescription = "Download",
-                tint = Color.White,
+                tint = SolariTheme.colors.onBackground,
                 modifier = Modifier.size(22.dp)
             )
         }
 
         Surface(
-            color = Color.Black.copy(alpha = 0.58f),
+            color = SolariTheme.colors.background.copy(alpha = 0.58f),
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -495,13 +495,13 @@ private fun CapturePreviewCard(
                     }
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 textStyle = TextStyle(
-                    color = Color.White,
+                    color = SolariTheme.colors.onBackground,
                     fontSize = 14.sp,
                     lineHeight = 19.sp,
                     fontFamily = PlusJakartaSans,
                     textAlign = TextAlign.Center
                 ),
-                cursorBrush = SolidColor(Color.White),
+                cursorBrush = SolidColor(SolariTheme.colors.onBackground),
                 singleLine = false,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(
@@ -511,7 +511,7 @@ private fun CapturePreviewCard(
                     if (caption.isBlank()) {
                         Text(
                             text = "Enter your caption",
-                            color = Color.White.copy(alpha = 0.72f),
+                            color = SolariTheme.colors.onBackground.copy(alpha = 0.72f),
                             fontSize = 14.sp,
                             lineHeight = 19.sp,
                             fontFamily = PlusJakartaSans,
@@ -578,7 +578,7 @@ private fun PreviewTopActionButton(
             .size(40.dp)
             .scaledClickable(pressedScale = 1.12f, onClick = onClick)
             .clip(CircleShape)
-            .background(Color.Black.copy(alpha = 0.34f)),
+            .background(SolariTheme.colors.background.copy(alpha = 0.34f)),
         contentAlignment = Alignment.Center
     ) {
         content()
@@ -653,7 +653,7 @@ private fun VisibilityAllItem(
             Icon(
                 imageVector = Icons.Default.Public,
                 contentDescription = "All",
-                tint = if (selected) SolariTheme.colors.primary else Color.Gray,
+                tint = if (selected) SolariTheme.colors.primary else SolariTheme.colors.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
             )
         }
@@ -736,7 +736,7 @@ private fun CaptureActionButtons(
     ) {
         RoundActionButton(
             size = 64.dp,
-            backgroundColor = Color(0xFF34363B),
+            backgroundColor = SolariTheme.colors.surfaceVariant,
             onClick = onCancel
         ) {
             Icon(
@@ -788,7 +788,7 @@ private fun CaptureActionButtons(
 
         RoundActionButton(
             size = 64.dp,
-            backgroundColor = Color(0xFF34363B),
+            backgroundColor = SolariTheme.colors.surfaceVariant,
             onClick = { }
         ) {
             Icon(

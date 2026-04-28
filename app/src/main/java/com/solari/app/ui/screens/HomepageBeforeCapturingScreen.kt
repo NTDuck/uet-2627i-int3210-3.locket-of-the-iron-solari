@@ -531,8 +531,8 @@ fun HomepageBeforeCapturingScreen(
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(CapturePreviewCornerRadius))
-                .background(Color.Black)
-                .border(1.dp, Color.DarkGray, RoundedCornerShape(CapturePreviewCornerRadius))
+                .background(SolariTheme.colors.background)
+                .border(1.dp, SolariTheme.colors.onSurfaceVariant, RoundedCornerShape(CapturePreviewCornerRadius))
                 .pointerInput(boundCamera) {
                     awaitEachGesture {
                         val firstDown = awaitFirstDown(requireUnconsumed = false)
@@ -580,7 +580,7 @@ fun HomepageBeforeCapturingScreen(
             } else {
                 Text(
                     text = "Camera permission is required.",
-                    color = Color.White,
+                    color = SolariTheme.colors.onBackground,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -602,7 +602,7 @@ fun HomepageBeforeCapturingScreen(
             if (isTimerRunning) {
                 Text(
                     text = countdownValue.toString(),
-                    color = Color.White,
+                    color = SolariTheme.colors.onBackground,
                     fontSize = 72.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -853,8 +853,9 @@ private fun RoundControlButton(
 
 @Composable
 private fun GridOverlay() {
+    val colors = SolariTheme.colors
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val lineColor = Color.White.copy(alpha = 0.18f)
+        val lineColor = colors.onBackground.copy(alpha = 0.18f)
         val strokeWidth = 1.dp.toPx()
         val firstX = size.width / 3f
         val secondX = size.width * 2f / 3f

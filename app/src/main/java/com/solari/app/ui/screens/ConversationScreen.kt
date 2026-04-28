@@ -157,7 +157,7 @@ fun ConversationScreen(
                             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                                 Surface(
                                     onClick = onNavigateToManageFriends,
-                                    color = Color(0xFF2C2D30),
+                                    color = SolariTheme.colors.surfaceVariant,
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Row(
@@ -173,7 +173,7 @@ fun ConversationScreen(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = "Manage friends",
-                                            color = Color.White,
+                                            color = SolariTheme.colors.onBackground,
                                             fontSize = 14.sp,
                                             fontFamily = PlusJakartaSans,
                                             fontWeight = FontWeight.Medium
@@ -268,7 +268,7 @@ fun ConversationScreen(
                                     onSelected = { sortSelection = it },
                                     iconTint = SolariTheme.colors.tertiary,
                                     menuContainerColor = SolariTheme.colors.surface,
-                                    menuContentColor = Color.White,
+                                    menuContentColor = SolariTheme.colors.onBackground,
                                     modifier = Modifier.size(28.dp),
                                     iconSize = 17
                                 )
@@ -351,7 +351,8 @@ private fun FriendRequestTogglePill(
     onClick: () -> Unit
 ) {
     Surface(
-        color = Color(0xFF2C2D30),
+        color = SolariTheme.colors.surfaceVariant,
+
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.scaledClickable(
             pressedScale = 1.1f,
@@ -419,7 +420,8 @@ fun FriendRequestItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = request.user.displayName,
-                    color = Color.White, 
+                    color = SolariTheme.colors.onBackground,
+ 
                     fontWeight = FontWeight.Bold, 
                     fontSize = 13.6.sp,
                     fontFamily = PlusJakartaSans
@@ -436,7 +438,7 @@ fun FriendRequestItem(
                 Surface(
                     onClick = onCancel,
                     shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFF2C2D30)
+                    color = SolariTheme.colors.surfaceVariant
                 ) {
                     Text(
                         text = "Unsend",
@@ -453,7 +455,7 @@ fun FriendRequestItem(
                         .size(32.dp)
                         .scaledClickable(pressedScale = 1.1f, onClick = onDecline),
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFF2C2D30)
+                    color = SolariTheme.colors.surfaceVariant
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -478,7 +480,7 @@ fun FriendRequestItem(
                         Icon(
                             Icons.Default.Check,
                             contentDescription = "Accept",
-                            tint = Color.Black,
+                            tint = SolariTheme.colors.onPrimary,
                             modifier = Modifier.size(19.dp)
                         )
                     }
@@ -493,8 +495,8 @@ private fun ConversationFeedbackPill(
     message: String,
     isSuccess: Boolean
 ) {
-    val backgroundColor = if (isSuccess) Color(0xFF163624) else Color(0xFF3C1E22)
-    val iconTint = if (isSuccess) Color(0xFF77E0A1) else Color(0xFFFF8A80)
+    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.2f)
+    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.error
 
     Surface(
         color = backgroundColor,
@@ -517,7 +519,8 @@ private fun ConversationFeedbackPill(
 
             Text(
                 text = message,
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
+
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
@@ -605,14 +608,15 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
                     ) {
                         Text(
                             text = displayName,
-                            color = Color.White, 
+                            color = SolariTheme.colors.onBackground,
+ 
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             fontFamily = PlusJakartaSans
                         )
                         Text(
                             text = conversation.timestamp.toRelativeTimeLabel(),
-                            color = if (conversation.isUnread) SolariTheme.colors.secondary else Color.Gray, 
+                            color = if (conversation.isUnread) SolariTheme.colors.secondary else SolariTheme.colors.onSurfaceVariant, 
                             fontSize = 11.sp,
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Medium
@@ -620,7 +624,7 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
                     }
                     Text(
                         text = lastMessagePreview,
-                        color = if (conversation.isUnread) Color.White else Color.Gray,
+                        color = if (conversation.isUnread) SolariTheme.colors.onBackground else SolariTheme.colors.onSurfaceVariant,
                         fontSize = 13.sp,
                         maxLines = 1,
                         fontFamily = PlusJakartaSans,

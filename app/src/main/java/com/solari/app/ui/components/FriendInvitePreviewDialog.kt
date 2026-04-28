@@ -155,7 +155,7 @@ private fun FriendInvitePreviewContent(state: FriendInvitePreviewState) {
         state.errorMessage?.let { message ->
             Text(
                 text = message,
-                color = Color(0xFFE57373),
+                color = SolariTheme.colors.error,
                 fontSize = 15.sp,
                 lineHeight = 18.sp,
                 fontFamily = PlusJakartaSans,
@@ -215,12 +215,13 @@ private fun FriendInvitePreviewState.primaryButtonText(): String {
     }
 }
 
+@Composable
 private fun FriendInvitePreviewState.primaryButtonColor(): Color {
     return when (relationship) {
         FriendInviteRelationship.Self,
         FriendInviteRelationship.None,
         FriendInviteRelationship.PendingOutgoing,
-        FriendInviteRelationship.Blocked -> Color(0xFFFF8426)
-        FriendInviteRelationship.Friend -> Color(0xFFE57373)
+        FriendInviteRelationship.Blocked -> SolariTheme.colors.primary
+        FriendInviteRelationship.Friend -> SolariTheme.colors.error
     }
 }

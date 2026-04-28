@@ -378,7 +378,7 @@ fun FeedScreen(
                         if (canDeletePost) {
                             FeedPostActionButton(
                                 text = "Delete",
-                                textColor = Color(0xFFE57373),
+                                textColor = SolariTheme.colors.error,
                                 shape = RoundedCornerShape(
                                     topStart = 0.dp,
                                     topEnd = 0.dp,
@@ -581,7 +581,7 @@ private fun String.toSafeFeedFileNamePart(): String {
 @Composable
 private fun FeedFeedbackPill(message: String) {
     Surface(
-        color = Color(0xFF163624),
+        color = SolariTheme.colors.onSuccess,
         shape = RoundedCornerShape(20.dp),
         shadowElevation = 10.dp
     ) {
@@ -592,7 +592,7 @@ private fun FeedFeedbackPill(message: String) {
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = null,
-                tint = Color(0xFF77E0A1),
+                tint = SolariTheme.colors.success,
                 modifier = Modifier.size(22.dp)
             )
 
@@ -600,7 +600,8 @@ private fun FeedFeedbackPill(message: String) {
 
             Text(
                 text = message,
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
+
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
@@ -738,7 +739,7 @@ private fun FeedPost(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.18f))
+                        .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f))
                 )
 
                 Box(
@@ -747,14 +748,14 @@ private fun FeedPost(
                         .padding(10.dp)
                         .size(36.dp)
                         .clip(RoundedCornerShape(18.dp))
-                        .background(Color.Black.copy(alpha = 0.36f))
+                        .background(SolariTheme.colors.background.copy(alpha = 0.36f))
                         .clickable(onClick = onMoreClick),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Default.MoreVert,
                         contentDescription = "More",
-                        tint = Color.White,
+                        tint = SolariTheme.colors.onBackground,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -762,7 +763,8 @@ private fun FeedPost(
                 if (!post.caption.isEmpty()) {
                     Text(
                         text = post.caption,
-                        color = Color.White,
+                        color = SolariTheme.colors.onBackground,
+
                         fontSize = 15.sp,
                         lineHeight = 20.sp,
                         fontFamily = PlusJakartaSans,
@@ -771,7 +773,7 @@ private fun FeedPost(
                             .align(Alignment.BottomCenter)
                             .padding(bottom = 14.dp)
                             .clip(RoundedCornerShape(14.dp))
-                            .background(Color.Black.copy(alpha = 0.58f))
+                            .background(SolariTheme.colors.background.copy(alpha = 0.58f))
                             .padding(horizontal = 28.dp, vertical = 8.dp)
                     )
                 }
@@ -802,7 +804,8 @@ private fun FeedPost(
                 Column {
                     Text(
                         text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
-                        color = Color.White,
+                        color = SolariTheme.colors.onBackground,
+
                         fontWeight = FontWeight.Bold,
                         fontFamily = PlusJakartaSans,
                         fontSize = 16.sp,
@@ -811,7 +814,7 @@ private fun FeedPost(
                     Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = post.timestamp.toFeedRelativeTimeLabel(),
-                        color = Color(0xFFD7C0B2),
+                        color = SolariTheme.colors.onSurfaceVariant,
                         fontWeight = FontWeight.Bold,
                         fontFamily = PlusJakartaSans,
                         fontSize = 11.sp,
@@ -938,14 +941,14 @@ private fun FeedUploadStatusPill(
         modifier = Modifier
             .height(64.dp)
             .clip(RoundedCornerShape(36.dp))
-            .background(if (isError) Color(0xFF4A2428) else Color(0xFF34363B))
+            .background(if (isError) SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.2f) else SolariTheme.colors.surfaceVariant)
             .padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         if (isLoading) {
             CircularProgressIndicator(
-                color = Color(0xFFE3E2E6),
+                color = SolariTheme.colors.onBackground,
                 trackColor = Color.Transparent,
                 modifier = Modifier.size(22.dp),
                 strokeWidth = 2.5.dp
@@ -956,7 +959,7 @@ private fun FeedUploadStatusPill(
 
         Text(
             text = text,
-            color = if (isError) Color(0xFFFFB4AB) else Color(0xFFE3E2E6),
+            color = if (isError) SolariTheme.colors.error else SolariTheme.colors.onBackground,
             fontSize = 18.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold,
@@ -986,14 +989,14 @@ private fun FeedActivityPill(
             .height(64.dp)
             .scaledClickable(pressedScale = 1.05f, onClick = onClick)
             .clip(RoundedCornerShape(36.dp))
-            .background(Color(0xFF34363B))
+            .background(SolariTheme.colors.surfaceVariant)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         Text(
             text = "Activity",
-            color = Color(0xFFE3E2E6),
+            color = SolariTheme.colors.onBackground,
             fontSize = 18.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold
@@ -1028,12 +1031,12 @@ private fun FeedActivityPill(
                         .offset(x = (visibleUsers.size * 23).dp)
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF5A5C62)),
+                        .background(SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.4f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "+$overflowCount",
-                        color = Color(0xFFD0D0D4),
+                        color = SolariTheme.colors.onBackground,
                         fontSize = 16.sp,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold
@@ -1091,7 +1094,7 @@ private fun FeedActivitySheet(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f))
+                    .background(SolariTheme.colors.background.copy(alpha = 0.5f))
                     .clickable(
                         interactionSource = dismissInteractionSource,
                         indication = null,
@@ -1588,7 +1591,7 @@ private fun FeedMediaLoadingIndicator() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.26f)),
+            .background(SolariTheme.colors.background.copy(alpha = 0.26f)),
         contentAlignment = Alignment.Center
     ) {
         CircularProgressIndicator(
@@ -1704,7 +1707,7 @@ private fun FeedInputKeyboardOverlay(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.56f))
+                .background(SolariTheme.colors.background.copy(alpha = 0.56f))
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -1787,7 +1790,8 @@ private fun FeedReactionField(
                 }
             )
             .clip(RoundedCornerShape(9.dp))
-            .background(Color(0xFF1B1C21))
+            .background(SolariTheme.colors.surface)
+
             .padding(start = 26.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1802,18 +1806,19 @@ private fun FeedReactionField(
             enabled = isEditable,
             modifier = textFieldModifier,
             textStyle = TextStyle(
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
+
                 fontSize = 14.sp,
                 fontFamily = PlusJakartaSans
             ),
-            cursorBrush = SolidColor(Color.White),
+            cursorBrush = SolidColor(SolariTheme.colors.onBackground),
             singleLine = true,
             decorationBox = { innerTextField ->
                 Box(contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty()) {
                         Text(
                             text = "Send reaction...",
-                            color = Color(0xFF9699A1),
+                            color = SolariTheme.colors.onSurfaceVariant,
                             fontSize = 14.sp,
                             fontFamily = PlusJakartaSans
                         )
@@ -1849,7 +1854,7 @@ private fun FeedReactionField(
             Icon(
                 imageVector = Icons.Default.Add,
                 contentDescription = "More reactions",
-                tint = Color(0xFFD7C0B2),
+                tint = SolariTheme.colors.onSurfaceVariant,
                 modifier = Modifier.size(22.dp)
             )
         }
@@ -1880,7 +1885,8 @@ private fun FeedMessageField(
                 }
             )
             .clip(barShape)
-            .background(Color(0xFF1B1C21))
+            .background(SolariTheme.colors.surface)
+
             .padding(start = 26.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1894,18 +1900,19 @@ private fun FeedMessageField(
             enabled = isEditable,
             modifier = textFieldModifier,
             textStyle = TextStyle(
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
+
                 fontSize = 14.sp,
                 fontFamily = PlusJakartaSans
             ),
-            cursorBrush = SolidColor(Color.White),
+            cursorBrush = SolidColor(SolariTheme.colors.onBackground),
             singleLine = true,
             decorationBox = { innerTextField ->
                 Box(contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty()) {
                         Text(
                             text = "Send message...",
-                            color = Color(0xFF9699A1),
+                            color = SolariTheme.colors.onSurfaceVariant,
                             fontSize = 14.sp,
                             fontFamily = PlusJakartaSans
                         )
@@ -1918,7 +1925,7 @@ private fun FeedMessageField(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.Send,
             contentDescription = "Send message",
-            tint = Color(0xFFD7C0B2),
+            tint = SolariTheme.colors.onSurfaceVariant,
             modifier = Modifier
                 .size(28.dp)
                 .then(
@@ -1946,14 +1953,14 @@ private fun FeedBrowseButton(onClick: () -> Unit) {
             .height(48.dp)
             .scaledClickable(pressedScale = 1.05f, onClick = onClick)
             .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF080B0E))
+            .background(SolariTheme.colors.background)
             .padding(horizontal = 26.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         Text(
             text = "View all photos",
-            color = Color(0xFFD7C0B2),
+            color = SolariTheme.colors.onSurfaceVariant,
             fontSize = 16.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold

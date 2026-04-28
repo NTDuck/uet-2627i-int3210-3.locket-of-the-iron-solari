@@ -16,9 +16,10 @@ import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.solari.app.ui.theme.PlusJakartaSans
+import com.solari.app.ui.theme.SolariTheme
 
-private val DefaultAvatarBackground = Color(0xFF5A5C62)
-private val DefaultAvatarText = Color(0xFFE3E2E6)
+private val DefaultAvatarBackground @Composable get() = SolariTheme.colors.surfaceVariant
+private val DefaultAvatarText @Composable get() = SolariTheme.colors.onSurfaceVariant
 
 @Composable
 fun SolariAvatar(

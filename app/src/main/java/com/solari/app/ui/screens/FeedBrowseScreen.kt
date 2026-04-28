@@ -221,7 +221,7 @@ fun FeedBrowseScreen(
                                 Icon(
                                     Icons.Default.Public,
                                     contentDescription = "All",
-                                    tint = if (isAllSelected) SolariTheme.colors.primary else Color.Gray
+                                    tint = if (isAllSelected) SolariTheme.colors.primary else SolariTheme.colors.onSurfaceVariant
                                 )
                             }
                             Text(
@@ -341,12 +341,12 @@ fun FeedBrowseScreen(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .background(Color.Black.copy(alpha = 0.18f)),
+                                                .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             CircularProgressIndicator(
-                                                color = Color.White,
-                                                trackColor = Color.White.copy(alpha = 0.18f),
+                                                color = SolariTheme.colors.onBackground,
+                                                trackColor = SolariTheme.colors.onBackground.copy(alpha = 0.18f),
                                                 modifier = Modifier.size(24.dp),
                                                 strokeWidth = 2.dp
                                             )
@@ -357,12 +357,12 @@ fun FeedBrowseScreen(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .background(Color.Black.copy(alpha = 0.36f)),
+                                                .background(SolariTheme.colors.onSurface.copy(alpha = 0.36f)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = "Failed",
-                                                color = Color.White,
+                                                color = SolariTheme.colors.onBackground,
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold
                                             )

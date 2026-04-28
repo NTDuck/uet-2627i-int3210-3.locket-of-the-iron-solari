@@ -356,7 +356,7 @@ fun ProfileScreen(
                             text = "@${user.username}",
                             fontSize = 16.sp,
                             fontFamily = PlusJakartaSans,
-                            color = Color.Gray
+                            color = SolariTheme.colors.onSurfaceVariant
                         )
                     }
                 }
@@ -474,7 +474,7 @@ fun ProfileScreen(
                         icon = Icons.Default.People,
                         title = "Manage Friends",
                         onClick = onNavigateToManageFriends,
-                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
+                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant) }
                     )
                 }
 
@@ -497,7 +497,7 @@ fun ProfileScreen(
                             icon = Icons.Default.Lock,
                             title = "Change Password",
                             onClick = onNavigateToChangePassword,
-                            trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
+                            trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant) }
                         )
                     }
 
@@ -509,7 +509,7 @@ fun ProfileScreen(
                         icon = Icons.Default.Palette,
                         title = "Change Theme",
                         onClick = onNavigateToChangeTheme,
-                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray) }
+                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant) }
                     )
                 }
 
@@ -638,7 +638,7 @@ fun ProfileScreen(
             title = "Delete account?",
             message = "Google will verify your identity before your account is permanently deleted.",
             confirmText = "Delete Account",
-            confirmColor = Color(0xFFE57373),
+            confirmColor = SolariTheme.colors.error,
             onConfirm = {
                 showGoogleDeleteConfirm = false
                 deleteAccountWithGoogleVerification()
@@ -733,7 +733,7 @@ private fun DestructiveProfileRow(
 ) {
     val shape = RoundedCornerShape(18.dp)
     Surface(
-        color = Color(0xFF3C1E22),
+        color = SolariTheme.colors.error.copy(alpha = 0.2f),
         shape = shape,
         modifier = Modifier
             .fillMaxWidth()
@@ -749,13 +749,13 @@ private fun DestructiveProfileRow(
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = null,
-                    tint = Color(0xFFFF8A80),
+                    tint = SolariTheme.colors.error,
                     modifier = Modifier.size(22.dp)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = title,
-                    color = Color(0xFFFF8A80),
+                    color = SolariTheme.colors.error,
                     fontSize = 16.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold
@@ -765,7 +765,7 @@ private fun DestructiveProfileRow(
                 Icon(
                     imageVector = Icons.Default.Warning,
                     contentDescription = null,
-                    tint = Color(0xFFFF8A80),
+                    tint = SolariTheme.colors.error,
                     modifier = Modifier.size(20.dp)
                 )
             }
@@ -830,7 +830,7 @@ private fun DeleteAccountDialog(
                             .fillMaxWidth()
                             .height(42.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(Color(0xFF080B0E))
+                            .background(SolariTheme.colors.surfaceVariant)
                             .padding(horizontal = 12.dp),
                         decorationBox = { innerTextField ->
                             Box(
@@ -840,7 +840,7 @@ private fun DeleteAccountDialog(
                                 if (password.isEmpty()) {
                                     Text(
                                         text = "Password",
-                                        color = Color.Gray,
+                                        color = SolariTheme.colors.onSurfaceVariant,
                                         fontSize = 14.sp,
                                         fontFamily = PlusJakartaSans
                                     )
@@ -853,7 +853,7 @@ private fun DeleteAccountDialog(
 
                 DeleteAccountDialogActionRow(
                     text = "Delete Account",
-                    textColor = Color(0xFFE57373),
+                    textColor = SolariTheme.colors.error,
                     shape = RoundedCornerShape(0.dp),
                     onClick = onConfirm
                 )
@@ -903,8 +903,8 @@ private fun ProfileFeedbackPill(
     message: String,
     isSuccess: Boolean
 ) {
-    val backgroundColor = if (isSuccess) Color(0xFF163624) else Color(0xFF3C1E22)
-    val iconTint = if (isSuccess) Color(0xFF77E0A1) else Color(0xFFFF8A80)
+    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.error.copy(alpha = 0.2f)
+    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.error
 
     Surface(
         color = backgroundColor,
@@ -928,7 +928,7 @@ private fun ProfileFeedbackPill(
 
             Text(
                 text = message,
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
@@ -966,7 +966,7 @@ fun EditableField(label: String, value: String, onValueChange: (String) -> Unit,
                 focusedTextColor = SolariTheme.colors.onSurface,
                 unfocusedTextColor = SolariTheme.colors.onSurface,
                 focusedBorderColor = SolariTheme.colors.primary,
-                unfocusedBorderColor = Color.Gray
+                unfocusedBorderColor = SolariTheme.colors.onSurfaceVariant
             )
         )
 
@@ -1014,7 +1014,7 @@ fun ProfileInfoBox(
                 Text(value, color = SolariTheme.colors.onSurface, fontSize = 16.sp, fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium)
             }
             if (onClick != null) {
-                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
+                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant)
             }
         }
     }

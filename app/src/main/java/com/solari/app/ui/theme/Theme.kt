@@ -336,7 +336,11 @@ data class SolariColors(
     val onBackground: Color = Color.White,
     val onSurface: Color = Color.White,
     val onSurfaceVariant: Color = Color.White,
-    val navBarColor: Color = Color.Black
+    val navBarColor: Color = Color.Black,
+    val error: Color = Color(0xFFE57373),
+    val onError: Color = Color.White,
+    val success: Color = Color(0xFF77E0A1),
+    val onSuccess: Color = Color(0xFF163624)
 )
 
 val DefaultSolariDark = SolariColors(
@@ -353,7 +357,9 @@ val DefaultSolariLight = SolariColors(
     surfaceVariant = Color(0xFFE0E0E0),
     onBackground = Color.Black,
     onSurface = Color.Black,
-    onSurfaceVariant = Color.Black
+    onSurfaceVariant = Color.Black,
+    error = Color(0xFFB00020),
+    onError = Color.White
 )
 
 val V_0X96FColors = SolariColors(
@@ -6556,7 +6562,9 @@ fun SolariTheme(
             onTertiary = colors.onTertiary,
             onBackground = colors.onBackground,
             onSurface = colors.onSurface,
-            onSurfaceVariant = colors.onSurfaceVariant
+            onSurfaceVariant = colors.onSurfaceVariant,
+            error = colors.error,
+            onError = colors.onError
         )
     } else {
         lightColorScheme(
@@ -6571,7 +6579,9 @@ fun SolariTheme(
             onTertiary = colors.onTertiary,
             onBackground = colors.onBackground,
             onSurface = colors.onSurface,
-            onSurfaceVariant = colors.onSurfaceVariant
+            onSurfaceVariant = colors.onSurfaceVariant,
+            error = colors.error,
+            onError = colors.onError
         )
     }
 

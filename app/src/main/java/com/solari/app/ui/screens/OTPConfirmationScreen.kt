@@ -126,7 +126,7 @@ fun OTPConfirmationScreen(
             ) {
                 Text(
                     text = "OTP has been sent to",
-                    color = Color.Gray,
+                    color = SolariTheme.colors.onSurfaceVariant,
                     fontSize = 18.sp,
                     fontFamily = PlusJakartaSans
                 )
@@ -140,7 +140,7 @@ fun OTPConfirmationScreen(
                 )
                 Text(
                     text = "Enter the code to continue",
-                    color = Color.Gray,
+                    color = SolariTheme.colors.onSurfaceVariant,
                     fontSize = 18.sp,
                     fontFamily = PlusJakartaSans,
                     modifier = Modifier.padding(bottom = 24.dp)
@@ -242,7 +242,7 @@ fun OTPConfirmationScreen(
 
                 Text(
                     text = "Didn't receive a code? Check your spam folder.",
-                    color = Color.Gray,
+                    color = SolariTheme.colors.onSurfaceVariant,
                     fontSize = 14.sp,
                     fontFamily = PlusJakartaSans,
                     modifier = Modifier.fillMaxWidth(),
@@ -289,7 +289,7 @@ private fun OtpSlot(
     onClick: () -> Unit
 ) {
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused) SolariTheme.colors.primary else Color.Gray.copy(alpha = 0.35f),
+        targetValue = if (isFocused) SolariTheme.colors.primary else SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.35f),
         animationSpec = tween(durationMillis = 60),
         label = "OtpSlotBorderColor"
     )

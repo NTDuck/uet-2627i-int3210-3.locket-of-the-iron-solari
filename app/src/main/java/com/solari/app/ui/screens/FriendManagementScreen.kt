@@ -81,19 +81,12 @@ import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
+import com.solari.app.ui.theme.SolariColors
+import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.FriendManagementViewModel
 import kotlinx.coroutines.delay
 
-private val FriendsBackground = Color(0xFF111316)
-private val FriendsSurface = Color(0xFF1B1C21)
-private val FriendsInput = Color(0xFF080B0E)
-private val FriendsPrimary = Color(0xFFFF8426)
-private val FriendsPrimaryContent = Color(0xFF5F2900)
-private val FriendsText = Color(0xFFE3E2E6)
-private val FriendsMuted = Color(0xFFD7C0B2)
-private val FriendsSubtle = Color(0xFF9699A1)
-private val FriendsButton = Color(0xFF34363B)
 private const val InviteBaseUrl = "https://solari.adnope.io.vn"
 
 private enum class NicknameAction {
@@ -161,7 +154,7 @@ fun FriendManagementScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         Scaffold(
-            containerColor = FriendsBackground,
+            containerColor = SolariTheme.colors.background,
             bottomBar = {
                 SolariBottomNavBar(
                     selectedRoute = SolariRoute.Screen.Conversations.name,
@@ -184,7 +177,7 @@ fun FriendManagementScreen(
                 },
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(FriendsBackground)
+                    .background(SolariTheme.colors.background)
                     .padding(innerPadding)
                     .statusBarsPadding()
             ) {
@@ -203,19 +196,19 @@ fun FriendManagementScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(5.dp))
-                        .background(FriendsSurface)
+                        .background(SolariTheme.colors.surface)
                         .padding(13.dp)
                 ) {
                     Text(
                         text = inviteLink.ifBlank { "Loading invite link..." },
-                        color = FriendsText,
+                        color = SolariTheme.colors.onBackground,
                         fontSize = 12.sp,
                         fontFamily = PlusJakartaSans,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(FriendsInput, RoundedCornerShape(2.dp))
+                            .background(SolariTheme.colors.surfaceVariant, RoundedCornerShape(2.dp))
                             .padding(horizontal = 13.dp, vertical = 11.dp)
                     )
 
@@ -223,12 +216,12 @@ fun FriendManagementScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.6.dp)
-                            .background(FriendsPrimary)
+                            .background(SolariTheme.colors.primary)
                     )
 
                     Spacer(modifier = Modifier.height(13.dp))
 
-                    FriendsPrimaryButton(
+                    SolariTheme.colors.primaryButton(
                         text = "Share Invite Link",
                         icon = Icons.Outlined.Share,
                         enabled = inviteLink.isNotBlank(),
@@ -247,7 +240,7 @@ fun FriendManagementScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(5.dp))
-                        .background(FriendsSurface)
+                        .background(SolariTheme.colors.surface)
                         .padding(13.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -255,7 +248,7 @@ fun FriendManagementScreen(
                         modifier = Modifier
                             .weight(1f)
                             .height(32.dp)
-                            .background(FriendsInput, RoundedCornerShape(topStart = 2.dp))
+                            .background(SolariTheme.colors.surfaceVariant, RoundedCornerShape(topStart = 2.dp))
                     ) {
                         Row(
                             modifier = Modifier
@@ -266,7 +259,7 @@ fun FriendManagementScreen(
                             Icon(
                                 imageVector = Icons.Outlined.PersonAdd,
                                 contentDescription = null,
-                                tint = FriendsMuted,
+                                tint = SolariTheme.colors.onSurface,
                                 modifier = Modifier.size(16.dp)
                             )
 
@@ -277,19 +270,19 @@ fun FriendManagementScreen(
                                 onValueChange = { requestText = it },
                                 modifier = Modifier.weight(1f),
                                 textStyle = TextStyle(
-                                    color = FriendsText,
+                                    color = SolariTheme.colors.onBackground,
                                     fontFamily = PlusJakartaSans,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium
                                 ),
-                                cursorBrush = SolidColor(FriendsText),
+                                cursorBrush = SolidColor(SolariTheme.colors.onBackground),
                                 singleLine = true,
                                 decorationBox = { innerTextField ->
                                     Box(contentAlignment = Alignment.CenterStart) {
                                         if (requestText.isEmpty()) {
                                             Text(
                                                 text = "username/email",
-                                                color = FriendsSubtle,
+                                                color = SolariTheme.colors.onSurfaceVariant,
                                                 fontSize = 12.sp,
                                                 fontFamily = PlusJakartaSans,
                                                 fontWeight = FontWeight.Medium
@@ -305,7 +298,7 @@ fun FriendManagementScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(1.6.dp)
-                                .background(FriendsMuted)
+                                .background(SolariTheme.colors.onSurface)
                         )
                     }
 
@@ -316,7 +309,7 @@ fun FriendManagementScreen(
                             .weight(0.75f)
                             .height(36.dp)
                             .clip(RoundedCornerShape(16.dp))
-                            .background(FriendsButton)
+                            .background(SolariTheme.colors.surfaceVariant)
                             .clickable(enabled = !viewModel.isSendingRequest) {
                                 focusManager.clearFocus(force = true)
                                 keyboardController?.hide()
@@ -329,8 +322,8 @@ fun FriendManagementScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (viewModel.isSendingRequest) {
                                 CircularProgressIndicator(
-                                    color = FriendsText,
-                                    trackColor = FriendsButton,
+                                    color = SolariTheme.colors.onBackground,
+                                    trackColor = SolariTheme.colors.surfaceVariant,
                                     strokeWidth = 2.dp,
                                     modifier = Modifier.size(14.dp)
                                 )
@@ -338,7 +331,7 @@ fun FriendManagementScreen(
                             }
                             Text(
                                 text = "Send request",
-                                color = FriendsText,
+                                color = SolariTheme.colors.onBackground,
                                 fontSize = 12.sp,
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold
@@ -355,14 +348,14 @@ fun FriendManagementScreen(
                         .fillMaxWidth()
                         .height(46.dp)
                         .clip(RoundedCornerShape(5.dp))
-                        .background(FriendsSurface)
+                        .background(SolariTheme.colors.surface)
                         .clickable(onClick = onNavigateToBlockedAccounts)
                         .padding(horizontal = 16.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Text(
                         text = "View blocked accounts",
-                        color = FriendsMuted,
+                        color = SolariTheme.colors.onSurface,
                         fontSize = 13.sp,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold
@@ -385,9 +378,9 @@ fun FriendManagementScreen(
                             sortSelection = selection
                             viewModel.loadFriends(selection.apiValue)
                         },
-                        iconTint = FriendsMuted,
-                        menuContainerColor = FriendsSurface,
-                        menuContentColor = FriendsText,
+                        iconTint = SolariTheme.colors.onSurface,
+                        menuContainerColor = SolariTheme.colors.surface,
+                        menuContentColor = SolariTheme.colors.onBackground,
                         modifier = Modifier.size(28.dp),
                         iconSize = 17
                     )
@@ -403,8 +396,8 @@ fun FriendManagementScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         CircularProgressIndicator(
-                            color = FriendsPrimary,
-                            trackColor = FriendsSurface
+                            color = SolariTheme.colors.primary,
+                            trackColor = SolariTheme.colors.surface
                         )
                     }
                 }
@@ -412,7 +405,7 @@ fun FriendManagementScreen(
                 item {
                     Text(
                         text = viewModel.errorMessage ?: "No friends yet",
-                        color = FriendsSubtle,
+                        color = SolariTheme.colors.onSurfaceVariant,
                         fontSize = 13.sp,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Medium
@@ -522,8 +515,8 @@ private fun FriendManagementFeedbackPill(
     message: String,
     isSuccess: Boolean
 ) {
-    val backgroundColor = if (isSuccess) Color(0xFF163624) else Color(0xFF3C1E22)
-    val iconTint = if (isSuccess) Color(0xFF77E0A1) else Color(0xFFFF8A80)
+    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.2f)
+    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.error
 
     Surface(
         color = backgroundColor,
@@ -546,7 +539,7 @@ private fun FriendManagementFeedbackPill(
 
             Text(
                 text = message,
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
@@ -561,7 +554,7 @@ private fun FriendManagementFeedbackPill(
 private fun FriendManagementSectionTitle(text: String) {
     Text(
         text = text,
-        color = FriendsMuted,
+        color = SolariTheme.colors.onSurface,
         fontSize = 15.sp,
         fontFamily = PlusJakartaSans,
         fontWeight = FontWeight.Bold
@@ -569,7 +562,7 @@ private fun FriendManagementSectionTitle(text: String) {
 }
 
 @Composable
-private fun FriendsPrimaryButton(
+private fun SolariColors.primaryButton(
     text: String,
     icon: ImageVector,
     enabled: Boolean = true,
@@ -581,20 +574,20 @@ private fun FriendsPrimaryButton(
             .height(38.dp)
             .scaledClickable(pressedScale = 1.05f, enabled = enabled, onClick = onClick)
             .clip(RoundedCornerShape(19.dp))
-            .background(if (enabled) FriendsPrimary else FriendsButton),
+            .background(if (enabled) SolariTheme.colors.primary else SolariTheme.colors.surfaceVariant),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (enabled) FriendsPrimaryContent else FriendsSubtle,
+            tint = if (enabled) SolariTheme.colors.onPrimary else SolariTheme.colors.onSurfaceVariant,
             modifier = Modifier.size(14.dp)
         )
         Spacer(modifier = Modifier.width(6.dp))
         Text(
             text = text,
-            color = if (enabled) FriendsPrimaryContent else FriendsSubtle,
+            color = if (enabled) SolariTheme.colors.onPrimary else SolariTheme.colors.onSurfaceVariant,
             fontSize = 13.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold
@@ -644,7 +637,7 @@ private fun FriendListItem(
             .fillMaxWidth()
             .height(64.dp)
             .clip(RoundedCornerShape(8.dp))
-            .background(FriendsSurface)
+            .background(SolariTheme.colors.surface)
             .padding(horizontal = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -665,7 +658,7 @@ private fun FriendListItem(
         ) {
             Text(
                 text = friend.displayName,
-                color = FriendsText,
+                color = SolariTheme.colors.onBackground,
                 fontSize = 15.sp,
                 lineHeight = 15.sp,
                 fontFamily = PlusJakartaSans,
@@ -673,7 +666,7 @@ private fun FriendListItem(
             )
             Text(
                 text = handle,
-                color = FriendsSubtle,
+                color = SolariTheme.colors.onSurfaceVariant,
                 fontSize = 13.sp,
                 lineHeight = 13.sp,
                 fontFamily = PlusJakartaSans,
@@ -699,7 +692,7 @@ private fun FriendListItem(
                 Icon(
                     imageVector = Icons.Default.MoreVert,
                     contentDescription = "Friend actions",
-                    tint = FriendsMuted,
+                    tint = SolariTheme.colors.onSurface,
                     modifier = Modifier.size(18.dp)
                 )
             }
@@ -727,7 +720,7 @@ private fun FriendListItem(
                     )
 
                     Surface(
-                        color = FriendsSurface,
+                        color = SolariTheme.colors.surface,
                         shape = RoundedCornerShape(8.dp),
                         shadowElevation = 8.dp,
                         modifier = Modifier
@@ -749,7 +742,7 @@ private fun FriendListItem(
                             add(
                                 FriendActionMenuEntry(
                                     text = if (isOpeningMessage) "Opening..." else "Message",
-                                    color = if (isOpeningMessage) FriendsSubtle else FriendsText,
+                                    color = if (isOpeningMessage) SolariTheme.colors.onSurfaceVariant else SolariTheme.colors.onBackground,
                                     enabled = !isOpeningMessage,
                                     onClick = { onMessage(friend) }
                                 )
@@ -758,7 +751,7 @@ private fun FriendListItem(
                                 add(
                                     FriendActionMenuEntry(
                                         text = "Update Nickname",
-                                        color = FriendsText,
+                                        color = SolariTheme.colors.onBackground,
                                         enabled = true,
                                         onClick = { onUpdateNickname(friend) }
                                     )
@@ -766,7 +759,7 @@ private fun FriendListItem(
                                 add(
                                     FriendActionMenuEntry(
                                         text = "Remove Nickname",
-                                        color = FriendsText,
+                                        color = SolariTheme.colors.onBackground,
                                         enabled = true,
                                         onClick = { onRemoveNickname(friend) }
                                     )
@@ -775,7 +768,7 @@ private fun FriendListItem(
                                 add(
                                     FriendActionMenuEntry(
                                         text = "Set Nickname",
-                                        color = FriendsText,
+                                        color = SolariTheme.colors.onBackground,
                                         enabled = true,
                                         onClick = { onSetNickname(friend) }
                                     )
@@ -784,7 +777,7 @@ private fun FriendListItem(
                             add(
                                 FriendActionMenuEntry(
                                     text = "Unfriend",
-                                    color = FriendsText,
+                                    color = SolariTheme.colors.onBackground,
                                     enabled = true,
                                     onClick = { onUnfriend(friend) }
                                 )
@@ -792,7 +785,7 @@ private fun FriendListItem(
                             add(
                                 FriendActionMenuEntry(
                                     text = "Block",
-                                    color = FriendsMuted,
+                                    color = SolariTheme.colors.onSurface,
                                     enabled = true,
                                     onClick = { onBlock(friend) }
                                 )
@@ -864,7 +857,7 @@ private fun NicknameDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            color = FriendsSurface,
+            color = SolariTheme.colors.surface,
             shape = RoundedCornerShape(16.dp),
             shadowElevation = 12.dp,
             modifier = Modifier.width(284.dp)
@@ -877,7 +870,7 @@ private fun NicknameDialog(
                 ) {
                     Text(
                         text = title,
-                        color = FriendsText,
+                        color = SolariTheme.colors.onBackground,
                         fontSize = 16.sp,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold
@@ -887,17 +880,17 @@ private fun NicknameDialog(
                         onValueChange = { nickname = it.take(40) },
                         singleLine = true,
                         textStyle = TextStyle(
-                            color = FriendsText,
+                            color = SolariTheme.colors.onBackground,
                             fontFamily = PlusJakartaSans,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Medium
                         ),
-                        cursorBrush = SolidColor(FriendsText),
+                        cursorBrush = SolidColor(SolariTheme.colors.onBackground),
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(42.dp)
                             .clip(RoundedCornerShape(8.dp))
-                            .background(FriendsInput)
+                            .background(SolariTheme.colors.surfaceVariant)
                             .padding(horizontal = 12.dp),
                         decorationBox = { innerTextField ->
                             Box(
@@ -907,7 +900,7 @@ private fun NicknameDialog(
                                 if (nickname.isEmpty()) {
                                     Text(
                                         text = "Nickname",
-                                        color = FriendsSubtle,
+                                        color = SolariTheme.colors.onSurfaceVariant,
                                         fontSize = 14.sp,
                                         fontFamily = PlusJakartaSans
                                     )
@@ -920,13 +913,13 @@ private fun NicknameDialog(
 
                 FriendDialogActionRow(
                     text = title,
-                    textColor = FriendsPrimary,
+                    textColor = SolariTheme.colors.primary,
                     shape = RoundedCornerShape(0.dp),
                     onClick = { onConfirm(nickname) }
                 )
                 FriendDialogActionRow(
                     text = "Cancel",
-                    textColor = FriendsText,
+                    textColor = SolariTheme.colors.onBackground,
                     shape = RoundedCornerShape(
                         topStart = 0.dp,
                         topEnd = 0.dp,

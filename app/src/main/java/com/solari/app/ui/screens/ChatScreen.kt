@@ -129,20 +129,20 @@ import java.time.temporal.ChronoUnit
 import kotlin.math.max
 import kotlin.math.roundToInt
 
-private val ChatBackground = Color(0xFF111316)
-private val ChatHeader = Color(0xFF1B1C21)
-private val ChatIncomingBubble = Color(0xFF1D1E23)
-private val ChatOutgoingBubble = Color(0xFF34363B)
-private val ChatInput = Color(0xFF080B0E)
-private val ChatPrimary = Color(0xFFFF8426)
-private val ChatText = Color(0xFFE3E2E6)
-private val ChatMuted = Color(0xFF9699A1)
-private val ChatChip = Color(0xFF080B0E)
-private val ChatReadText = Color(0xFFE8D6CB)
-private val ChatReactionSurface = Color(0xFF26282E)
-private val EmojiPickerPanel = Color(0xFF303234)
-private val EmojiPickerSearch = Color(0xFF46484B)
-private val EmojiPickerMuted = Color(0xFFB5B5B7)
+private val ChatBackground @Composable get() = SolariTheme.colors.background
+private val ChatHeader @Composable get() = SolariTheme.colors.surface
+private val ChatIncomingBubble @Composable get() = SolariTheme.colors.surfaceVariant
+private val ChatOutgoingBubble @Composable get() = SolariTheme.colors.secondary
+private val ChatInput @Composable get() = SolariTheme.colors.surfaceVariant
+private val ChatPrimary @Composable get() = SolariTheme.colors.primary
+private val ChatText @Composable get() = SolariTheme.colors.onBackground
+private val ChatMuted @Composable get() = SolariTheme.colors.onSurfaceVariant
+private val ChatChip @Composable get() = SolariTheme.colors.surfaceVariant
+private val ChatReadText @Composable get() = SolariTheme.colors.onSurface
+private val ChatReactionSurface @Composable get() = SolariTheme.colors.surfaceVariant
+private val EmojiPickerPanel @Composable get() = SolariTheme.colors.surface
+private val EmojiPickerSearch @Composable get() = SolariTheme.colors.surfaceVariant
+private val EmojiPickerMuted @Composable get() = SolariTheme.colors.onSurfaceVariant
 private const val MaxScrollToBottomPasses = 12
 private const val OlderMessagesTriggerRemainingMessageCount = 30
 private const val MinuteMillis = 60_000L
@@ -1471,7 +1471,7 @@ private fun MessageContextPreview(
         modifier = Modifier
             .widthIn(min = 160.dp, max = 220.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(Color.Black.copy(alpha = 0.18f))
+            .background(SolariTheme.colors.onSurface.copy(alpha = 0.12f))
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -1732,7 +1732,7 @@ fun EmojiPickerPopup(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.48f))
+                        .background(SolariTheme.colors.background.copy(alpha = 0.48f))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null,
@@ -1951,7 +1951,7 @@ private fun EmojiPickerHandle(
                 .width(48.dp)
                 .height(5.dp)
                 .clip(RoundedCornerShape(3.dp))
-                .background(Color(0xFF8C8C8E))
+                .background(SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.4f))
         )
     }
 }
@@ -2019,7 +2019,7 @@ private fun EmojiPickerEmojiButton(
         modifier = Modifier
             .size(42.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(if (selected) Color.White.copy(alpha = 0.12f) else Color.Transparent)
+            .background(if (selected) SolariTheme.colors.onSurface.copy(alpha = 0.12f) else Color.Transparent)
             .scaledClickable(pressedScale = 1.1f, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -2235,7 +2235,7 @@ private fun ChatInputBar(
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.Send,
                     contentDescription = "Send message",
-                    tint = Color(0xFF5F2900),
+                    tint = SolariTheme.colors.onPrimary,
                     modifier = Modifier.size(24.dp)
                 )
             }

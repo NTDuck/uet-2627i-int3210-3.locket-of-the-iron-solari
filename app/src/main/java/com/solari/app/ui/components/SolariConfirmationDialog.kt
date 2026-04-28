@@ -33,7 +33,7 @@ fun SolariConfirmationDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    confirmColor: Color = Color(0xFFE57373),
+    confirmColor: Color = SolariTheme.colors.error,
     dismissText: String = "Cancel"
 ) {
     Dialog(onDismissRequest = onDismiss) {

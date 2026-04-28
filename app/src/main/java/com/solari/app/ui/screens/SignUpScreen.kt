@@ -76,10 +76,6 @@ import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.SignUpViewModel
 import kotlinx.coroutines.delay
 
-private val SignUpPrimaryContent = Color(0xFF5F2900)
-private val SignUpFeedbackSurface = Color(0xFF421F1F)
-private val SignUpFeedbackIcon = Color(0xFFFF8A80)
-
 private enum class SignUpFocusedField {
     Username,
     Email,
@@ -295,7 +291,7 @@ fun SignUpScreen(
                         viewModel.createAccount(onSuccess = onSignUpComplete)
                     },
                     containerColor = SolariTheme.colors.primary,
-                    contentColor = SignUpPrimaryContent,
+                    contentColor = SolariTheme.colors.onPrimary,
                     buttonHeight = 64.dp,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
@@ -351,7 +347,7 @@ fun SignUpScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.42f))
+                        .background(SolariTheme.colors.background.copy(alpha = 0.42f))
                         .clickable(enabled = false) {},
                     contentAlignment = Alignment.Center
                 ) {
@@ -368,7 +364,7 @@ fun SignUpScreen(
 @Composable
 private fun SignUpFeedbackPill(message: String) {
     Surface(
-        color = SignUpFeedbackSurface,
+        color = SolariTheme.colors.error.copy(alpha = 0.2f),
         shape = RoundedCornerShape(20.dp),
         shadowElevation = 10.dp
     ) {
@@ -379,7 +375,7 @@ private fun SignUpFeedbackPill(message: String) {
             Icon(
                 imageVector = Icons.Default.Error,
                 contentDescription = null,
-                tint = SignUpFeedbackIcon,
+                tint = SolariTheme.colors.error,
                 modifier = Modifier.size(22.dp)
             )
 
@@ -387,7 +383,7 @@ private fun SignUpFeedbackPill(message: String) {
 
             Text(
                 text = message,
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
