@@ -31,6 +31,10 @@ fun ChangeThemeScreen(
     settingsViewModel: SettingsViewModel,
     onNavigateBack: () -> Unit
 ) {
+    androidx.compose.runtime.LaunchedEffect(settingsViewModel.isDarkMode) {
+        viewModel.loadSchemes(settingsViewModel.isDarkMode)
+    }
+
     Scaffold(
         topBar = {
             Row(

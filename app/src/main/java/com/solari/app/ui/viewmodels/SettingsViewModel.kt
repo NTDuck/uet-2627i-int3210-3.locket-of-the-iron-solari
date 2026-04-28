@@ -10,11 +10,15 @@ import com.solari.app.ui.theme.ThemeMap
 class SettingsViewModel : ViewModel() {
     var isDarkMode by mutableStateOf(true)
     var isNotificationsEnabled by mutableStateOf(false)
-    var activeThemeVariant by mutableStateOf(SolariThemeVariant.DEFAULT_DARK)
+    
+    var currentLightTheme by mutableStateOf(SolariThemeVariant.DEFAULT_LIGHT)
+    var currentDarkTheme by mutableStateOf(SolariThemeVariant.DEFAULT_DARK)
+
+    val activeThemeVariant: SolariThemeVariant
+        get() = if (isDarkMode) currentDarkTheme else currentLightTheme
 
     fun toggleDarkMode(enabled: Boolean) {
         isDarkMode = enabled
-        activeThemeVariant = if (isDarkMode) SolariThemeVariant.DEFAULT_DARK else SolariThemeVariant.DEFAULT_LIGHT
     }
 
     fun toggleNotifications(enabled: Boolean) {
@@ -22,7 +26,13 @@ class SettingsViewModel : ViewModel() {
     }
 
     fun setTheme(variant: SolariThemeVariant) {
-        activeThemeVariant = variant
-        isDarkMode = ThemeMap[variant]?.isDark ?: true
+        val isThemeDark = ThemeMap[variant]?.isDark ?: true
+        if (isThemeDark) {
+            currentDarkTheme = variant
+            isDarkMode = true
+        } else {
+            currentLightTheme = variant
+            isDarkMode = false
+        }
     }
 }
