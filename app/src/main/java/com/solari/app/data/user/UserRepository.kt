@@ -38,5 +38,7 @@ interface UserRepository {
 
     suspend fun updatePassword(oldPassword: String, newPassword: String): ApiResult<Unit>
 
+    suspend fun registerDevice(deviceToken: String, platform: String = "android"): ApiResult<Unit>
+
     suspend fun deleteAccount(verification: DeleteAccountVerification): ApiResult<Unit>
 }

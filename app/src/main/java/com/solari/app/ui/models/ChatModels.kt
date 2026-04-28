@@ -10,11 +10,13 @@ data class Conversation(
     val otherUser: User,
     val lastMessage: String,
     val lastMessageSenderId: String? = null,
+    val isLastMessageDeleted: Boolean = false,
     val timestamp: Long = System.currentTimeMillis(),
     val isUnread: Boolean = false,
     val isMuted: Boolean = false,
     val isReadOnly: Boolean = false,
     val isDraft: Boolean = false,
+    val partnerLastReadAt: Long? = null,
     val messages: List<Message> = emptyList()
 ) : Serializable
 

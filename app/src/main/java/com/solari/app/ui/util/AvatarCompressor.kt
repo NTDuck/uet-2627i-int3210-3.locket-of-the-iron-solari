@@ -11,8 +11,8 @@ import com.solari.app.data.user.ProfileAvatarUpload
 import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
 
-private const val AvatarMaxDimensionPx = 1024
-private const val AvatarCompressionQuality = 90
+private const val AvatarMaxDimensionPx = 512
+private const val AvatarCompressionQuality = 85
 
 fun compressAvatarForUpload(context: Context, uri: Uri): ProfileAvatarUpload {
     val source = ImageDecoder.createSource(context.contentResolver, uri)

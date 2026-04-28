@@ -79,6 +79,11 @@ data class GetMessagesResponseDto(
 )
 
 @Serializable
+data class GetMessageResponseDto(
+    val message: MessageDto
+)
+
+@Serializable
 data class MessageDto(
     val id: String,
     @SerialName("sender_id")

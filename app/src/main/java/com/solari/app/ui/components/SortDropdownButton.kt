@@ -74,7 +74,7 @@ fun SortDropdownButton(
                 .size(28.dp)
                 .onSizeChanged { buttonSize = it }
                 .scaledClickable(
-                    pressedScale = 1.5f,
+                    pressedScale = 1.2f,
                     scaleFromTouch = true,
                     onPressPosition = { buttonPressPosition = it }
                 ) {

@@ -5,15 +5,21 @@ import androidx.room.Room
 import com.solari.app.BuildConfig
 import com.solari.app.data.auth.AuthInterceptor
 import com.solari.app.data.auth.AuthRepository
+import com.solari.app.data.auth.AuthSessionInvalidationNotifier
 import com.solari.app.data.auth.DefaultAuthRepository
+import com.solari.app.data.auth.TokenRefreshAuthenticator
+import com.solari.app.data.websocket.WebSocketEventParser
+import com.solari.app.data.websocket.WebSocketManager
 import com.solari.app.data.conversation.ConversationRepository
 import com.solari.app.data.conversation.DefaultConversationRepository
 import com.solari.app.data.feed.DefaultFeedRepository
 import com.solari.app.data.feed.FeedRepository
+import com.solari.app.data.feed.PostUploadCoordinator
 import com.solari.app.data.friend.DefaultFriendRepository
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.local.SolariDatabase
 import com.solari.app.data.network.ApiExecutor
+import com.solari.app.data.preferences.PushNotificationStore
 import com.solari.app.data.preferences.RecentEmojiStore
 import com.solari.app.data.remote.conversation.ConversationApi
 import com.solari.app.data.remote.auth.AuthApi
@@ -23,6 +29,7 @@ import com.solari.app.data.remote.user.UserApi
 import com.solari.app.data.security.TokenCipher
 import com.solari.app.data.user.DefaultUserRepository
 import com.solari.app.data.user.UserRepository
+import com.solari.app.notifications.PushNotificationCoordinator
 import com.solari.app.ui.viewmodels.SolariViewModelFactory
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
@@ -50,8 +57,35 @@ class AppContainer(
 
     private val tokenCipher = TokenCipher()
     private val recentEmojiStore = RecentEmojiStore(applicationContext)
+    private val pushNotificationStore = PushNotificationStore(applicationContext)
+    private val authSessionInvalidationNotifier = AuthSessionInvalidationNotifier()
+    private val apiExecutor = ApiExecutor(json)
 
-    private val okHttpClient = OkHttpClient.Builder()
+    private val refreshOkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
+        .callTimeout(45, TimeUnit.SECONDS)
+        .build()
+
+    private val refreshRetrofit = Retrofit.Builder()
+        .baseUrl(BuildConfig.SOLARI_BACKEND_URL)
+        .client(refreshOkHttpClient)
+        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .build()
+
+    private val refreshAuthApi: AuthApi = refreshRetrofit.create(AuthApi::class.java)
+
+    val okHttpClient = OkHttpClient.Builder()
+        .authenticator(
+            TokenRefreshAuthenticator(
+                authApi = refreshAuthApi,
+                authSessionDao = database.authSessionDao(),
+                apiExecutor = apiExecutor,
+                tokenCipher = tokenCipher,
+                sessionInvalidationNotifier = authSessionInvalidationNotifier
+            )
+        )
         .addInterceptor(AuthInterceptor(database.authSessionDao(), tokenCipher))
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -70,19 +104,20 @@ class AppContainer(
     private val feedApi: FeedApi = retrofit.create(FeedApi::class.java)
     private val friendApi: FriendApi = retrofit.create(FriendApi::class.java)
     private val conversationApi: ConversationApi = retrofit.create(ConversationApi::class.java)
-    private val apiExecutor = ApiExecutor(json)
+
+    private val userRepository: UserRepository = DefaultUserRepository(
+        userApi = userApi,
+        apiExecutor = apiExecutor
+    )
 
     val authRepository: AuthRepository = DefaultAuthRepository(
         authApi = authApi,
         authSessionDao = database.authSessionDao(),
         apiExecutor = apiExecutor,
         tokenCipher = tokenCipher,
-        recentEmojiStore = recentEmojiStore
-    )
-
-    private val userRepository: UserRepository = DefaultUserRepository(
-        userApi = userApi,
-        apiExecutor = apiExecutor
+        recentEmojiStore = recentEmojiStore,
+        sessionInvalidationNotifier = authSessionInvalidationNotifier,
+        pushNotificationStore = pushNotificationStore
     )
 
     private val feedRepository: FeedRepository = DefaultFeedRepository(
@@ -100,12 +135,37 @@ class AppContainer(
         apiExecutor = apiExecutor
     )
 
+    private val webSocketEventParser = WebSocketEventParser(json)
+
+    val webSocketManager = WebSocketManager(
+        baseUrl = BuildConfig.SOLARI_BACKEND_URL,
+        authSessionDao = database.authSessionDao(),
+        tokenCipher = tokenCipher,
+        json = json,
+        eventParser = webSocketEventParser
+    )
+
+    private val postUploadCoordinator = PostUploadCoordinator(
+        context = applicationContext,
+        feedRepository = feedRepository,
+        webSocketManager = webSocketManager
+    )
+
+    val pushNotificationCoordinator = PushNotificationCoordinator(
+        context = applicationContext,
+        pushNotificationStore = pushNotificationStore,
+        authRepository = authRepository,
+        userRepository = userRepository
+    )
+
     val viewModelFactory = SolariViewModelFactory(
         authRepository = authRepository,
         userRepository = userRepository,
         feedRepository = feedRepository,
         friendRepository = friendRepository,
         conversationRepository = conversationRepository,
-        recentEmojiStore = recentEmojiStore
+        recentEmojiStore = recentEmojiStore,
+        postUploadCoordinator = postUploadCoordinator,
+        webSocketManager = webSocketManager
     )
 }

@@ -77,6 +77,7 @@ import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostActivityEntry
+import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
@@ -91,6 +92,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import coil.request.ImageRequest
 import java.io.File
 import java.net.URL
 import java.util.concurrent.TimeUnit
@@ -233,6 +235,7 @@ fun FeedScreen(
 
     LaunchedEffect(pagerState.currentPage, posts, currentUser?.id) {
         val post = posts.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
+        if (post.uploadStatus != PostUploadStatus.None) return@LaunchedEffect
         val currentUserId = currentUser?.id ?: return@LaunchedEffect
         if (post.author.id == currentUserId) {
             viewModel.loadPostActivity(post.id)
@@ -820,11 +823,32 @@ private fun FeedPost(
             Spacer(modifier = Modifier.height(32.dp))
 
             if (isCurrentUserPost) {
-                FeedActivityPill(
-                    users = activityUsers.take(3),
-                    overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
-                    onClick = onShowActivity
-                )
+                when (post.uploadStatus) {
+                    PostUploadStatus.None -> {
+                        FeedActivityPill(
+                            users = activityUsers.take(3),
+                            overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
+                            onClick = onShowActivity
+                        )
+                    }
+
+                    PostUploadStatus.Uploading,
+                    PostUploadStatus.Processing -> {
+                        FeedUploadStatusPill(
+                            text = "Uploading post",
+                            isLoading = true,
+                            isError = false
+                        )
+                    }
+
+                    PostUploadStatus.Failed -> {
+                        FeedUploadStatusPill(
+                            text = post.uploadError ?: "Upload failed",
+                            isLoading = false,
+                            isError = true
+                        )
+                    }
+                }
             } else {
                 FeedReactionField(
                     value = reactionNote,
@@ -901,6 +925,44 @@ private fun FeedPost(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun FeedUploadStatusPill(
+    text: String,
+    isLoading: Boolean,
+    isError: Boolean
+) {
+    Row(
+        modifier = Modifier
+            .height(64.dp)
+            .clip(RoundedCornerShape(36.dp))
+            .background(if (isError) Color(0xFF4A2428) else Color(0xFF34363B))
+            .padding(horizontal = 22.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                color = Color(0xFFE3E2E6),
+                trackColor = Color.Transparent,
+                modifier = Modifier.size(22.dp),
+                strokeWidth = 2.5.dp
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+        }
+
+        Text(
+            text = text,
+            color = if (isError) Color(0xFFFFB4AB) else Color(0xFFE3E2E6),
+            fontSize = 18.sp,
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -1392,7 +1454,10 @@ private fun FeedImage(
 
     Box(modifier = modifier) {
         AsyncImage(
-            model = url,
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(url)
+                .crossfade(true)
+                .build(),
             contentDescription = "Post Image",
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,

@@ -8,6 +8,8 @@ import androidx.lifecycle.viewModelScope
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.user.UserRepository
+import com.solari.app.data.websocket.WebSocketEvent
+import com.solari.app.data.websocket.WebSocketManager
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.User
 import com.solari.app.ui.models.draftConversationIdForUser
@@ -16,7 +18,8 @@ import kotlinx.coroutines.launch
 
 class FriendManagementViewModel(
     private val friendRepository: FriendRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val webSocketManager: WebSocketManager
 ) : ViewModel() {
     var currentUser by mutableStateOf<User?>(null)
         private set
@@ -44,6 +47,51 @@ class FriendManagementViewModel(
     init {
         loadCurrentUser()
         loadFriends()
+
+        viewModelScope.launch {
+            webSocketManager.events.collect { event -> handleWebSocketEvent(event) }
+        }
+    }
+
+    private fun handleWebSocketEvent(event: WebSocketEvent) {
+        when (event) {
+            is WebSocketEvent.FriendRequestAccepted -> {
+                loadFriends(currentSort)
+            }
+
+            is WebSocketEvent.FriendshipStatusChanged -> {
+                if (event.isFriend) {
+                    loadFriends(currentSort)
+                } else {
+                    friends = friends.filterNot { it.id == event.partnerId }
+                }
+            }
+
+            is WebSocketEvent.FriendProfileUpdated -> {
+                if (currentUser?.id == event.userId) {
+                    currentUser = currentUser?.withProfileUpdate(event)
+                }
+                friends = friends.map { friend ->
+                    if (friend.id == event.userId) {
+                        friend.withProfileUpdate(event)
+                    } else {
+                        friend
+                    }
+                }
+            }
+
+            is WebSocketEvent.NewFriendRequest,
+            is WebSocketEvent.FriendRequestRemoved,
+            is WebSocketEvent.NewMessage,
+            is WebSocketEvent.MessageUnsent,
+            is WebSocketEvent.NewReaction,
+            is WebSocketEvent.ReactionUpdated,
+            is WebSocketEvent.ReactionRemoved,
+            is WebSocketEvent.ConversationRead,
+            is WebSocketEvent.TypingIndicator,
+            is WebSocketEvent.PostProcessed,
+            is WebSocketEvent.PostFailed -> Unit
+        }
     }
 
     private fun loadCurrentUser() {
@@ -270,5 +318,15 @@ class FriendManagementViewModel(
                 errorMessage = throwable.message ?: "Failed to update nickname"
             }
         }
+    }
+
+    private fun User.withProfileUpdate(event: WebSocketEvent.FriendProfileUpdated): User {
+        val updatedUsername = event.username ?: username
+        val profileDisplayName = event.displayName ?: updatedUsername
+        return copy(
+            username = updatedUsername,
+            displayName = nickname?.takeIf { it.isNotBlank() } ?: profileDisplayName,
+            profileImageUrl = event.avatarUrl
+        )
     }
 }

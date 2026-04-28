@@ -2,9 +2,11 @@ package com.solari.app.data.auth
 
 import com.solari.app.data.network.ApiResult
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 
 interface AuthRepository {
     val currentSession: Flow<AuthSession?>
+    val sessionInvalidationEvents: StateFlow<AuthSessionInvalidationEvent?>
 
     suspend fun signUp(
         username: String,
@@ -27,7 +29,11 @@ interface AuthRepository {
 
     suspend fun restoreSession(): ApiResult<AuthSession>
 
+    suspend fun signOut(deviceToken: String? = null): ApiResult<Unit>
+
     suspend fun getCurrentSession(): AuthSession?
 
     suspend fun clearSession()
+
+    fun clearSessionInvalidation()
 }

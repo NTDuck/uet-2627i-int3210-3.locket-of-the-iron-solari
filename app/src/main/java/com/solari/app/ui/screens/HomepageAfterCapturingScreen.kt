@@ -22,6 +22,7 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
@@ -49,6 +50,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
@@ -112,7 +114,6 @@ import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
-import com.solari.app.ui.util.preparePostMediaForUpload
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.HomepageAfterCapturingViewModel
 import kotlinx.coroutines.Dispatchers
@@ -123,6 +124,12 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 
 private val CapturePreviewCornerRadius = 24.dp
+
+private enum class CaptureSendState {
+    Idle,
+    Sending,
+    Sent
+}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -151,6 +158,7 @@ fun HomepageAfterCapturingScreen(
     var captionBounds by remember { mutableStateOf<Rect?>(null) }
     var isCaptionFocused by remember { mutableStateOf(false) }
     var pendingLegacyDownload by remember { mutableStateOf(false) }
+    var sendState by remember { mutableStateOf(CaptureSendState.Idle) }
     val isAllSelected = selectedFriends.isEmpty()
 
     fun showTopFeedback(message: String, isSuccess: Boolean) {
@@ -335,48 +343,30 @@ fun HomepageAfterCapturingScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     CaptureActionButtons(
-                        isUploading = viewModel.isUploading,
+                        sendState = sendState,
                         onCancel = onCancel,
                         onSend = {
+                            if (sendState != CaptureSendState.Idle) {
+                                return@CaptureActionButtons
+                            }
+
                             val capturedMedia = media
                             if (capturedMedia == null) {
                                 showTopFeedback("No media selected.", false)
                                 return@CaptureActionButtons
                             }
+
                             clearCaptionFocus()
                             coroutineScope.launch {
-                                val preparedMedia = withContext(Dispatchers.IO) {
-                                    preparePostMediaForUpload(context, capturedMedia)
-                                }
-
-                                preparedMedia
-                                    .onFailure { error ->
-                                        showTopFeedback(
-                                            error.message ?: "Failed to prepare media.",
-                                            false
-                                        )
-                                    }
-                                    .onSuccess { uploadMedia ->
-                                        viewModel.uploadPost(
-                                            contentType = uploadMedia.contentType,
-                                            bytes = uploadMedia.bytes,
-                                            width = uploadMedia.width,
-                                            height = uploadMedia.height,
-                                            durationMs = uploadMedia.durationMs,
-                                            isPublic = isAllSelected,
-                                            selectedFriendIds = selectedFriends,
-                                            onSuccess = { postId ->
-                                                onSend(
-                                                    OptimisticPostDraft(
-                                                        id = postId,
-                                                        mediaUri = uploadMedia.previewUri,
-                                                        contentType = uploadMedia.contentType,
-                                                        caption = viewModel.caption.trim()
-                                                    )
-                                                )
-                                            }
-                                        )
-                                    }
+                                sendState = CaptureSendState.Sending
+                                val draft = viewModel.startOptimisticPostUpload(
+                                    media = capturedMedia,
+                                    isPublic = isAllSelected,
+                                    selectedFriendIds = selectedFriends
+                                )
+                                sendState = CaptureSendState.Sent
+                                delay(260)
+                                onSend(draft)
                             }
                         }
                     )
@@ -621,20 +611,21 @@ private fun PrimaryRoundActionButton(
     onClick: () -> Unit,
     content: @Composable () -> Unit
 ) {
-    Box(
+    Surface(
         modifier = Modifier
             .size(size)
             .scaledClickable(
                 pressedScale = 1.12f,
                 enabled = enabled,
                 onClick = onClick
-            )
-            .clip(CircleShape)
-            .background(SolariTheme.colors.primary)
-            .border(5.dp, Color(0xFF3A2517), CircleShape),
-        contentAlignment = Alignment.Center
+            ),
+        shape = CircleShape,
+        color = SolariTheme.colors.primary,
+        border = BorderStroke(4.dp, SolariTheme.colors.onPrimary.copy(alpha = 0.5f))
     ) {
-        content()
+        Box(contentAlignment = Alignment.Center) {
+            content()
+        }
     }
 }
 
@@ -728,10 +719,13 @@ private fun VisibilityFriendItem(
 
 @Composable
 private fun CaptureActionButtons(
-    isUploading: Boolean,
+    sendState: CaptureSendState,
     onCancel: () -> Unit,
     onSend: () -> Unit
 ) {
+    val isSending = sendState == CaptureSendState.Sending
+    val isSent = sendState == CaptureSendState.Sent
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -757,23 +751,36 @@ private fun CaptureActionButtons(
 
         PrimaryRoundActionButton(
             size = 86.dp,
-            enabled = !isUploading,
+            enabled = sendState == CaptureSendState.Idle,
             onClick = onSend
         ) {
-            if (isUploading) {
-                androidx.compose.material3.CircularProgressIndicator(
-                    color = SolariTheme.colors.onPrimary,
-                    trackColor = Color(0xFF3A2517),
-                    modifier = Modifier.size(36.dp),
-                    strokeWidth = 3.dp
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.Send,
-                    contentDescription = "Send",
-                    tint = SolariTheme.colors.onPrimary,
-                    modifier = Modifier.size(39.dp)
-                )
+            when {
+                isSending -> {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        color = SolariTheme.colors.onPrimary,
+                        trackColor = SolariTheme.colors.primary,
+                        modifier = Modifier.size(36.dp),
+                        strokeWidth = 3.dp
+                    )
+                }
+
+                isSent -> {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Sent",
+                        tint = SolariTheme.colors.onPrimary,
+                        modifier = Modifier.size(39.dp)
+                    )
+                }
+
+                else -> {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send",
+                        tint = SolariTheme.colors.onPrimary,
+                        modifier = Modifier.size(39.dp)
+                    )
+                }
             }
         }
 

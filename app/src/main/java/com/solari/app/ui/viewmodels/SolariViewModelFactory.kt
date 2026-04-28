@@ -5,9 +5,11 @@ import androidx.lifecycle.ViewModelProvider
 import com.solari.app.data.auth.AuthRepository
 import com.solari.app.data.conversation.ConversationRepository
 import com.solari.app.data.feed.FeedRepository
+import com.solari.app.data.feed.PostUploadCoordinator
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.preferences.RecentEmojiStore
 import com.solari.app.data.user.UserRepository
+import com.solari.app.data.websocket.WebSocketManager
 
 class SolariViewModelFactory(
     private val authRepository: AuthRepository,
@@ -15,7 +17,9 @@ class SolariViewModelFactory(
     private val feedRepository: FeedRepository,
     private val friendRepository: FriendRepository,
     private val conversationRepository: ConversationRepository,
-    private val recentEmojiStore: RecentEmojiStore
+    private val recentEmojiStore: RecentEmojiStore,
+    private val postUploadCoordinator: PostUploadCoordinator,
+    private val webSocketManager: WebSocketManager
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         val viewModel = when {
@@ -40,7 +44,8 @@ class SolariViewModelFactory(
                     feedRepository = feedRepository,
                     userRepository = userRepository,
                     friendRepository = friendRepository,
-                    conversationRepository = conversationRepository
+                    conversationRepository = conversationRepository,
+                    postUploadCoordinator = postUploadCoordinator
                 )
             }
 
@@ -48,14 +53,16 @@ class SolariViewModelFactory(
                 FeedBrowseViewModel(
                     feedRepository = feedRepository,
                     friendRepository = friendRepository,
-                    userRepository = userRepository
+                    userRepository = userRepository,
+                    postUploadCoordinator = postUploadCoordinator
                 )
             }
 
             modelClass.isAssignableFrom(ConversationViewModel::class.java) -> {
                 ConversationViewModel(
                     conversationRepository = conversationRepository,
-                    friendRepository = friendRepository
+                    friendRepository = friendRepository,
+                    webSocketManager = webSocketManager
                 )
             }
 
@@ -64,7 +71,8 @@ class SolariViewModelFactory(
                     conversationRepository = conversationRepository,
                     userRepository = userRepository,
                     feedRepository = feedRepository,
-                    recentEmojiStore = recentEmojiStore
+                    recentEmojiStore = recentEmojiStore,
+                    webSocketManager = webSocketManager
                 )
             }
 
@@ -91,7 +99,8 @@ class SolariViewModelFactory(
             modelClass.isAssignableFrom(FriendManagementViewModel::class.java) -> {
                 FriendManagementViewModel(
                     friendRepository = friendRepository,
-                    userRepository = userRepository
+                    userRepository = userRepository,
+                    webSocketManager = webSocketManager
                 )
             }
 
@@ -109,7 +118,7 @@ class SolariViewModelFactory(
             modelClass.isAssignableFrom(HomepageAfterCapturingViewModel::class.java) -> {
                 HomepageAfterCapturingViewModel(
                     friendRepository = friendRepository,
-                    feedRepository = feedRepository
+                    postUploadCoordinator = postUploadCoordinator
                 )
             }
 

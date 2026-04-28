@@ -6,18 +6,36 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.solari.app.data.feed.FeedRepository
+import com.solari.app.data.feed.PostUploadCoordinator
+import com.solari.app.data.feed.PostUploadEntry
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.user.UserRepository
 import com.solari.app.ui.models.Post
+import com.solari.app.ui.models.OptimisticPostDraft
+import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.models.User
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 class FeedBrowseViewModel(
     private val feedRepository: FeedRepository,
     private val friendRepository: FriendRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val postUploadCoordinator: PostUploadCoordinator
 ) : ViewModel() {
+    var selectedSort by mutableStateOf("default")
+        private set
+
+    var selectedFriendIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    var feedListFirstVisibleItemIndex by mutableStateOf(0)
+        private set
+
+    var feedListFirstVisibleItemScrollOffset by mutableStateOf(0)
+        private set
+
     var friends by mutableStateOf<List<User>>(emptyList())
         private set
 
@@ -33,38 +51,130 @@ class FeedBrowseViewModel(
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
+    var isFetchingNextPage by mutableStateOf(false)
+        private set
+
+    var hasReachedEnd by mutableStateOf(false)
+        private set
+
+    private var nextCursor: String? = null
+
     private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
+    private var remotePosts: List<Post> = emptyList()
+    private var uploadEntries: List<PostUploadEntry> = emptyList()
+    private var hasAppliedInitialAuthorFilter = false
 
     init {
+        viewModelScope.launch {
+            postUploadCoordinator.uploads.collectLatest { uploads ->
+                uploadEntries = uploads
+                applyDisplayPosts()
+            }
+        }
+
         refresh()
     }
 
-    fun refresh() {
+    fun applyInitialAuthorFilter(authorId: String?) {
+        if (hasAppliedInitialAuthorFilter) return
+        hasAppliedInitialAuthorFilter = true
+        selectedFriendIds = authorId?.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty()
+        resetFeedListScroll()
+    }
+
+    fun updateSelectedSort(sort: String) {
+        if (sort == selectedSort) return
+        selectedSort = sort
+        resetFeedListScroll()
+        refresh(resetPagination = true)
+    }
+
+    fun toggleFriendFilter(userId: String) {
+        selectedFriendIds = if (userId in selectedFriendIds) {
+            selectedFriendIds - userId
+        } else {
+            selectedFriendIds + userId
+        }
+        resetFeedListScroll()
+        refresh(resetPagination = true)
+    }
+
+    fun clearFriendFilters() {
+        if (selectedFriendIds.isEmpty()) return
+        selectedFriendIds = emptySet()
+        resetFeedListScroll()
+        refresh(resetPagination = true)
+    }
+
+    fun loadNextPage() {
+        if (isLoading || isFetchingNextPage || hasReachedEnd) return
+        refresh(resetPagination = false)
+    }
+
+    fun updateFeedListScroll(
+        firstVisibleItemIndex: Int,
+        firstVisibleItemScrollOffset: Int
+    ) {
+        feedListFirstVisibleItemIndex = firstVisibleItemIndex.coerceAtLeast(0)
+        feedListFirstVisibleItemScrollOffset = firstVisibleItemScrollOffset.coerceAtLeast(0)
+    }
+
+    fun resetFeedListScroll() {
+        feedListFirstVisibleItemIndex = 0
+        feedListFirstVisibleItemScrollOffset = 0
+    }
+
+    fun refresh(resetPagination: Boolean = true) {
         viewModelScope.launch {
-            isLoading = true
-            errorMessage = null
+            if (resetPagination) {
+                isLoading = true
+                nextCursor = null
+                hasReachedEnd = false
+                remotePosts = emptyList()
+                errorMessage = null
 
-            when (val meResult = userRepository.getMe()) {
-                is ApiResult.Success -> currentUser = meResult.data
-                is ApiResult.Failure -> errorMessage = meResult.message
+                when (val meResult = userRepository.getMe()) {
+                    is ApiResult.Success -> currentUser = meResult.data
+                    is ApiResult.Failure -> errorMessage = meResult.message
+                }
+                when (val friendsResult = friendRepository.getFriends()) {
+                    is ApiResult.Success -> friends = friendsResult.data
+                    is ApiResult.Failure -> errorMessage = friendsResult.message
+                }
+            } else {
+                isFetchingNextPage = true
             }
 
-            when (val friendsResult = friendRepository.getFriends()) {
-                is ApiResult.Success -> friends = friendsResult.data
-                is ApiResult.Failure -> errorMessage = friendsResult.message
+            when (
+                val feedResult = feedRepository.getFeed(
+                    authorIds = selectedFriendIds,
+                    sort = selectedSort,
+                    limit = 15,
+                    cursor = nextCursor
+                )
+            ) {
+                is ApiResult.Success -> {
+                    val newPosts = feedResult.data.posts
+                    nextCursor = feedResult.data.nextCursor
+                    hasReachedEnd = nextCursor == null
+
+                    remotePosts = if (resetPagination) newPosts else remotePosts + newPosts
+                    postUploadCoordinator.removeSyncedUploads(newPosts.map { it.id }.toSet())
+                    applyDisplayPosts()
+                }
+                is ApiResult.Failure -> {
+                    if (errorMessage == null) errorMessage = feedResult.message
+                }
             }
 
-            when (val feedResult = feedRepository.getFeed()) {
-                is ApiResult.Success -> posts = feedResult.data
-                is ApiResult.Failure -> if (errorMessage == null) errorMessage = feedResult.message
-            }
-
-            isLoading = false
+            if (resetPagination) isLoading = false else isFetchingNextPage = false
         }
     }
 
     fun registerPostView(postId: String) {
-        if (postId in registeredViewPostIds) {
+        if (postId in registeredViewPostIds ||
+            posts.any { it.id == postId && it.uploadStatus != PostUploadStatus.None }
+        ) {
             return
         }
 
@@ -78,5 +188,34 @@ class FeedBrowseViewModel(
                 }
             }
         }
+    }
+
+    private fun applyDisplayPosts() {
+        val user = currentUser
+        val uploadPosts = if (user == null) {
+            emptyList()
+        } else {
+            uploadEntries
+                .sortedByDescending { it.draft.createdAt }
+                .map { entry ->
+                    entry.remotePost ?: entry.draft.toPost(user)
+                }
+        }
+        val uploadPostIds = uploadPosts.map(Post::id).toSet()
+        posts = uploadPosts + remotePosts.filterNot { it.id in uploadPostIds }
+    }
+
+    private fun OptimisticPostDraft.toPost(author: User): Post {
+        return Post(
+            id = id,
+            author = author,
+            imageUrl = mediaUri.toString(),
+            thumbnailUrl = mediaUri.toString(),
+            mediaType = contentType,
+            timestamp = createdAt,
+            caption = caption,
+            uploadStatus = uploadStatus,
+            uploadError = uploadError
+        )
     }
 }

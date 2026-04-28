@@ -25,6 +25,11 @@ interface AuthApi {
         @Body request: RefreshSessionRequestDto
     ): Response<SignInResponseDto>
 
+    @POST("signout")
+    suspend fun signOut(
+        @Body request: SignOutRequestDto
+    ): Response<com.solari.app.data.remote.common.MessageResponseDto>
+
     @POST("password-resets")
     suspend fun requestPasswordReset(
         @Body request: PasswordResetRequestDto

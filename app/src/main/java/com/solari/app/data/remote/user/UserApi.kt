@@ -47,6 +47,11 @@ interface UserApi {
         @Body request: UpdatePasswordRequestDto
     ): Response<UpdatePasswordResponseDto>
 
+    @POST("users/me/devices")
+    suspend fun registerDevice(
+        @Body request: RegisterDeviceRequestDto
+    ): Response<MessageResponseDto>
+
     @POST("users/{targetId}/block")
     suspend fun blockUser(
         @Path("targetId") targetId: String

@@ -14,5 +14,7 @@ data class OptimisticPostDraft(
     val mediaUri: Uri,
     val contentType: String,
     val caption: String,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val uploadStatus: PostUploadStatus = PostUploadStatus.Uploading,
+    val uploadError: String? = null
 )

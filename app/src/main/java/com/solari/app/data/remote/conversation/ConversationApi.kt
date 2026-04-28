@@ -33,6 +33,11 @@ interface ConversationApi {
         @Query("cursor") cursor: String? = null
     ): Response<GetMessagesResponseDto>
 
+    @GET("messages/{messageId}")
+    suspend fun getMessage(
+        @Path("messageId") messageId: String
+    ): Response<GetMessageResponseDto>
+
     @POST("conversations/{conversationId}/messages")
     suspend fun sendMessage(
         @Path("conversationId") conversationId: String,

@@ -6,6 +6,7 @@ import com.solari.app.data.network.ApiExecutor
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.remote.user.BlockedUserDto
 import com.solari.app.data.remote.user.DeleteAccountRequestDto
+import com.solari.app.data.remote.user.RegisterDeviceRequestDto
 import com.solari.app.data.remote.user.UpdatePasswordRequestDto
 import com.solari.app.data.remote.user.UserApi
 import com.solari.app.ui.models.BlockedUser
@@ -88,6 +89,32 @@ class DefaultUserRepository(
                     UpdatePasswordRequestDto(
                         oldPassword = oldPassword,
                         newPassword = newPassword
+                    )
+                )
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(Unit)
+        }
+    }
+
+    override suspend fun registerDevice(deviceToken: String, platform: String): ApiResult<Unit> {
+        val normalizedDeviceToken = deviceToken.trim()
+        val normalizedPlatform = platform.trim().lowercase()
+        if (normalizedDeviceToken.isEmpty()) {
+            return ApiResult.Failure(
+                statusCode = null,
+                type = "MISSING_DEVICE_TOKEN",
+                message = "Device token is required."
+            )
+        }
+
+        return when (
+            val result = apiExecutor.execute {
+                userApi.registerDevice(
+                    RegisterDeviceRequestDto(
+                        deviceToken = normalizedDeviceToken,
+                        platform = normalizedPlatform
                     )
                 )
             }
