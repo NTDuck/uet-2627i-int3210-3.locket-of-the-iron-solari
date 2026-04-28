@@ -47,13 +47,7 @@ class SettingsViewModel(
     fun setTheme(variant: SolariThemeVariant) {
         val isThemeDark = ThemeMap[variant]?.isDark ?: true
         viewModelScope.launch {
-            if (isThemeDark) {
-                userPreferencesStore.updateDarkTheme(variant)
-                userPreferencesStore.updateDarkMode(true)
-            } else {
-                userPreferencesStore.updateLightTheme(variant)
-                userPreferencesStore.updateDarkMode(false)
-            }
+            userPreferencesStore.updateTheme(variant, isThemeDark)
         }
     }
 }

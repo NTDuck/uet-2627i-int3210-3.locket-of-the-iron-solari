@@ -23,7 +23,14 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -301,6 +308,8 @@ fun FeedScreen(
                 FeedPost(
                     post = posts[page],
                     isActive = page == pagerState.currentPage,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                     onLongPress = { showMenuForPost = posts[page] },
                     onMoreClick = { showMenuForPost = posts[page] },
                     activityEntries = viewModel.postActivities[posts[page].id].orEmpty(),
@@ -750,14 +759,14 @@ private fun FeedPost(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .animateEnterExit(enter = fadeIn(), exit = fadeOut())
+                            .animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500)))
                             .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f))
                     )
 
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .animateEnterExit(enter = fadeIn(), exit = fadeOut())
+                            .animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500)))
                             .padding(10.dp)
                             .size(36.dp)
                             .clip(RoundedCornerShape(18.dp))
@@ -783,7 +792,7 @@ private fun FeedPost(
                             textAlign = TextAlign.Center,
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
-                                .animateEnterExit(enter = fadeIn(), exit = fadeOut())
+                                .animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500)))
                                 .padding(bottom = 14.dp)
                                 .clip(RoundedCornerShape(14.dp))
                                 .background(SolariTheme.colors.background.copy(alpha = 0.58f))
@@ -798,7 +807,7 @@ private fun FeedPost(
 
                 Row(
                     modifier = Modifier
-                        .animateEnterExit(enter = fadeIn(), exit = fadeOut())
+                        .animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500)))
                         .clip(RoundedCornerShape(12.dp))
                         .clickable { onNavigateToBrowse(displayAuthor.id) }
                         .padding(vertical = 8.dp, horizontal = 16.dp),
@@ -840,7 +849,7 @@ private fun FeedPost(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                Box(modifier = Modifier.animateEnterExit(enter = fadeIn(), exit = fadeOut())) {
+                Box(modifier = Modifier.animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500)))) {
                     if (isCurrentUserPost) {
                         when (post.uploadStatus) {
                             PostUploadStatus.None -> {
@@ -895,7 +904,7 @@ private fun FeedPost(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 FeedBrowseButton(
-                    modifier = Modifier.animateEnterExit(enter = fadeIn(), exit = fadeOut()),
+                    modifier = Modifier.animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500))),
                     onClick = { onNavigateToBrowse(null) }
                 )
 
@@ -1488,7 +1497,7 @@ private fun FeedImage(
         modifier = modifier
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
-                    zoomScale = (zoomScale * zoom).coerceAtLeast(1f)
+                    zoomScale = (zoomScale * zoom).coerceIn(1f, 5f)
                     zoomOffset += pan
                 }
             }
@@ -1520,7 +1529,8 @@ private fun FeedImage(
                     .fillMaxSize()
                     .sharedElement(
                         rememberSharedContentState(key = "post_image_$postId"),
-                        animatedVisibilityScope = animatedVisibilityScope
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        boundsTransform = { _, _ -> tween(durationMillis = 500) }
                     ),
                 contentScale = ContentScale.Crop,
                 onLoading = { isLoading = true },
@@ -1617,7 +1627,7 @@ private fun FeedVideoPlayer(
         modifier = modifier
             .pointerInput(Unit) {
                 detectTransformGestures { _, pan, zoom, _ ->
-                    zoomScale = (zoomScale * zoom).coerceAtLeast(1f)
+                    zoomScale = (zoomScale * zoom).coerceIn(1f, 5f)
                     zoomOffset += pan
                 }
             }
@@ -1644,7 +1654,8 @@ private fun FeedVideoPlayer(
                     .fillMaxSize()
                     .sharedElement(
                         rememberSharedContentState(key = "post_image_$postId"),
-                        animatedVisibilityScope = animatedVisibilityScope
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        boundsTransform = { _, _ -> tween(durationMillis = 500) }
                     ),
                 factory = { viewContext ->
                     PlayerView(viewContext).apply {
@@ -2043,9 +2054,12 @@ private fun FeedMessageField(
 }
 
 @Composable
-private fun FeedBrowseButton(onClick: () -> Unit) {
+private fun FeedBrowseButton(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth(0.6f)
             .height(48.dp)
             .scaledClickable(pressedScale = 1.05f, onClick = onClick)

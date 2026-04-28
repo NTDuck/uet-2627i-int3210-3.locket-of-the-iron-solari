@@ -1250,7 +1250,7 @@ private fun ChatBubble(
     var hasReplySwipeHapticFired by remember(message.id) { mutableStateOf(false) }
     val bubbleInteractionSource = remember(message.id) { MutableInteractionSource() }
     val hapticFeedback = LocalHapticFeedback.current
-    val replySwipeThresholdPx = with(LocalDensity.current) { 180.dp.toPx() }
+    val replySwipeThresholdPx = with(LocalDensity.current) { 22.5.dp.toPx() }
     val bubbleShape = RoundedCornerShape(12.dp)
     val highlightScale by animateFloatAsState(
         targetValue = if (isHighlighted) 1.1f else 1f,

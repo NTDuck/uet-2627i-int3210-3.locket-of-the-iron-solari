@@ -51,6 +51,12 @@ class FeedViewModel(
     var loadingPostActivityIds by mutableStateOf<Set<String>>(emptySet())
         private set
 
+    var authorFilterIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
+    var sortMode by mutableStateOf("default")
+        private set
+
     private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
     private var remotePosts: List<Post> = emptyList()
     private var uploadEntries: List<PostUploadEntry> = emptyList()
@@ -64,6 +70,18 @@ class FeedViewModel(
         }
 
         refresh()
+    }
+
+    fun updateFilters(authorIds: Set<String>, sort: String) {
+        authorFilterIds = authorIds
+        sortMode = sort
+        applyDisplayPosts()
+    }
+
+    fun resetFilters() {
+        authorFilterIds = emptySet()
+        sortMode = "default"
+        applyDisplayPosts()
     }
 
     fun refresh() {
@@ -246,7 +264,19 @@ class FeedViewModel(
                 }
         }
         val uploadPostIds = uploadPosts.map(Post::id).toSet()
-        posts = uploadPosts + remotePosts.filterNot { it.id in uploadPostIds }
+        val allPosts = uploadPosts + remotePosts.filterNot { it.id in uploadPostIds }
+
+        val filteredPosts = if (authorFilterIds.isEmpty()) {
+            allPosts
+        } else {
+            allPosts.filter { it.author.id in authorFilterIds }
+        }
+
+        posts = when (sortMode) {
+            "newest" -> filteredPosts.sortedByDescending { it.timestamp }
+            "oldest" -> filteredPosts.sortedBy { it.timestamp }
+            else -> filteredPosts
+        }
     }
 
     private fun OptimisticPostDraft.toPost(author: User): Post {

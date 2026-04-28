@@ -221,6 +221,7 @@ private fun String?.toFeedAuthorFilterIds(): Set<String> {
         .orEmpty()
 }
 
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun SolariApp(
     settingsViewModel: SettingsViewModel,
@@ -1011,4 +1012,5 @@ private fun SolariApp(
             }
         )
     }
+}
 }

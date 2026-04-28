@@ -44,6 +44,29 @@ class UserPreferencesStore(context: Context) {
             )
         }
 
+    suspend fun updateTheme(variant: SolariThemeVariant, isDarkMode: Boolean) {
+        dataStore.edit { preferences ->
+            if (isDarkMode) {
+                preferences[CurrentDarkThemeKey] = variant.name
+            } else {
+                preferences[CurrentLightThemeKey] = variant.name
+            }
+            preferences[IsDarkModeKey] = isDarkMode
+        }
+    }
+
+    suspend fun updateFlashEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[IsFlashEnabledKey] = enabled
+        }
+    }
+
+    suspend fun updateTimerValue(value: Int) {
+        dataStore.edit { preferences ->
+            preferences[TimerValueKey] = value
+        }
+    }
+
     suspend fun updateDarkMode(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[IsDarkModeKey] = enabled
@@ -59,18 +82,6 @@ class UserPreferencesStore(context: Context) {
     suspend fun updateDarkTheme(variant: SolariThemeVariant) {
         dataStore.edit { preferences ->
             preferences[CurrentDarkThemeKey] = variant.name
-        }
-    }
-
-    suspend fun updateFlashEnabled(enabled: Boolean) {
-        dataStore.edit { preferences ->
-            preferences[IsFlashEnabledKey] = enabled
-        }
-    }
-
-    suspend fun updateTimerValue(value: Int) {
-        dataStore.edit { preferences ->
-            preferences[TimerValueKey] = value
         }
     }
 
