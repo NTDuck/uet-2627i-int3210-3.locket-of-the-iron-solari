@@ -446,23 +446,24 @@ private fun SolariApp(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        NavHost(
-            navController = navController,
-            modifier = Modifier.background(SolariTheme.colors.background),
-            startDestination = startDestination,
-            enterTransition = {
-                slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
-            },
-            exitTransition = {
-                slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
-            },
-            popEnterTransition = {
-                slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
-            },
-            popExitTransition = {
-                slideOutHorizontally(targetOffsetX = { 1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
-            }
-        ) {
+        SharedTransitionLayout {
+            NavHost(
+                navController = navController,
+                modifier = Modifier.background(SolariTheme.colors.background),
+                startDestination = startDestination,
+                enterTransition = {
+                    slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
+                },
+                exitTransition = {
+                    slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                },
+                popEnterTransition = {
+                    slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
+                },
+                popExitTransition = {
+                    slideOutHorizontally(targetOffsetX = { 1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                }
+            ) {
         composable(SolariRoute.Screen.Welcome.name) {
             val viewModel: WelcomeViewModel = viewModel(factory = appContainer.viewModelFactory)
             WelcomeScreen(
@@ -604,6 +605,8 @@ private fun SolariApp(
                 conversationFeedbackMessage = conversationFeedbackMessage,
                 settingsViewModel = settingsViewModel,
                 viewModelFactory = appContainer.viewModelFactory,
+                sharedTransitionScope = this@SharedTransitionLayout,
+                animatedVisibilityScope = this@composable,
                 onNavigateToChat = { conversation -> navController.navigateToChat(conversation) },
                 onNavigateToManageFriends = { navController.navigate(SolariRoute.Screen.FriendManagement.name) },
                 onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
@@ -666,6 +669,8 @@ private fun SolariApp(
                 conversationFeedbackMessage = conversationFeedbackMessage,
                 settingsViewModel = settingsViewModel,
                 viewModelFactory = appContainer.viewModelFactory,
+                sharedTransitionScope = this@SharedTransitionLayout,
+                animatedVisibilityScope = this@composable,
                 onNavigateToChat = { conversation -> navController.navigateToChat(conversation) },
                 onNavigateToManageFriends = { navController.navigate(SolariRoute.Screen.FriendManagement.name) },
                 onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
@@ -763,7 +768,10 @@ private fun SolariApp(
             FeedBrowseScreen(
                 viewModel = viewModel,
                 initialAuthorId = initialAuthorId,
+                sharedTransitionScope = this@SharedTransitionLayout,
+                animatedVisibilityScope = this@composable,
                 onNavigateBack = { navController.popBackStack() },
+                onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
                 onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
                 onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
                 onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") },

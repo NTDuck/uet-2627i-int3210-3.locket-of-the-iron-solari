@@ -112,13 +112,15 @@ private data class FeedActivityUserGroup(
     val activities: List<PostActivityEntry>
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 fun FeedScreen(
     viewModel: FeedViewModel,
     initialPostId: String? = null,
     authorFilterIds: Set<String> = emptySet(),
     sortMode: String = "default",
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onNavigateBack: () -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToChat: () -> Unit,
@@ -638,11 +640,13 @@ private fun FeedPostActionButton(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun FeedPost(
     post: Post,
     isActive: Boolean,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onLongPress: () -> Unit,
     onMoreClick: () -> Unit,
     activityEntries: List<PostActivityEntry>,
@@ -725,159 +729,178 @@ private fun FeedPost(
                     FeedVideoPlayer(
                         url = post.imageUrl,
                         mediaType = post.mediaType,
+                        postId = post.id,
                         isActive = isActive,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
                         onLongPress = onLongPress,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
                     FeedImage(
                         url = post.imageUrl,
+                        postId = post.id,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f))
-                )
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(10.dp)
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(SolariTheme.colors.background.copy(alpha = 0.36f))
-                        .clickable(onClick = onMoreClick),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Default.MoreVert,
-                        contentDescription = "More",
-                        tint = SolariTheme.colors.onBackground,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                if (!post.caption.isEmpty()) {
-                    Text(
-                        text = post.caption,
-                        color = SolariTheme.colors.onBackground,
-
-                        fontSize = 15.sp,
-                        lineHeight = 20.sp,
-                        fontFamily = PlusJakartaSans,
-                        textAlign = TextAlign.Center,
+                with(animatedVisibilityScope) {
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 14.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(SolariTheme.colors.background.copy(alpha = 0.58f))
-                            .padding(horizontal = 28.dp, vertical = 8.dp)
+                            .fillMaxSize()
+                            .animateEnterExit(enter = fadeIn(), exit = fadeOut())
+                            .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f))
                     )
+
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .animateEnterExit(enter = fadeIn(), exit = fadeOut())
+                            .padding(10.dp)
+                            .size(36.dp)
+                            .clip(RoundedCornerShape(18.dp))
+                            .background(SolariTheme.colors.background.copy(alpha = 0.36f))
+                            .clickable(onClick = onMoreClick),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = "More",
+                            tint = SolariTheme.colors.onBackground,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    if (!post.caption.isEmpty()) {
+                        Text(
+                            text = post.caption,
+                            color = SolariTheme.colors.onBackground,
+                            fontSize = 15.sp,
+                            lineHeight = 20.sp,
+                            fontFamily = PlusJakartaSans,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .animateEnterExit(enter = fadeIn(), exit = fadeOut())
+                                .padding(bottom = 14.dp)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(SolariTheme.colors.background.copy(alpha = 0.58f))
+                                .padding(horizontal = 28.dp, vertical = 8.dp)
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(36.dp))
+            with(animatedVisibilityScope) {
+                Spacer(modifier = Modifier.height(36.dp))
 
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onNavigateToBrowse(displayAuthor.id) }
-                    .padding(vertical = 8.dp, horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
-            ) {
-                SolariAvatar(
-                    imageUrl = displayAuthor.profileImageUrl,
-                    username = displayAuthor.username,
-                    contentDescription = "Author Avatar",
+                Row(
                     modifier = Modifier
-                        .size(40.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    fontSize = 16.sp
-                )
-
-                Spacer(modifier = Modifier.width(12.dp))
-
-                Column {
-                    Text(
-                        text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
-                        color = SolariTheme.colors.onBackground,
-
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = PlusJakartaSans,
-                        fontSize = 16.sp,
-                        lineHeight = 16.sp
+                        .animateEnterExit(enter = fadeIn(), exit = fadeOut())
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { onNavigateToBrowse(displayAuthor.id) }
+                        .padding(vertical = 8.dp, horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
+                ) {
+                    SolariAvatar(
+                        imageUrl = displayAuthor.profileImageUrl,
+                        username = displayAuthor.username,
+                        contentDescription = "Author Avatar",
+                        modifier = Modifier
+                            .size(40.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        fontSize = 16.sp
                     )
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = post.timestamp.toFeedRelativeTimeLabel(),
-                        color = SolariTheme.colors.onSurfaceVariant,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = PlusJakartaSans,
-                        fontSize = 11.sp,
-                        lineHeight = 13.sp
-                    )
-                }
-            }
 
-            Spacer(modifier = Modifier.height(32.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
 
-            if (isCurrentUserPost) {
-                when (post.uploadStatus) {
-                    PostUploadStatus.None -> {
-                        FeedActivityPill(
-                            users = activityUsers.take(3),
-                            overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
-                            onClick = onShowActivity
+                    Column {
+                        Text(
+                            text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
+                            color = SolariTheme.colors.onBackground,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = PlusJakartaSans,
+                            fontSize = 16.sp,
+                            lineHeight = 16.sp
                         )
-                    }
-
-                    PostUploadStatus.Uploading,
-                    PostUploadStatus.Processing -> {
-                        FeedUploadStatusPill(
-                            text = "Uploading post",
-                            isLoading = true,
-                            isError = false
-                        )
-                    }
-
-                    PostUploadStatus.Failed -> {
-                        FeedUploadStatusPill(
-                            text = post.uploadError ?: "Upload failed",
-                            isLoading = false,
-                            isError = true
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Text(
+                            text = post.timestamp.toFeedRelativeTimeLabel(),
+                            color = SolariTheme.colors.onSurfaceVariant,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = PlusJakartaSans,
+                            fontSize = 11.sp,
+                            lineHeight = 13.sp
                         )
                     }
                 }
-            } else {
-                FeedReactionField(
-                    value = reactionNote,
-                    onValueChange = { reactionNote = it.take(20) },
-                    onReact = ::sendReactionOptimistically,
-                    onOpenEmojiPicker = { showEmojiPicker = true },
-                    isEditable = false,
-                    onActivate = { showInputOverlay(FeedInputOverlayMode.Reaction) }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                Box(modifier = Modifier.animateEnterExit(enter = fadeIn(), exit = fadeOut())) {
+                    if (isCurrentUserPost) {
+                        when (post.uploadStatus) {
+                            PostUploadStatus.None -> {
+                                FeedActivityPill(
+                                    users = activityUsers.take(3),
+                                    overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
+                                    onClick = onShowActivity
+                                )
+                            }
+
+                            PostUploadStatus.Uploading,
+                            PostUploadStatus.Processing -> {
+                                FeedUploadStatusPill(
+                                    text = "Uploading post",
+                                    isLoading = true,
+                                    isError = false
+                                )
+                            }
+
+                            PostUploadStatus.Failed -> {
+                                FeedUploadStatusPill(
+                                    text = post.uploadError ?: "Upload failed",
+                                    isLoading = false,
+                                    isError = true
+                                )
+                            }
+                        }
+                    } else {
+                        Column {
+                            FeedReactionField(
+                                value = reactionNote,
+                                onValueChange = { reactionNote = it.take(20) },
+                                onReact = ::sendReactionOptimistically,
+                                onOpenEmojiPicker = { showEmojiPicker = true },
+                                isEditable = false,
+                                onActivate = { showInputOverlay(FeedInputOverlayMode.Reaction) }
+                            )
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            FeedMessageField(
+                                value = messageText,
+                                onValueChange = { messageText = it },
+                                onSend = {},
+                                isEditable = false,
+                                onActivate = { showInputOverlay(FeedInputOverlayMode.Message) }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                FeedBrowseButton(
+                    modifier = Modifier.animateEnterExit(enter = fadeIn(), exit = fadeOut()),
+                    onClick = { onNavigateToBrowse(null) }
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
-
-                FeedMessageField(
-                    value = messageText,
-                    onValueChange = { messageText = it },
-                    onSend = {},
-                    isEditable = false,
-                    onActivate = { showInputOverlay(FeedInputOverlayMode.Message) }
-                )
+                Spacer(modifier = Modifier.weight(0.45f))
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            FeedBrowseButton(onClick = { onNavigateToBrowse(null) })
-
-            Spacer(modifier = Modifier.weight(0.45f))
         }
 
         if (showEmojiPicker && activeInputOverlay == null) {
@@ -1448,26 +1471,63 @@ private fun FeedActivityTrailing(activity: PostActivityEntry) {
     }
 }
 
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun FeedImage(
     url: String,
+    postId: String,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     modifier: Modifier = Modifier
 ) {
     var isLoading by remember(url) { mutableStateOf(true) }
+    var zoomScale by remember { mutableStateOf(1f) }
+    var zoomOffset by remember { mutableStateOf(Offset.Zero) }
 
-    Box(modifier = modifier) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(url)
-                .crossfade(true)
-                .build(),
-            contentDescription = "Post Image",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            onLoading = { isLoading = true },
-            onSuccess = { isLoading = false },
-            onError = { isLoading = false }
-        )
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    zoomScale = (zoomScale * zoom).coerceAtLeast(1f)
+                    zoomOffset += pan
+                }
+            }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                    } while (event.changes.any { it.pressed })
+                    zoomScale = 1f
+                    zoomOffset = Offset.Zero
+                }
+            }
+            .graphicsLayer {
+                scaleX = zoomScale
+                scaleY = zoomScale
+                translationX = zoomOffset.x
+                translationY = zoomOffset.y
+            }
+    ) {
+        with(sharedTransitionScope) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(url)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "Post Image",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .sharedElement(
+                        rememberSharedContentState(key = "post_image_$postId"),
+                        animatedVisibilityScope = animatedVisibilityScope
+                    ),
+                contentScale = ContentScale.Crop,
+                onLoading = { isLoading = true },
+                onSuccess = { isLoading = false },
+                onError = { isLoading = false }
+            )
+        }
 
         if (isLoading) {
             FeedMediaLoadingIndicator()
@@ -1476,18 +1536,24 @@ private fun FeedImage(
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun FeedVideoPlayer(
     url: String,
     mediaType: String,
+    postId: String,
     isActive: Boolean,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var isLoading by remember(url) { mutableStateOf(true) }
     var isUserPaused by remember(url) { mutableStateOf(false) }
+    var zoomScale by remember { mutableStateOf(1f) }
+    var zoomOffset by remember { mutableStateOf(Offset.Zero) }
+
     val player = remember(url, mediaType) {
         ExoPlayer.Builder(context)
             .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
@@ -1547,27 +1613,58 @@ private fun FeedVideoPlayer(
         }
     }
 
-    Box(modifier = modifier) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { viewContext ->
-                PlayerView(viewContext).apply {
-                    useController = false
-                    controllerAutoShow = false
-                    hideController()
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    this.player = player
-                }
-            },
-            update = { playerView ->
-                playerView.useController = false
-                playerView.controllerAutoShow = false
-                playerView.hideController()
-                if (playerView.player !== player) {
-                    playerView.player = player
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    zoomScale = (zoomScale * zoom).coerceAtLeast(1f)
+                    zoomOffset += pan
                 }
             }
-        )
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                    } while (event.changes.any { it.pressed })
+                    zoomScale = 1f
+                    zoomOffset = Offset.Zero
+                }
+            }
+            .graphicsLayer {
+                scaleX = zoomScale
+                scaleY = zoomScale
+                translationX = zoomOffset.x
+                translationY = zoomOffset.y
+            }
+    ) {
+        with(sharedTransitionScope) {
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .sharedElement(
+                        rememberSharedContentState(key = "post_image_$postId"),
+                        animatedVisibilityScope = animatedVisibilityScope
+                    ),
+                factory = { viewContext ->
+                    PlayerView(viewContext).apply {
+                        useController = false
+                        controllerAutoShow = false
+                        hideController()
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        this.player = player
+                    }
+                },
+                update = { playerView ->
+                    playerView.useController = false
+                    playerView.controllerAutoShow = false
+                    playerView.hideController()
+                    if (playerView.player !== player) {
+                        playerView.player = player
+                    }
+                }
+            )
+        }
 
         Box(
             modifier = Modifier

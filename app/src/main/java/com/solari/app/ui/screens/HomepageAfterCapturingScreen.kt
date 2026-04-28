@@ -409,12 +409,37 @@ private fun CapturePreviewCard(
     onCaptionFocusChanged: (Boolean) -> Unit,
     onCaptionDone: () -> Unit
 ) {
+    var zoomScale by remember { mutableStateOf(1f) }
+    var zoomOffset by remember { mutableStateOf(Offset.Zero) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
             .clip(RoundedCornerShape(CapturePreviewCornerRadius))
             .background(SolariTheme.colors.surface)
+            .pointerInput(Unit) {
+                detectTransformGestures { _, pan, zoom, _ ->
+                    zoomScale = (zoomScale * zoom).coerceAtLeast(1f)
+                    zoomOffset += pan
+                }
+            }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                    } while (event.changes.any { it.pressed })
+                    zoomScale = 1f
+                    zoomOffset = Offset.Zero
+                }
+            }
+            .graphicsLayer {
+                scaleX = zoomScale
+                scaleY = zoomScale
+                translationX = zoomOffset.x
+                translationY = zoomOffset.y
+            }
     ) {
         when {
             mediaUri == null -> {

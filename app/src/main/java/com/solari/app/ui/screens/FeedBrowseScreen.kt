@@ -41,12 +41,15 @@ import kotlinx.coroutines.launch
 
 private const val FeedBrowseScrollTopButtonThresholdIndex = 24
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 fun FeedBrowseScreen(
     viewModel: FeedBrowseViewModel,
     initialAuthorId: String? = null,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onNavigateBack: () -> Unit,
+    onNavigateToFeed: () -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToProfile: () -> Unit,
@@ -137,7 +140,7 @@ fun FeedBrowseScreen(
                 onNavigate = { routeName ->
                     when (routeName) {
                         SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
-                        SolariRoute.Screen.Feed.name -> onNavigateBack()
+                        SolariRoute.Screen.Feed.name -> onNavigateToFeed()
                         SolariRoute.Screen.Conversations.name -> onNavigateToChat()
                         SolariRoute.Screen.Profile.name -> onNavigateToProfile()
                     }
@@ -325,15 +328,22 @@ fun FeedBrowseScreen(
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(SolariTheme.colors.surface)
                             ) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
-                                        .data(post.thumbnailUrl.ifBlank { post.imageUrl })
-                                        .crossfade(true)
-                                        .build(),
-                                    contentDescription = "Browse Image",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
+                                with(sharedTransitionScope) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(LocalContext.current)
+                                            .data(post.thumbnailUrl.ifBlank { post.imageUrl })
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = "Browse Image",
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .sharedElement(
+                                                rememberSharedContentState(key = "post_image_${post.id}"),
+                                                animatedVisibilityScope = animatedVisibilityScope
+                                            ),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
 
                                 when (post.uploadStatus) {
                                     PostUploadStatus.Uploading,

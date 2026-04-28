@@ -17,7 +17,7 @@ import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.viewmodels.*
 import kotlinx.coroutines.launch
-
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 fun MainScreen(
     initialPage: Int = 0,
@@ -27,14 +27,16 @@ fun MainScreen(
     profileFeedbackMessage: String? = null,
     conversationFeedbackMessage: String? = null,
     settingsViewModel: SettingsViewModel,
-    viewModelFactory: SolariViewModelFactory,
+    viewModelFactory: ViewModelProvider.Factory,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope? = null,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
     onNavigateToChat: (Conversation) -> Unit,
     onNavigateToManageFriends: () -> Unit,
     onNavigateToBlockedAccounts: () -> Unit,
     onNavigateToChangePassword: () -> Unit,
     onNavigateToChangeTheme: () -> Unit,
     onNavigateToFeedBrowse: (String?) -> Unit,
-    onNavigateBackFromFeedPost: (() -> Unit)? = null,
+    onNavigateBackFromFeedPost: () -> Unit = {},
     optimisticPostDraft: OptimisticPostDraft? = null,
     onOptimisticPostDraftConsumed: (String) -> Unit = {},
     onCapture: (CapturedMedia) -> Unit,
@@ -43,6 +45,7 @@ fun MainScreen(
     onConversationFeedbackConsumed: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 4 }
+
     val scope = rememberCoroutineScope()
     var isFeedActivityPanelVisible by remember { mutableStateOf(false) }
 
@@ -117,6 +120,8 @@ fun MainScreen(
                         initialPostId = initialFeedPostId,
                         authorFilterIds = initialFeedAuthorFilterIds,
                         sortMode = initialFeedSort,
+                        sharedTransitionScope = sharedTransitionScope ?: return@FeedScreen,
+                        animatedVisibilityScope = animatedVisibilityScope ?: return@FeedScreen,
                         onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToChat = { scope.launch { pagerState.animateScrollToPage(2) } },
