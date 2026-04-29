@@ -1279,7 +1279,7 @@ private fun ChatBubble(
 
     Box(
         modifier = Modifier
-            .offset { IntOffset(dragOffsetPx.roundToInt(), 0) }
+            .offset { IntOffset((dragOffsetPx / 3).roundToInt(), 0) }
             .widthIn(max = if (isFromMe) 292.dp else 248.dp)
             .padding(bottom = if (hasReactions) 8.dp else 0.dp)
             .then(
