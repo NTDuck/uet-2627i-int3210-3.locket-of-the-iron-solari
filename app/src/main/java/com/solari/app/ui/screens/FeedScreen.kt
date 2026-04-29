@@ -729,11 +729,7 @@ private fun FeedPost(
                 .padding(horizontal = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (!isZooming) {
-                Spacer(modifier = Modifier.weight(0.8f))
-            } else {
-                Spacer(modifier = Modifier.height(120.dp))
-            }
+            Spacer(modifier = Modifier.height(48.dp))
 
             Box(
                 modifier = Modifier
@@ -982,7 +978,7 @@ private fun FeedPost(
                 val view = LocalView.current
                 LaunchedEffect(view) {
                     val window = (view.parent as? DialogWindowProvider)?.window
-                    window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+                    window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
                 }
 
                 Box(modifier = Modifier.fillMaxSize()) {
