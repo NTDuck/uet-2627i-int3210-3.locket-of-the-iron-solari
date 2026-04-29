@@ -12,6 +12,12 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -2130,48 +2136,53 @@ private fun ChatInputBar(
             .padding(start = 24.dp, top = 16.dp, end = 24.dp, bottom = bottomPadding)
             .clip(RoundedCornerShape(12.dp))
             .background(ChatInput)
-            .padding(start = 20.dp, end = 8.dp, top = if (replyingToMessage == null) 0.dp else 10.dp, bottom = 0.dp)
     ) {
-        if (replyingToMessage != null && replyLabel != null) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(end = 4.dp, bottom = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = replyLabel,
-                        color = ChatPrimary,
-                        fontSize = 12.sp,
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = replyingToMessage.text,
-                        color = ChatMuted,
-                        fontSize = 12.sp,
-                        fontFamily = PlusJakartaSans,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Box(
+        AnimatedVisibility(
+            visible = replyingToMessage != null && replyLabel != null,
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it })
+        ) {
+            if (replyingToMessage != null && replyLabel != null) {
+                Row(
                     modifier = Modifier
-                        .size(30.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onCancelReply),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(start = 20.dp, end = 8.dp, top = 10.dp, bottom = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "Cancel reply",
-                        tint = ChatMuted,
-                        modifier = Modifier.size(18.dp)
-                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = replyLabel,
+                            color = ChatPrimary,
+                            fontSize = 12.sp,
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = replyingToMessage.text,
+                            color = ChatMuted,
+                            fontSize = 12.sp,
+                            fontFamily = PlusJakartaSans,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(CircleShape)
+                            .clickable(onClick = onCancelReply),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cancel reply",
+                            tint = ChatMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
                 }
             }
         }
@@ -2179,7 +2190,8 @@ private fun ChatInputBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 56.dp),
+                .heightIn(min = 56.dp)
+                .padding(start = 20.dp, end = 8.dp),
             verticalAlignment = Alignment.Bottom
         ) {
             BasicTextField(

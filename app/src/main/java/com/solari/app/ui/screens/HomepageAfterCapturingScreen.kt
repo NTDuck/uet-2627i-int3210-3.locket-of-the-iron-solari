@@ -285,7 +285,11 @@ fun HomepageAfterCapturingScreen(
                     .padding(top = 24.dp, start = 24.dp, end = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Spacer(modifier = Modifier.height(36.dp))
+                if (!isZooming) {
+                    Spacer(modifier = Modifier.height(36.dp))
+                } else {
+                    Spacer(modifier = Modifier.height(36.dp))
+                }
 
                 CapturePreviewCard(
                     mediaUri = media?.uri,

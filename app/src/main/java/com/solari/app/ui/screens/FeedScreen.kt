@@ -725,7 +725,11 @@ private fun FeedPost(
                 .padding(horizontal = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.weight(0.55f))
+            if (!isZooming) {
+                Spacer(modifier = Modifier.weight(0.8f))
+            } else {
+                Spacer(modifier = Modifier.height(120.dp))
+            }
 
             Box(
                 modifier = Modifier
@@ -733,6 +737,8 @@ private fun FeedPost(
                     .aspectRatio(1f)
                     .clip(if (isZooming) RoundedCornerShape(0.dp) else RoundedCornerShape(14.dp))
                     .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
                         onClick = {},
                         onLongClick = onLongPress
                     )
@@ -1832,11 +1838,6 @@ private fun FeedInputKeyboardOverlay(
     val keyboardController = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
     val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
-    val bottomInset = with(density) {
-        WindowInsets.ime.getBottom(this)
-            .coerceAtLeast(WindowInsets.navigationBars.getBottom(this))
-            .toDp()
-    }
     var hasSeenKeyboard by remember(mode) { mutableStateOf(false) }
     var isBarVisible by remember(mode) { mutableStateOf(false) }
 
@@ -1894,7 +1895,8 @@ private fun FeedInputKeyboardOverlay(
         AnimatedVisibility(
             visible = isBarVisible,
             modifier = Modifier
-                .align(Alignment.BottomCenter),
+                .align(Alignment.BottomCenter)
+                .imePadding(),
             enter = fadeIn(animationSpec = tween(durationMillis = 120)) +
                     slideInVertically(
                         animationSpec = tween(durationMillis = 180),
@@ -1909,7 +1911,7 @@ private fun FeedInputKeyboardOverlay(
                         start = 32.dp, 
                         end = 32.dp, 
                         top = 12.dp, 
-                        bottom = bottomInset + 16.dp
+                        bottom = 16.dp
                     )
             ) {
                 when (mode) {
