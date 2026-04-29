@@ -32,6 +32,8 @@ import coil.request.ImageRequest
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.ui.components.FilterToggleButton
+import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
@@ -132,6 +134,11 @@ fun FeedBrowseScreen(
             }
     }
 
+    val currentSortSelection = when (selectedSort) {
+        "oldest" -> SortSelection.Oldest
+        else -> SortSelection.Newest
+    }
+
     Scaffold(
         containerColor = SolariTheme.colors.background,
         bottomBar = {
@@ -164,38 +171,30 @@ fun FeedBrowseScreen(
                     .fillMaxSize()
                     .padding(top = 24.dp, start = 24.dp, end = 24.dp)
             ) {
-                Text(
-                    text = "SORT",
-                    fontSize = 12.sp * 1.4f,
-                    fontWeight = FontWeight.Bold,
-                    color = SolariTheme.colors.secondary,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SortChip("default", isSelected = selectedSort == "default") {
-                        viewModel.updateSelectedSort("default")
-                        scrollFeedListToTop()
-                    }
-                    SortChip("newest", isSelected = selectedSort == "newest") {
-                        viewModel.updateSelectedSort("newest")
-                        scrollFeedListToTop()
-                    }
-                    SortChip("oldest", isSelected = selectedSort == "oldest") {
-                        viewModel.updateSelectedSort("oldest")
-                        scrollFeedListToTop()
-                    }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    FilterToggleButton(
+                        selected = currentSortSelection,
+                        onToggle = { selection ->
+                            viewModel.updateSelectedSort(selection.apiValue ?: "newest")
+                            scrollFeedListToTop()
+                        },
+                        iconTint = SolariTheme.colors.secondary,
+                        modifier = Modifier.size(28.dp),
+                        iconSize = 18
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "POSTS",
+                        fontSize = 12.sp * 1.4f,
+                        fontWeight = FontWeight.Bold,
+                        color = SolariTheme.colors.secondary
+                    )
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = "FILTER BY FRIENDS",
-                    fontSize = 12.sp * 1.4f,
-                    fontWeight = FontWeight.Bold,
-                    color = SolariTheme.colors.secondary,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
 
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -315,7 +314,7 @@ fun FeedBrowseScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
-                        items(posts, key = { it.id }) { post ->
+                        items(filteredSortedPosts, key = { it.id }) { post ->
                             Box(
                                 modifier = Modifier
                                     .aspectRatio(1f)
@@ -417,55 +416,3 @@ fun FeedBrowseScreen(
 
 @Composable
 private fun FeedBrowseScrollTopButton(
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
-        color = SolariTheme.colors.surface.copy(alpha = 0.94f),
-        shadowElevation = 8.dp,
-        modifier = modifier
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Filled.KeyboardArrowUp,
-                contentDescription = null,
-                tint = SolariTheme.colors.primary,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(4.dp))
-            Text(
-                text = "Top",
-                color = SolariTheme.colors.onSurface,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-fun SortChip(text: String, isSelected: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(24.dp),
-        color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.surface,
-        modifier = Modifier.height(40.dp)
-    ) {
-        Box(
-            modifier = Modifier.padding(horizontal = 24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = text,
-                color = if (isSelected) SolariTheme.colors.onPrimary else SolariTheme.colors.onSurface,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
-        }
-    }
-}

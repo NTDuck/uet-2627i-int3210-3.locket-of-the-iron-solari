@@ -30,7 +30,10 @@ import com.solari.app.ui.models.FriendRequestDirection
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariFeedbackPill
-import com.solari.app.ui.components.SortDropdownButton
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
@@ -52,7 +55,7 @@ fun ConversationScreen(
     onNavigateToFeed: () -> Unit,
     onNavigateToProfile: () -> Unit
 ) {
-    var sortSelection by remember { mutableStateOf(SortSelection.Default) }
+    var sortSelection by remember { mutableStateOf(SortSelection.Newest) }
     var isUserRefreshing by remember { mutableStateOf(false) }
     var requestPendingCancel by remember { mutableStateOf<FriendRequest?>(null) }
     var feedbackPillVisible by remember { mutableStateOf(false) }
@@ -263,12 +266,10 @@ fun ConversationScreen(
                                     fontFamily = PlusJakartaSans,
                                     color = SolariTheme.colors.tertiary
                                 )
-                                SortDropdownButton(
+                                FilterToggleButton(
                                     selected = sortSelection,
-                                    onSelected = { sortSelection = it },
+                                    onToggle = { sortSelection = it },
                                     iconTint = SolariTheme.colors.tertiary,
-                                    menuContainerColor = SolariTheme.colors.surface,
-                                    menuContentColor = SolariTheme.colors.onBackground,
                                     modifier = Modifier.size(28.dp),
                                     iconSize = 17
                                 )
