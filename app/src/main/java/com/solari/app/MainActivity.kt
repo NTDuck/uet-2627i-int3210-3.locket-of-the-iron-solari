@@ -722,6 +722,49 @@ private fun SolariApp(
                 onConversationFeedbackConsumed = { conversationFeedbackMessage = null }
             )
         }
+        composable(SolariRoute.Screen.ImageEditing.name) {
+            val viewModel: ImageEditingViewModel = viewModel(factory = appContainer.viewModelFactory)
+            val capturedMediaUri = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>(CapturedMediaUriKey)
+            val capturedMediaType = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>(CapturedMediaTypeKey)
+                ?: "image/jpeg"
+            val capturedMediaIsVideo = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<Boolean>(CapturedMediaIsVideoKey)
+                ?: false
+            val capturedMediaDuration = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<Long>(CapturedMediaDurationKey)
+            
+            val initialMedia = routeCapturedMedia ?: capturedMediaUri?.let { uriString ->
+                CapturedMedia(
+                    uri = Uri.parse(uriString),
+                    contentType = capturedMediaType,
+                    isVideo = capturedMediaIsVideo,
+                    durationMs = capturedMediaDuration
+                )
+            }
+
+            ImageEditingScreen(
+                viewModel = viewModel,
+                initialMedia = initialMedia,
+                onNavigateBack = { editedMedia ->
+                    if (editedMedia != null) {
+                        capturedMediaForPreview = editedMedia
+                        navController.previousBackStackEntry?.savedStateHandle?.apply {
+                            set(CapturedMediaUriKey, editedMedia.uri.toString())
+                            set(CapturedMediaTypeKey, editedMedia.contentType)
+                            set(CapturedMediaIsVideoKey, editedMedia.isVideo)
+                            set(CapturedMediaDurationKey, editedMedia.durationMs)
+                        }
+                    }
+                    navController.popBackStack()
+                }
+            )
+        }
         composable(SolariRoute.Screen.CameraAfter.name) {
             val viewModel: HomepageAfterCapturingViewModel = viewModel(factory = appContainer.viewModelFactory)
             val capturedMediaUri = navController.previousBackStackEntry
@@ -768,6 +811,19 @@ private fun SolariApp(
                 onCancel = {
                     capturedMediaForPreview = null
                     navController.popBackStack()
+                },
+                onNavigateToEdit = {
+                    val currentMedia = routeCapturedMedia
+                    if (currentMedia != null) {
+                        capturedMediaForPreview = currentMedia
+                        navController.currentBackStackEntry?.savedStateHandle?.apply {
+                            set(CapturedMediaUriKey, currentMedia.uri.toString())
+                            set(CapturedMediaTypeKey, currentMedia.contentType)
+                            set(CapturedMediaIsVideoKey, currentMedia.isVideo)
+                            set(CapturedMediaDurationKey, currentMedia.durationMs)
+                        }
+                    }
+                    navController.navigate(SolariRoute.Screen.ImageEditing.name)
                 },
                 onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
                 onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },

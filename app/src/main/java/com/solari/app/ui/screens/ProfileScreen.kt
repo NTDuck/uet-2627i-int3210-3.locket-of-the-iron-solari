@@ -536,6 +536,26 @@ fun ProfileScreen(
 
                 item {
                     SettingsRow(
+                        icon = Icons.Default.Widgets,
+                        title = "Add the Widget",
+                        onClick = {
+                            val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
+                            val myProvider = android.content.ComponentName(context, "com.solari.app.widget.SolariWidgetProvider")
+
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                if (appWidgetManager.isRequestPinAppWidgetSupported) {
+                                    appWidgetManager.requestPinAppWidget(myProvider, null, null)
+                                }
+                            }
+                        },
+                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant) }
+                    )
+                }
+
+                item { Spacer(modifier = Modifier.height(8.dp)) }
+
+                item {
+                    SettingsRow(
                         icon = Icons.AutoMirrored.Filled.Logout,
                         title = "Log Out",
                         onClick = {

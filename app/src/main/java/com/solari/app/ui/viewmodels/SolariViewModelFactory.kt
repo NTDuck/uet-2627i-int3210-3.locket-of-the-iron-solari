@@ -144,6 +144,10 @@ class SolariViewModelFactory(
                 CompletePasswordResetViewModel(authRepository)
             }
 
+            modelClass.isAssignableFrom(ImageEditingViewModel::class.java) -> {
+                ImageEditingViewModel()
+            }
+
             else -> throw IllegalArgumentException(
                 "Unsupported ViewModel type: ${modelClass.name}"
             )
