@@ -431,23 +431,26 @@ private fun CapturePreviewCard(
     onZoomStateChanged: (Boolean) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val scale = remember { Animatable(1f) }
-    val rotation = remember { Animatable(0f) }
-    val offset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val zoomScale = remember { Animatable(1f) }
+    val zoomRotation = remember { Animatable(0f) }
+    val zoomOffset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(if (scale.value > 1f) RoundedCornerShape(0.dp) else RoundedCornerShape(CapturePreviewCornerRadius))
-            .background(SolariTheme.colors.surface)
+            .zIndex(if (zoomScale.value > 1f) 10f else 0f)
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
                     coroutineScope.launch {
-                        val newScale = (scale.value * zoom).coerceIn(1f, 5f)
-                        scale.snapTo(newScale)
-                        rotation.snapTo(rotation.value + rotate)
-                        offset.snapTo(offset.value + pan)
+                        val oldScale = zoomScale.value
+                        val newScale = (oldScale * zoom).coerceIn(1f, 5f)
+                        val scaleFactor = newScale / oldScale
+                        val deltaFromScale = (centroid - zoomOffset.value) * (1 - scaleFactor)
+                        
+                        zoomScale.snapTo(newScale)
+                        zoomRotation.snapTo(zoomRotation.value + rotate)
+                        zoomOffset.snapTo(zoomOffset.value + pan + deltaFromScale)
                         onZoomStateChanged(newScale > 1f)
                     }
                 }
@@ -461,20 +464,21 @@ private fun CapturePreviewCard(
                     
                     coroutineScope.launch {
                         onZoomStateChanged(false)
-                        launch { scale.animateTo(1f, tween(300)) }
-                        launch { rotation.animateTo(0f, tween(300)) }
-                        launch { offset.animateTo(Offset.Zero, tween(300)) }
+                        launch { zoomScale.animateTo(1f, tween(300)) }
+                        launch { zoomRotation.animateTo(0f, tween(300)) }
+                        launch { zoomOffset.animateTo(Offset.Zero, tween(300)) }
                     }
                 }
             }
             .graphicsLayer {
-                scaleX = scale.value
-                scaleY = scale.value
-                rotationZ = rotation.value
-                translationX = offset.value.x
-                translationY = offset.value.y
+                scaleX = zoomScale.value
+                scaleY = zoomScale.value
+                rotationZ = zoomRotation.value
+                translationX = zoomOffset.value.x
+                translationY = zoomOffset.value.y
             }
-            .zIndex(if (scale.value > 1f) 10f else 0f)
+            .clip(if (zoomScale.value > 1f) RoundedCornerShape(0.dp) else RoundedCornerShape(CapturePreviewCornerRadius))
+            .background(SolariTheme.colors.surface)
     ) {
         when {
             mediaUri == null -> {

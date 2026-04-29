@@ -717,6 +717,10 @@ private fun FeedPost(
     }
 
     var isZooming by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
+    val zoomScale = remember { Animatable(1f) }
+    val zoomRotation = remember { Animatable(0f) }
+    val zoomOffset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
 
     Box(
         modifier = Modifier
@@ -735,6 +739,45 @@ private fun FeedPost(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
+                    .zIndex(if (isZooming) 10f else 0f)
+                    .pointerInput(Unit) {
+                        detectTransformGestures { centroid, pan, zoom, rotate ->
+                            coroutineScope.launch {
+                                val oldScale = zoomScale.value
+                                val newScale = (oldScale * zoom).coerceIn(1f, 5f)
+                                
+                                val scaleFactor = newScale / oldScale
+                                val deltaFromScale = (centroid - zoomOffset.value) * (1 - scaleFactor)
+                                
+                                zoomScale.snapTo(newScale)
+                                zoomRotation.snapTo(zoomRotation.value + rotate)
+                                zoomOffset.snapTo(zoomOffset.value + pan + deltaFromScale)
+                                isZooming = newScale > 1f
+                            }
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            do {
+                                val event = awaitPointerEvent()
+                            } while (event.changes.any { it.pressed })
+                            
+                            coroutineScope.launch {
+                                isZooming = false
+                                launch { zoomScale.animateTo(1f, tween(300)) }
+                                launch { zoomRotation.animateTo(0f, tween(300)) }
+                                launch { zoomOffset.animateTo(Offset.Zero, tween(300)) }
+                            }
+                        }
+                    }
+                    .graphicsLayer {
+                        scaleX = zoomScale.value
+                        scaleY = zoomScale.value
+                        rotationZ = zoomRotation.value
+                        translationX = zoomOffset.value.x
+                        translationY = zoomOffset.value.y
+                    }
                     .clip(if (isZooming) RoundedCornerShape(0.dp) else RoundedCornerShape(14.dp))
                     .combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -742,7 +785,6 @@ private fun FeedPost(
                         onClick = {},
                         onLongClick = onLongPress
                     )
-                    .zIndex(if (isZooming) 10f else 0f)
             ) {
                 if (post.isVideoMedia()) {
                     FeedVideoPlayer(
@@ -753,7 +795,7 @@ private fun FeedPost(
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         onLongPress = onLongPress,
-                        onZoomStateChanged = { isZooming = it },
+                        onZoomStateChanged = { /* Handled by parent */ },
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -762,7 +804,7 @@ private fun FeedPost(
                         postId = post.id,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
-                        onZoomStateChanged = { isZooming = it },
+                        onZoomStateChanged = { /* Handled by parent */ },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -968,41 +1010,27 @@ private fun FeedPost(
         }
 
         activeInputOverlay?.let { overlayMode ->
-            Dialog(
-                onDismissRequest = ::dismissInputOverlay,
-                properties = DialogProperties(
-                    usePlatformDefaultWidth = false,
-                    decorFitsSystemWindows = false
+            Box(modifier = Modifier.fillMaxSize()) {
+                FeedInputKeyboardOverlay(
+                    mode = overlayMode,
+                    reactionValue = reactionNote,
+                    onReactionValueChange = { reactionNote = it.take(20) },
+                    messageValue = messageText,
+                    onMessageValueChange = { messageText = it },
+                    isEmojiPickerOpen = showEmojiPicker,
+                    onDismiss = ::dismissInputOverlay,
+                    onReact = ::sendReactionOptimistically,
+                    onOpenEmojiPicker = { showEmojiPicker = true },
+                    onSendMessage = ::sendMessageOptimistically
                 )
-            ) {
-                val view = LocalView.current
-                LaunchedEffect(view) {
-                    val window = (view.parent as? DialogWindowProvider)?.window
-                    window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
-                }
 
-                Box(modifier = Modifier.fillMaxSize()) {
-                    FeedInputKeyboardOverlay(
-                        mode = overlayMode,
-                        reactionValue = reactionNote,
-                        onReactionValueChange = { reactionNote = it.take(20) },
-                        messageValue = messageText,
-                        onMessageValueChange = { messageText = it },
-                        isEmojiPickerOpen = showEmojiPicker,
-                        onDismiss = ::dismissInputOverlay,
-                        onReact = ::sendReactionOptimistically,
-                        onOpenEmojiPicker = { showEmojiPicker = true },
-                        onSendMessage = ::sendMessageOptimistically
+                if (showEmojiPicker) {
+                    EmojiPickerPopup(
+                        onClosed = { showEmojiPicker = false },
+                        selectedEmoji = null,
+                        recentEmojis = emptyList(),
+                        onReact = ::sendReactionOptimistically
                     )
-
-                    if (showEmojiPicker) {
-                        EmojiPickerPopup(
-                            onClosed = { showEmojiPicker = false },
-                            selectedEmoji = null,
-                            recentEmojis = emptyList(),
-                            onReact = ::sendReactionOptimistically
-                        )
-                    }
                 }
             }
         }
