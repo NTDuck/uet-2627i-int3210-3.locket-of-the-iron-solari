@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:initialLayout="@layout/solari_widget_initial"
+    android:initialLayout="@layout/solari_widget_layout"
     android:minWidth="110dp"
     android:minHeight="110dp"
     android:minResizeWidth="110dp"
