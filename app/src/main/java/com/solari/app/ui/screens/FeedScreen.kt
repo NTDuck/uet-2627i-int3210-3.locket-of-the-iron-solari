@@ -164,8 +164,11 @@ fun FeedScreen(
         }
     }
     val currentUser = viewModel.currentUser
-    val initialPostPage = remember(initialPostId, posts) {
-        posts.indexOfFirst { it.id == initialPostId }.takeIf { it >= 0 } ?: 0
+    var lastHandledInitialPostId by remember { mutableStateOf<String?>(null) }
+    val initialPostPage = remember(posts) {
+        if (initialPostId != null) {
+            posts.indexOfFirst { it.id == initialPostId }.takeIf { it >= 0 } ?: 0
+        } else 0
     }
     val pagerState = rememberPagerState(initialPage = initialPostPage) { posts.size }
 
@@ -196,10 +199,11 @@ fun FeedScreen(
     }
 
     LaunchedEffect(initialPostId, posts) {
-        if (initialPostId == null || posts.isEmpty()) return@LaunchedEffect
+        if (initialPostId == null || posts.isEmpty() || initialPostId == lastHandledInitialPostId) return@LaunchedEffect
 
         val requestedPostPage = posts.indexOfFirst { it.id == initialPostId }
-        if (requestedPostPage >= 0 && pagerState.currentPage != requestedPostPage) {
+        if (requestedPostPage >= 0) {
+            lastHandledInitialPostId = initialPostId
             pagerState.scrollToPage(requestedPostPage)
         }
     }

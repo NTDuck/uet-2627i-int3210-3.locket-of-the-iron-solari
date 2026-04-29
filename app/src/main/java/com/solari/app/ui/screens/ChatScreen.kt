@@ -2142,47 +2142,45 @@ private fun ChatInputBar(
             enter = slideInVertically(initialOffsetY = { it }),
             exit = slideOutVertically(targetOffsetY = { it })
         ) {
-            if (replyingToMessage != null && replyLabel != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 20.dp, end = 8.dp, top = 10.dp, bottom = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = replyLabel,
-                            color = ChatPrimary,
-                            fontSize = 12.sp,
-                            fontFamily = PlusJakartaSans,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = replyingToMessage.text,
-                            color = ChatMuted,
-                            fontSize = 12.sp,
-                            fontFamily = PlusJakartaSans,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 8.dp, top = 10.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = replyLabel ?: "",
+                        color = ChatPrimary,
+                        fontSize = 12.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = replyingToMessage?.text ?: "",
+                        color = ChatMuted,
+                        fontSize = 12.sp,
+                        fontFamily = PlusJakartaSans,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .clip(CircleShape)
-                            .clickable(onClick = onCancelReply),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = "Cancel reply",
-                            tint = ChatMuted,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onCancelReply),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Cancel reply",
+                        tint = ChatMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
