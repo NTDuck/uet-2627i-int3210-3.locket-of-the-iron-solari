@@ -107,7 +107,7 @@ class AppContainer(
     private val friendApi: FriendApi = retrofit.create(FriendApi::class.java)
     private val conversationApi: ConversationApi = retrofit.create(ConversationApi::class.java)
 
-    private val userRepository: UserRepository = DefaultUserRepository(
+    val userRepository: UserRepository = DefaultUserRepository(
         userApi = userApi,
         apiExecutor = apiExecutor
     )
@@ -122,17 +122,17 @@ class AppContainer(
         pushNotificationStore = pushNotificationStore
     )
 
-    private val feedRepository: FeedRepository = DefaultFeedRepository(
+    val feedRepository: FeedRepository = DefaultFeedRepository(
         feedApi = feedApi,
         apiExecutor = apiExecutor
     )
 
-    private val friendRepository: FriendRepository = DefaultFriendRepository(
+    val friendRepository: FriendRepository = DefaultFriendRepository(
         friendApi = friendApi,
         apiExecutor = apiExecutor
     )
 
-    private val conversationRepository: ConversationRepository = DefaultConversationRepository(
+    val conversationRepository: ConversationRepository = DefaultConversationRepository(
         conversationApi = conversationApi,
         apiExecutor = apiExecutor
     )

@@ -55,6 +55,14 @@ class SolariWidgetProvider : AppWidgetProvider() {
 
             val views = RemoteViews(context.packageName, R.layout.solari_widget_layout)
 
+            // Click intent to open the app
+            val intent = Intent(context, com.solari.app.MainActivity::class.java)
+            val pendingIntent = android.app.PendingIntent.getActivity(
+                context, 0, intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_post_image, pendingIntent)
+
             if (latestPost != null) {
                 views.setTextViewText(R.id.widget_post_caption, latestPost.caption)
                 

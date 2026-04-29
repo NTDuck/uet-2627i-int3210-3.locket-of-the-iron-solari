@@ -6,8 +6,7 @@ import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.Matrix
 import android.graphics.Paint
-import android.graphics.Path
-import android.graphics.Rect
+import android.graphics.Path as NativePath
 import android.graphics.RectF
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
@@ -23,7 +22,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -43,10 +45,11 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
@@ -62,10 +65,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
 import kotlin.math.atan2
-import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.sin
 import kotlin.math.sqrt
 
 private enum class EditMode {
@@ -81,20 +82,26 @@ private enum class AdjustType {
 }
 
 private data class DrawPath(
-    val path: Path,
+    val path: NativePath,
     val color: Color,
     val strokeWidth: Float,
     val isEraser: Boolean
 )
 
-private data class TextOverlay(
+private class TextOverlay(
     val id: String = UUID.randomUUID().toString(),
-    var text: String = "...",
-    var position: Offset = Offset.Zero,
-    var rotation: Float = 0f,
-    var scale: Float = 1f,
-    var color: Color = Color.Red
-)
+    text: String = "...",
+    position: Offset = Offset.Zero,
+    rotation: Float = 0f,
+    scale: Float = 1f,
+    color: Color = Color.Red
+) {
+    var text by mutableStateOf(text)
+    var position by mutableStateOf(position)
+    var rotation by mutableStateOf(rotation)
+    var scale by mutableStateOf(scale)
+    var color by mutableStateOf(color)
+}
 
 private val PresetColors = listOf(
     Color.White,
@@ -280,7 +287,7 @@ private fun EditingTopBar(
             Icon(
                 Icons.Default.Close,
                 contentDescription = "Cancel",
-                tint = SolariTheme.colors.onSurfaceVariant
+                tint = SolariTheme.colors.secondary
             )
         }
         IconButton(
@@ -373,13 +380,9 @@ private fun CropSubScreen(
             val right = ((cropRect.right - imageRect.left) * scaleX).toInt().coerceIn(left + 1, transformedBitmap.width)
             val bottom = ((cropRect.bottom - imageRect.top) * scaleY).toInt().coerceIn(top + 1, transformedBitmap.height)
             
-            val width = right - left
-            val height = bottom - top
-            if (width > 0 && height > 0) {
-                onApply(Bitmap.createBitmap(transformedBitmap, left, top, width, height))
-            } else {
-                onApply(transformedBitmap)
-            }
+            val width = (right - left).coerceAtLeast(1)
+            val height = (bottom - top).coerceAtLeast(1)
+            onApply(Bitmap.createBitmap(transformedBitmap, left, top, width, height))
         })
 
         Box(
@@ -423,61 +426,58 @@ private fun CropSubScreen(
                     Canvas(modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(Unit) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                val newRect = RectF(cropRect)
-                                // Square constraint: move 2 sides closest to finger
-                                val dx = dragAmount.x
-                                val dy = dragAmount.y
-                                
-                                val distLeft = Math.abs(change.position.x - cropRect.left)
-                                val distRight = Math.abs(change.position.x - cropRect.right)
-                                val distTop = Math.abs(change.position.y - cropRect.top)
-                                val distBottom = Math.abs(change.position.y - cropRect.bottom)
-                                
-                                if (distLeft < distRight) {
-                                    newRect.left = (newRect.left + dx).coerceIn(imageRect.left, newRect.right - 50f)
-                                } else {
-                                    newRect.right = (newRect.right + dx).coerceIn(newRect.left + 50f, imageRect.right)
-                                }
-                                
-                                if (distTop < distBottom) {
-                                    newRect.top = (newRect.top + dy).coerceIn(imageRect.top, newRect.bottom - 50f)
-                                } else {
-                                    newRect.bottom = (newRect.bottom + dy).coerceIn(newRect.top + 50f, imageRect.bottom)
-                                }
-                                
-                                // Enforce square
-                                val newWidth = newRect.width()
-                                val newHeight = newRect.height()
-                                val size = min(newWidth, newHeight)
-                                
-                                if (distLeft < distRight) newRect.left = newRect.right - size
-                                else newRect.right = newRect.left + size
-                                
-                                if (distTop < distBottom) newRect.top = newRect.bottom - size
-                                else newRect.bottom = newRect.top + size
-                                
-                                // Re-verify bounds
-                                if (newRect.left < imageRect.left) {
-                                    newRect.left = imageRect.left
-                                    newRect.right = newRect.left + size
-                                }
-                                if (newRect.right > imageRect.right) {
-                                    newRect.right = imageRect.right
-                                    newRect.left = newRect.right - size
-                                }
-                                if (newRect.top < imageRect.top) {
-                                    newRect.top = imageRect.top
-                                    newRect.bottom = newRect.top + size
-                                }
-                                if (newRect.bottom > imageRect.bottom) {
-                                    newRect.bottom = imageRect.bottom
-                                    newRect.top = newRect.bottom - size
-                                }
+                            detectDragGestures(
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val newRect = RectF(cropRect)
+                                    val dx = dragAmount.x
+                                    val dy = dragAmount.y
+                                    
+                                    val distLeft = Math.abs(change.position.x - cropRect.left)
+                                    val distRight = Math.abs(change.position.x - cropRect.right)
+                                    val distTop = Math.abs(change.position.y - cropRect.top)
+                                    val distBottom = Math.abs(change.position.y - cropRect.bottom)
+                                    
+                                    if (distLeft < distRight) {
+                                        newRect.left = (newRect.left + dx).coerceIn(imageRect.left, newRect.right - 50f)
+                                    } else {
+                                        newRect.right = (newRect.right + dx).coerceIn(newRect.left + 50f, imageRect.right)
+                                    }
+                                    
+                                    if (distTop < distBottom) {
+                                        newRect.top = (newRect.top + dy).coerceIn(imageRect.top, newRect.bottom - 50f)
+                                    } else {
+                                        newRect.bottom = (newRect.bottom + dy).coerceIn(newRect.top + 50f, imageRect.bottom)
+                                    }
+                                    
+                                    val size = min(newRect.width(), newRect.height())
+                                    
+                                    if (distLeft < distRight) newRect.left = newRect.right - size
+                                    else newRect.right = newRect.left + size
+                                    
+                                    if (distTop < distBottom) newRect.top = newRect.bottom - size
+                                    else newRect.bottom = newRect.top + size
+                                    
+                                    if (newRect.left < imageRect.left) {
+                                        newRect.left = imageRect.left
+                                        newRect.right = newRect.left + size
+                                    }
+                                    if (newRect.right > imageRect.right) {
+                                        newRect.right = imageRect.right
+                                        newRect.left = newRect.right - size
+                                    }
+                                    if (newRect.top < imageRect.top) {
+                                        newRect.top = imageRect.top
+                                        newRect.bottom = newRect.top + size
+                                    }
+                                    if (newRect.bottom > imageRect.bottom) {
+                                        newRect.bottom = imageRect.bottom
+                                        newRect.top = newRect.bottom - size
+                                    }
 
-                                cropRect = newRect
-                            }
+                                    cropRect = newRect
+                                }
+                            )
                         }
                     ) {
                         drawRect(
@@ -500,7 +500,6 @@ private fun CropSubScreen(
                             size = Size(imageRect.width(), size.height - imageRect.bottom)
                         )
                         
-                        // Mask outside crop
                         drawRect(
                             color = Color.Black.copy(alpha = 0.3f),
                             topLeft = Offset(imageRect.left, imageRect.top),
@@ -539,7 +538,7 @@ private fun CropSubScreen(
                 .padding(vertical = 24.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            SubScreenActionButton("Rotate", Icons.Default.RotateRight) { rotation = (rotation + 90f) % 360f }
+            SubScreenActionButton("Rotate", Icons.AutoMirrored.Filled.RotateRight) { rotation = (rotation + 90f) % 360f }
             SubScreenActionButton("H-Flip", Icons.Default.Flip) { flipH *= -1f }
             SubScreenActionButton("V-Flip", Icons.Default.Flip) { flipV *= -1f }
         }
@@ -555,7 +554,7 @@ private fun DrawSubScreen(
     var selectedColor by remember { mutableStateOf(Color.Red) }
     var selectedTool by remember { mutableStateOf(DrawTool.Brush) }
     val paths = remember { mutableStateListOf<DrawPath>() }
-    var currentPath by remember { mutableStateOf<Path?>(null) }
+    var currentPath by remember { mutableStateOf<NativePath?>(null) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
 
     Column(Modifier.fillMaxSize()) {
@@ -584,7 +583,7 @@ private fun DrawSubScreen(
                 
                 val matrix = Matrix()
                 matrix.postScale(scale, scale)
-                val scaledPath = Path(drawPath.path)
+                val scaledPath = NativePath(drawPath.path)
                 scaledPath.transform(matrix)
                 canvas.drawPath(scaledPath, paint)
             }
@@ -599,7 +598,7 @@ private fun DrawSubScreen(
                 .pointerInput(selectedColor, selectedTool) {
                     detectDragGestures(
                         onDragStart = { offset ->
-                            val path = Path()
+                            val path = NativePath()
                             path.moveTo(offset.x, offset.y)
                             currentPath = path
                         },
@@ -638,13 +637,13 @@ private fun DrawSubScreen(
                     paths.forEach { drawPath ->
                         paint.color = drawPath.color
                         paint.blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
-                        canvas.drawPath(drawPath.path, paint)
+                        canvas.drawPath(drawPath.path.asComposePath(), paint)
                     }
                     
                     currentPath?.let { path ->
                         paint.color = selectedColor
                         paint.blendMode = if (selectedTool == DrawTool.Eraser) BlendMode.Clear else BlendMode.SrcOver
-                        canvas.drawPath(path, paint)
+                        canvas.drawPath(path.asComposePath(), paint)
                     }
                 }
             }
@@ -661,14 +660,19 @@ private fun DrawSubScreen(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            Row(
+            LazyRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                contentPadding = PaddingValues(horizontal = 16.dp)
             ) {
-                ToolButton("Brush", Icons.Default.Brush, isSelected = selectedTool == DrawTool.Brush) { selectedTool = DrawTool.Brush }
-                Spacer(modifier = Modifier.width(24.dp))
-                ToolButton("Eraser", Icons.Default.AutoFixNormal, isSelected = selectedTool == DrawTool.Eraser) { selectedTool = DrawTool.Eraser }
+                item {
+                    ToolButton("Brush", Icons.Default.Brush, isSelected = selectedTool == DrawTool.Brush) { selectedTool = DrawTool.Brush }
+                }
+                item {
+                    Spacer(modifier = Modifier.width(24.dp))
+                    ToolButton("Eraser", Icons.Default.AutoFixNormal, isSelected = selectedTool == DrawTool.Eraser) { selectedTool = DrawTool.Eraser }
+                }
             }
         }
     }
@@ -687,32 +691,34 @@ private fun TextSubScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     var canvasSize by remember { mutableStateOf(Size.Zero) }
 
-    Column(Modifier.fillMaxSize()) {
-        SubScreenTopBar(onCancel, onApply = {
-            val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-            val canvas = Canvas(result)
-            val scaleX = bitmap.width / canvasSize.width
-            val scaleY = bitmap.height / canvasSize.height
-            val scale = max(scaleX, scaleY)
+    val applyTextToBitmap = {
+        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(result)
+        val scaleX = bitmap.width / canvasSize.width
+        val scaleY = bitmap.height / canvasSize.height
+        val scale = max(scaleX, scaleY)
 
-            val paint = Paint().apply {
-                color = activeOverlay?.color?.toArgb() ?: Color.Red.toArgb()
-                textSize = 60f * (activeOverlay?.scale ?: 1f) * scale
-                textAlign = Paint.Align.CENTER
-                isAntiAlias = true
-                typeface = android.graphics.Typeface.DEFAULT_BOLD
+        val paint = Paint().apply {
+            color = activeOverlay?.color?.toArgb() ?: Color.Red.toArgb()
+            textSize = 60f * (activeOverlay?.scale ?: 1f) * scale
+            textAlign = Paint.Align.CENTER
+            isAntiAlias = true
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+        
+        activeOverlay?.let { overlay ->
+            if (overlay.text != "..." && overlay.text.isNotEmpty()) {
+                canvas.save()
+                canvas.rotate(overlay.rotation, overlay.position.x * scale, overlay.position.y * scale)
+                canvas.drawText(overlay.text, overlay.position.x * scale, overlay.position.y * scale, paint)
+                canvas.restore()
             }
-            
-            activeOverlay?.let { overlay ->
-                if (overlay.text != "..." && overlay.text.isNotEmpty()) {
-                    canvas.save()
-                    canvas.rotate(overlay.rotation, overlay.position.x * scale, overlay.position.y * scale)
-                    canvas.drawText(overlay.text, overlay.position.x * scale, overlay.position.y * scale, paint)
-                    canvas.restore()
-                }
-            }
-            onApply(result)
-        })
+        }
+        onApply(result)
+    }
+
+    Column(Modifier.fillMaxSize()) {
+        SubScreenTopBar(onCancel, onApply = applyTextToBitmap)
 
         Box(
             modifier = Modifier
@@ -724,8 +730,11 @@ private fun TextSubScreen(
                         if (activeOverlay == null) {
                             activeOverlay = TextOverlay(position = offset, color = selectedColor)
                         } else {
-                            // Clicking outside removes if placeholder
-                            if (activeOverlay?.text == "...") activeOverlay = null
+                            if (activeOverlay?.text != "..." && activeOverlay?.text?.isNotEmpty() == true) {
+                                applyTextToBitmap()
+                            } else {
+                                activeOverlay = null
+                            }
                         }
                     }
                 },
@@ -757,7 +766,6 @@ private fun TextSubScreen(
                             .pointerInput(Unit) {
                                 detectDragGestures { change, dragAmount ->
                                     change.consume()
-                                    // Rotate logic
                                     val centerX = overlay.position.x
                                     val centerY = overlay.position.y
                                     val angle = atan2(change.position.y - centerY, change.position.x - centerX)
@@ -765,7 +773,7 @@ private fun TextSubScreen(
                                 }
                             }
                     ) {
-                        Icon(Icons.Default.RotateRight, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Icon(Icons.AutoMirrored.Filled.RotateRight, null, tint = Color.White, modifier = Modifier.size(16.dp))
                     }
 
                     BasicTextField(
@@ -850,7 +858,6 @@ private fun AdjustSubScreen(
         val saturation = (values[AdjustType.Saturation] ?: 0f) + 1f
         val temperature = values[AdjustType.Temperature] ?: 0f
         
-        // Apply brightness and contrast
         cm.set(floatArrayOf(
             contrast, 0f, 0f, 0f, brightness + exposure * 100,
             0f, contrast, 0f, 0f, brightness + exposure * 100,
@@ -862,7 +869,6 @@ private fun AdjustSubScreen(
         satCm.setSaturation(saturation)
         cm.postConcat(satCm)
         
-        // Apply temperature (simple blue/yellow shift)
         val tempCm = ColorMatrix(floatArrayOf(
             1f + temperature * 0.1f, 0f, 0f, 0f, 0f,
             0f, 1f, 0f, 0f, 0f,
@@ -931,7 +937,7 @@ private fun SubScreenTopBar(onCancel: () -> Unit, onApply: () -> Unit) {
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         IconButton(onClick = onCancel) {
-            Icon(Icons.Default.Close, null, tint = SolariTheme.colors.onSurfaceVariant)
+            Icon(Icons.Default.Close, null, tint = SolariTheme.colors.secondary)
         }
         IconButton(onClick = onApply) {
             Icon(Icons.Default.Check, null, tint = SolariTheme.colors.primary)

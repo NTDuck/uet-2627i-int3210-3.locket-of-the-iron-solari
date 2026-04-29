@@ -722,7 +722,11 @@ private fun SolariApp(
                 onConversationFeedbackConsumed = { conversationFeedbackMessage = null }
             )
         }
-        composable(SolariRoute.Screen.ImageEditing.name) {
+        composable(
+            SolariRoute.Screen.ImageEditing.name,
+            enterTransition = { slideInVertically(initialOffsetY = { it }, animationSpec = tween(500)) },
+            exitTransition = { slideOutVertically(targetOffsetY = { it }, animationSpec = tween(500)) }
+        ) {
             val viewModel: ImageEditingViewModel = viewModel(factory = appContainer.viewModelFactory)
             val capturedMediaUri = navController.previousBackStackEntry
                 ?.savedStateHandle
@@ -739,7 +743,7 @@ private fun SolariApp(
                 ?.savedStateHandle
                 ?.get<Long>(CapturedMediaDurationKey)
             
-            val initialMedia = routeCapturedMedia ?: capturedMediaUri?.let { uriString ->
+            val initialMedia = capturedMediaForPreview ?: capturedMediaUri?.let { uriString ->
                 CapturedMedia(
                     uri = Uri.parse(uriString),
                     contentType = capturedMediaType,

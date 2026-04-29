@@ -99,6 +99,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
@@ -432,6 +433,8 @@ private fun CapturePreviewCard(
     onCaptionDone: () -> Unit,
     onZoomStateChanged: (Boolean) -> Unit
 ) {
+    var isZooming by remember { mutableStateOf(false) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
     val coroutineScope = rememberCoroutineScope()
     val zoomScale = remember { Animatable(1f) }
     val zoomRotation = remember { Animatable(0f) }
@@ -442,6 +445,7 @@ private fun CapturePreviewCard(
             .fillMaxWidth()
             .aspectRatio(1f)
             .zIndex(if (zoomScale.value > 1f) 10f else 0f)
+            .onGloballyPositioned { size = it.size }
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
                     coroutineScope.launch {
@@ -450,12 +454,15 @@ private fun CapturePreviewCard(
                         
                         if (newScale > 1f || oldScale > 1f) {
                             val scaleFactor = newScale / oldScale
-                            val deltaFromScale = (centroid - zoomOffset.value) * (1 - scaleFactor)
+                            
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            val newOffset = zoomOffset.value * scaleFactor + (centroid - center) * (1 - scaleFactor)
                             
                             zoomScale.snapTo(newScale)
                             zoomRotation.snapTo(zoomRotation.value + rotate)
-                            zoomOffset.snapTo(zoomOffset.value + pan + deltaFromScale)
+                            zoomOffset.snapTo(newOffset)
                             onZoomStateChanged(true)
+                            isZooming = true
                         }
                     }
                 }
@@ -468,6 +475,7 @@ private fun CapturePreviewCard(
                     } while (event.changes.any { it.pressed })
                     
                     coroutineScope.launch {
+                        isZooming = false
                         launch { zoomScale.animateTo(1f, tween(300)) }
                         launch { zoomRotation.animateTo(0f, tween(300)) }
                         launch { zoomOffset.animateTo(Offset.Zero, tween(300)) }
@@ -475,13 +483,14 @@ private fun CapturePreviewCard(
                     }
                 }
             }
-            .clip(RoundedCornerShape(CapturePreviewCornerRadius))
             .graphicsLayer {
                 scaleX = zoomScale.value
                 scaleY = zoomScale.value
                 rotationZ = zoomRotation.value
                 translationX = zoomOffset.value.x
                 translationY = zoomOffset.value.y
+                clip = true
+                shape = RoundedCornerShape(CapturePreviewCornerRadius)
             }
             .background(SolariTheme.colors.surface)
     ) {

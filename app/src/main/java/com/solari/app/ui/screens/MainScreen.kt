@@ -140,7 +140,7 @@ fun MainScreen(
                             animatedVisibilityScope = animatedVisibilityScope,
                             onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
                             onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
-                            onNavigateToChat = { scope.launch { pagerState.animateScrollToPage(2) } },
+                            onNavigateToConversations = { scope.launch { pagerState.animateScrollToPage(2) } },
                             onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } },
                             onNavigateToBrowse = onNavigateToFeedBrowse,
                             isFeedVisible = pagerState.currentPage == 1,
