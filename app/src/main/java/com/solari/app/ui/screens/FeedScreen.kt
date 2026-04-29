@@ -333,6 +333,7 @@ fun FeedScreen(
                     onInputOverlayVisibilityChanged = { isVisible ->
                         isInputOverlayVisible = isVisible
                     },
+                    isInputOverlayActive = isInputOverlayVisible,
                     currentUser = currentUser
                 )
             }
@@ -669,6 +670,7 @@ private fun FeedPost(
     onSendPostReply: (String, () -> Unit) -> Unit,
     onNavigateToBrowse: (String?) -> Unit,
     onInputOverlayVisibilityChanged: (Boolean) -> Unit,
+    isInputOverlayActive: Boolean,
     currentUser: User?
 ) {
     val focusManager = LocalFocusManager.current
@@ -810,11 +812,10 @@ private fun FeedPost(
                 }
 
                 androidx.compose.animation.AnimatedVisibility(
-                    visible = !isZooming,
+                    visible = !isZooming && !isInputOverlayActive,
                     enter = fadeIn(),
                     exit = fadeOut()
-                ) {
-                    with(animatedVisibilityScope) {
+                ) {                    with(animatedVisibilityScope) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -872,7 +873,7 @@ private fun FeedPost(
             }
 
             androidx.compose.animation.AnimatedVisibility(
-                visible = !isZooming,
+                visible = !isZooming && !isInputOverlayActive,
                 enter = fadeIn(),
                 exit = fadeOut()
             ) {
