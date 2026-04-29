@@ -453,16 +453,36 @@ private fun SolariApp(
                 modifier = Modifier.background(SolariTheme.colors.background),
                 startDestination = startDestination,
                 enterTransition = {
-                    slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
+                    if (initialState.destination.route?.contains("FeedBrowse") == true &&
+                        targetState.destination.route?.contains("Main") == true) {
+                        fadeIn(tween(500))
+                    } else {
+                        slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
+                    }
                 },
                 exitTransition = {
-                    slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                    if (initialState.destination.route?.contains("Main") == true &&
+                        targetState.destination.route?.contains("FeedBrowse") == true) {
+                        fadeOut(tween(500))
+                    } else {
+                        slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                    }
                 },
                 popEnterTransition = {
-                    slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
+                    if (initialState.destination.route?.contains("FeedBrowse") == true &&
+                        targetState.destination.route?.contains("Main") == true) {
+                        fadeIn(tween(500))
+                    } else {
+                        slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
+                    }
                 },
                 popExitTransition = {
-                    slideOutHorizontally(targetOffsetX = { 1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                    if (initialState.destination.route?.contains("Main") == true &&
+                        targetState.destination.route?.contains("FeedBrowse") == true) {
+                        fadeOut(tween(500))
+                    } else {
+                        slideOutHorizontally(targetOffsetX = { 1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                    }
                 }
             ) {
         composable(SolariRoute.Screen.Welcome.name) {
