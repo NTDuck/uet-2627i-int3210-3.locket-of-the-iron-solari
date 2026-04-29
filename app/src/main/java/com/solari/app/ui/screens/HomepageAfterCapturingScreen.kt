@@ -13,12 +13,9 @@ import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.ui.zIndex
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -241,20 +238,28 @@ fun HomepageAfterCapturingScreen(
         }
     }
 
+    var isZooming by remember { mutableStateOf(false) }
+
     Scaffold(
         containerColor = SolariTheme.colors.background,
         bottomBar = {
-            SolariBottomNavBar(
-                selectedRoute = SolariRoute.Screen.CameraAfter.name,
-                onNavigate = { routeName ->
-                    when (routeName) {
-                        SolariRoute.Screen.CameraBefore.name -> Unit
-                        SolariRoute.Screen.Feed.name -> onNavigateToFeed()
-                        SolariRoute.Screen.Conversations.name -> onNavigateToChat()
-                        SolariRoute.Screen.Profile.name -> onNavigateToProfile()
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !isZooming,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                SolariBottomNavBar(
+                    selectedRoute = SolariRoute.Screen.CameraAfter.name,
+                    onNavigate = { routeName ->
+                        when (routeName) {
+                            SolariRoute.Screen.CameraBefore.name -> Unit
+                            SolariRoute.Screen.Feed.name -> onNavigateToFeed()
+                            SolariRoute.Screen.Conversations.name -> onNavigateToChat()
+                            SolariRoute.Screen.Profile.name -> onNavigateToProfile()
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     ) { innerPadding ->
         Box(
@@ -289,91 +294,100 @@ fun HomepageAfterCapturingScreen(
                     onDownload = ::downloadPreviewMedia,
                     onCaptionBoundsChanged = { captionBounds = it },
                     onCaptionFocusChanged = { isFocused -> isCaptionFocused = isFocused },
-                    onCaptionDone = ::clearCaptionFocus
+                    onCaptionDone = ::clearCaptionFocus,
+                    onZoomStateChanged = { isZooming = it }
                 )
 
-                Spacer(modifier = Modifier.height(30.dp))
-
-                Text(
-                    text = "Choose who see this post",
-                    color = SolariTheme.colors.onBackground.copy(alpha = 0.86f),
-                    fontSize = 16.sp,
-                    lineHeight = 18.sp,
-                    fontFamily = PlusJakartaSans,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.align(Alignment.Start)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    contentPadding = PaddingValues(end = 6.dp)
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !isZooming,
+                    enter = fadeIn(),
+                    exit = fadeOut()
                 ) {
-                    item {
-                        VisibilityAllItem(
-                            selected = isAllSelected,
-                            total = friends.size,
-                            onClick = {
-                                selectedFriends = emptySet()
-                            }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Spacer(modifier = Modifier.height(30.dp))
+
+                        Text(
+                            text = "Choose who see this post",
+                            color = SolariTheme.colors.onBackground.copy(alpha = 0.86f),
+                            fontSize = 16.sp,
+                            lineHeight = 18.sp,
+                            fontFamily = PlusJakartaSans,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.align(Alignment.Start)
                         )
-                    }
 
-                    items(friends) { friend ->
-                        val isSelected = friend.id in selectedFriends
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                        VisibilityFriendItem(
-                            name = friend.displayName,
-                            username = friend.username,
-                            avatarUrl = friend.profileImageUrl,
-                            selected = isSelected,
-                            onClick = {
-                                selectedFriends = if (isSelected) {
-                                    (selectedFriends - friend.id).takeIf { it.isNotEmpty() } ?: emptySet()
-                                } else {
-                                    selectedFriends + friend.id
-                                }
-                            }
-                        )
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CaptureActionButtons(
-                        sendState = sendState,
-                        onCancel = onCancel,
-                        onSend = {
-                            if (sendState != CaptureSendState.Idle) {
-                                return@CaptureActionButtons
-                            }
-
-                            val capturedMedia = media
-                            if (capturedMedia == null) {
-                                showTopFeedback("No media selected.", false)
-                                return@CaptureActionButtons
-                            }
-
-                            clearCaptionFocus()
-                            coroutineScope.launch {
-                                sendState = CaptureSendState.Sending
-                                val draft = viewModel.startOptimisticPostUpload(
-                                    media = capturedMedia,
-                                    isPublic = isAllSelected,
-                                    selectedFriendIds = selectedFriends
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            contentPadding = PaddingValues(end = 6.dp)
+                        ) {
+                            item {
+                                VisibilityAllItem(
+                                    selected = isAllSelected,
+                                    total = friends.size,
+                                    onClick = {
+                                        selectedFriends = emptySet()
+                                    }
                                 )
-                                sendState = CaptureSendState.Sent
-                                delay(260)
-                                onSend(draft)
+                            }
+
+                            items(friends) { friend ->
+                                val isSelected = friend.id in selectedFriends
+
+                                VisibilityFriendItem(
+                                    name = friend.displayName,
+                                    username = friend.username,
+                                    avatarUrl = friend.profileImageUrl,
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedFriends = if (isSelected) {
+                                            (selectedFriends - friend.id).takeIf { it.isNotEmpty() } ?: emptySet()
+                                        } else {
+                                            selectedFriends + friend.id
+                                        }
+                                    }
+                                )
                             }
                         }
-                    )
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(200.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CaptureActionButtons(
+                                sendState = sendState,
+                                onCancel = onCancel,
+                                onSend = {
+                                    if (sendState != CaptureSendState.Idle) {
+                                        return@CaptureActionButtons
+                                    }
+
+                                    val capturedMedia = media
+                                    if (capturedMedia == null) {
+                                        showTopFeedback("No media selected.", false)
+                                        return@CaptureActionButtons
+                                    }
+
+                                    clearCaptionFocus()
+                                    coroutineScope.launch {
+                                        sendState = CaptureSendState.Sending
+                                        val draft = viewModel.startOptimisticPostUpload(
+                                            media = capturedMedia,
+                                            isPublic = isAllSelected,
+                                            selectedFriendIds = selectedFriends
+                                        )
+                                        sendState = CaptureSendState.Sent
+                                        delay(260)
+                                        onSend(draft)
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -411,21 +425,29 @@ private fun CapturePreviewCard(
     onDownload: () -> Unit,
     onCaptionBoundsChanged: (Rect?) -> Unit,
     onCaptionFocusChanged: (Boolean) -> Unit,
-    onCaptionDone: () -> Unit
+    onCaptionDone: () -> Unit,
+    onZoomStateChanged: (Boolean) -> Unit
 ) {
-    var zoomScale by remember { mutableStateOf(1f) }
-    var zoomOffset by remember { mutableStateOf(Offset.Zero) }
+    val coroutineScope = rememberCoroutineScope()
+    val scale = remember { Animatable(1f) }
+    val rotation = remember { Animatable(0f) }
+    val offset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .clip(RoundedCornerShape(CapturePreviewCornerRadius))
+            .clip(if (scale.value > 1f) RoundedCornerShape(0.dp) else RoundedCornerShape(CapturePreviewCornerRadius))
             .background(SolariTheme.colors.surface)
             .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    zoomScale = (zoomScale * zoom).coerceIn(1f, 5f)
-                    zoomOffset += pan
+                detectTransformGestures { centroid, pan, zoom, rotate ->
+                    coroutineScope.launch {
+                        val newScale = (scale.value * zoom).coerceIn(1f, 5f)
+                        scale.snapTo(newScale)
+                        rotation.snapTo(rotation.value + rotate)
+                        offset.snapTo(offset.value + pan)
+                        onZoomStateChanged(newScale > 1f)
+                    }
                 }
             }
             .pointerInput(Unit) {
@@ -434,16 +456,23 @@ private fun CapturePreviewCard(
                     do {
                         val event = awaitPointerEvent()
                     } while (event.changes.any { it.pressed })
-                    zoomScale = 1f
-                    zoomOffset = Offset.Zero
+                    
+                    coroutineScope.launch {
+                        onZoomStateChanged(false)
+                        launch { scale.animateTo(1f, tween(300)) }
+                        launch { rotation.animateTo(0f, tween(300)) }
+                        launch { offset.animateTo(Offset.Zero, tween(300)) }
+                    }
                 }
             }
             .graphicsLayer {
-                scaleX = zoomScale
-                scaleY = zoomScale
-                translationX = zoomOffset.x
-                translationY = zoomOffset.y
+                scaleX = scale.value
+                scaleY = scale.value
+                rotationZ = rotation.value
+                translationX = offset.value.x
+                translationY = offset.value.y
             }
+            .zIndex(if (scale.value > 1f) 10f else 0f)
     ) {
         when {
             mediaUri == null -> {

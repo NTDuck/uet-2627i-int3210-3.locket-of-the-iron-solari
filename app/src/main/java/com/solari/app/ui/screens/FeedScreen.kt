@@ -12,7 +12,8 @@ import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -27,7 +28,10 @@ import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateCentroidSize
 import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.geometry.Offset
@@ -711,6 +715,8 @@ private fun FeedPost(
         onSendPostReply(content) {}
     }
 
+    var isZooming by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -728,11 +734,12 @@ private fun FeedPost(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(14.dp))
+                    .clip(if (isZooming) RoundedCornerShape(0.dp) else RoundedCornerShape(14.dp))
                     .combinedClickable(
                         onClick = {},
                         onLongClick = onLongPress
                     )
+                    .zIndex(if (isZooming) 10f else 0f)
             ) {
                 if (post.isVideoMedia()) {
                     FeedVideoPlayer(
@@ -743,6 +750,7 @@ private fun FeedPost(
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         onLongPress = onLongPress,
+                        onZoomStateChanged = { isZooming = it },
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -751,164 +759,199 @@ private fun FeedPost(
                         postId = post.id,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
+                        onZoomStateChanged = { isZooming = it },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
 
-                with(animatedVisibilityScope) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500)))
-                            .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f))
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500)))
-                            .padding(10.dp)
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(18.dp))
-                            .background(SolariTheme.colors.background.copy(alpha = 0.36f))
-                            .clickable(onClick = onMoreClick),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            Icons.Default.MoreVert,
-                            contentDescription = "More",
-                            tint = SolariTheme.colors.onBackground,
-                            modifier = Modifier.size(22.dp)
-                        )
-                    }
-
-                    if (!post.caption.isEmpty()) {
-                        Text(
-                            text = post.caption,
-                            color = SolariTheme.colors.onBackground,
-                            fontSize = 15.sp,
-                            lineHeight = 20.sp,
-                            fontFamily = PlusJakartaSans,
-                            textAlign = TextAlign.Center,
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !isZooming,
+                    enter = fadeIn(),
+                    exit = fadeOut()
+                ) {
+                    with(animatedVisibilityScope) {
+                        Box(
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500)))
-                                .padding(bottom = 14.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(SolariTheme.colors.background.copy(alpha = 0.58f))
-                                .padding(horizontal = 28.dp, vertical = 8.dp)
+                                .fillMaxSize()
+                                .animateEnterExit(
+                                    enter = fadeIn(animationSpec = tween(500)),
+                                    exit = fadeOut(animationSpec = tween(500))
+                                )
+                                .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f))
                         )
+
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .animateEnterExit(
+                                    enter = fadeIn(animationSpec = tween(500)),
+                                    exit = fadeOut(animationSpec = tween(500))
+                                )
+                                .padding(10.dp)
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(SolariTheme.colors.background.copy(alpha = 0.36f))
+                                .clickable(onClick = onMoreClick),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More",
+                                tint = SolariTheme.colors.onBackground,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        if (!post.caption.isEmpty()) {
+                            Text(
+                                text = post.caption,
+                                color = SolariTheme.colors.onBackground,
+                                fontSize = 15.sp,
+                                lineHeight = 20.sp,
+                                fontFamily = PlusJakartaSans,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .animateEnterExit(
+                                        enter = fadeIn(animationSpec = tween(500)),
+                                        exit = fadeOut(animationSpec = tween(500))
+                                    )
+                                    .padding(bottom = 14.dp)
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(SolariTheme.colors.background.copy(alpha = 0.58f))
+                                    .padding(horizontal = 28.dp, vertical = 8.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            with(animatedVisibilityScope) {
-                Spacer(modifier = Modifier.height(36.dp))
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !isZooming,
+                enter = fadeIn(),
+                exit = fadeOut()
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    with(animatedVisibilityScope) {
+                        Spacer(modifier = Modifier.height(36.dp))
 
-                Row(
-                    modifier = Modifier
-                        .animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500)))
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable { onNavigateToBrowse(displayAuthor.id) }
-                        .padding(vertical = 8.dp, horizontal = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    SolariAvatar(
-                        imageUrl = displayAuthor.profileImageUrl,
-                        username = displayAuthor.username,
-                        contentDescription = "Author Avatar",
-                        modifier = Modifier
-                            .size(40.dp),
-                        shape = RoundedCornerShape(8.dp),
-                        fontSize = 16.sp
-                    )
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Column {
-                        Text(
-                            text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
-                            color = SolariTheme.colors.onBackground,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = PlusJakartaSans,
-                            fontSize = 16.sp,
-                            lineHeight = 16.sp
-                        )
-                        Spacer(modifier = Modifier.height(3.dp))
-                        Text(
-                            text = post.timestamp.toFeedRelativeTimeLabel(),
-                            color = SolariTheme.colors.onSurfaceVariant,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = PlusJakartaSans,
-                            fontSize = 11.sp,
-                            lineHeight = 13.sp
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                Box(modifier = Modifier.animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500)))) {
-                    if (isCurrentUserPost) {
-                        when (post.uploadStatus) {
-                            PostUploadStatus.None -> {
-                                FeedActivityPill(
-                                    users = activityUsers.take(3),
-                                    overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
-                                    onClick = onShowActivity
+                        Row(
+                            modifier = Modifier
+                                .animateEnterExit(
+                                    enter = fadeIn(animationSpec = tween(500)),
+                                    exit = fadeOut(animationSpec = tween(500))
                                 )
-                            }
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onNavigateToBrowse(displayAuthor.id) }
+                                .padding(vertical = 8.dp, horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            SolariAvatar(
+                                imageUrl = displayAuthor.profileImageUrl,
+                                username = displayAuthor.username,
+                                contentDescription = "Author Avatar",
+                                modifier = Modifier
+                                    .size(40.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                fontSize = 16.sp
+                            )
 
-                            PostUploadStatus.Uploading,
-                            PostUploadStatus.Processing -> {
-                                FeedUploadStatusPill(
-                                    text = "Uploading post",
-                                    isLoading = true,
-                                    isError = false
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column {
+                                Text(
+                                    text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
+                                    color = SolariTheme.colors.onBackground,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = PlusJakartaSans,
+                                    fontSize = 16.sp,
+                                    lineHeight = 16.sp
                                 )
-                            }
-
-                            PostUploadStatus.Failed -> {
-                                FeedUploadStatusPill(
-                                    text = post.uploadError ?: "Upload failed",
-                                    isLoading = false,
-                                    isError = true
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = post.timestamp.toFeedRelativeTimeLabel(),
+                                    color = SolariTheme.colors.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = PlusJakartaSans,
+                                    fontSize = 11.sp,
+                                    lineHeight = 13.sp
                                 )
                             }
                         }
-                    } else {
-                        Column {
-                            FeedReactionField(
-                                value = reactionNote,
-                                onValueChange = { reactionNote = it.take(20) },
-                                onReact = ::sendReactionOptimistically,
-                                onOpenEmojiPicker = { showEmojiPicker = true },
-                                isEditable = false,
-                                onActivate = { showInputOverlay(FeedInputOverlayMode.Reaction) }
-                            )
 
-                            Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(32.dp))
 
-                            FeedMessageField(
-                                value = messageText,
-                                onValueChange = { messageText = it },
-                                onSend = {},
-                                isEditable = false,
-                                onActivate = { showInputOverlay(FeedInputOverlayMode.Message) }
+                        Box(
+                            modifier = Modifier.animateEnterExit(
+                                enter = fadeIn(animationSpec = tween(500)),
+                                exit = fadeOut(animationSpec = tween(500))
                             )
+                        ) {
+                            if (isCurrentUserPost) {
+                                when (post.uploadStatus) {
+                                    PostUploadStatus.None -> {
+                                        FeedActivityPill(
+                                            users = activityUsers.take(3),
+                                            overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
+                                            onClick = onShowActivity
+                                        )
+                                    }
+
+                                    PostUploadStatus.Uploading,
+                                    PostUploadStatus.Processing -> {
+                                        FeedUploadStatusPill(
+                                            text = "Uploading post",
+                                            isLoading = true,
+                                            isError = false
+                                        )
+                                    }
+
+                                    PostUploadStatus.Failed -> {
+                                        FeedUploadStatusPill(
+                                            text = post.uploadError ?: "Upload failed",
+                                            isLoading = false,
+                                            isError = true
+                                        )
+                                    }
+                                }
+                            } else {
+                                Column {
+                                    FeedReactionField(
+                                        value = reactionNote,
+                                        onValueChange = { reactionNote = it.take(20) },
+                                        onReact = ::sendReactionOptimistically,
+                                        onOpenEmojiPicker = { showEmojiPicker = true },
+                                        isEditable = false,
+                                        onActivate = { showInputOverlay(FeedInputOverlayMode.Reaction) }
+                                    )
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    FeedMessageField(
+                                        value = messageText,
+                                        onValueChange = { messageText = it },
+                                        onSend = {},
+                                        isEditable = false,
+                                        onActivate = { showInputOverlay(FeedInputOverlayMode.Message) }
+                                    )
+                                }
+                            }
                         }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        FeedBrowseButton(
+                            modifier = Modifier.animateEnterExit(
+                                enter = fadeIn(animationSpec = tween(500)),
+                                exit = fadeOut(animationSpec = tween(500))
+                            ),
+                            onClick = { onNavigateToBrowse(null) }
+                        )
+
+                        Spacer(modifier = Modifier.weight(0.45f))
                     }
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                FeedBrowseButton(
-                    modifier = Modifier.animateEnterExit(enter = fadeIn(animationSpec = tween(500)), exit = fadeOut(animationSpec = tween(500))),
-                    onClick = { onNavigateToBrowse(null) }
-                )
-
-                Spacer(modifier = Modifier.weight(0.45f))
             }
         }
 
@@ -1487,18 +1530,26 @@ private fun FeedImage(
     postId: String,
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
     animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
+    onZoomStateChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var isLoading by remember(url) { mutableStateOf(true) }
-    var zoomScale by remember { mutableStateOf(1f) }
-    var zoomOffset by remember { mutableStateOf(Offset.Zero) }
+    val coroutineScope = rememberCoroutineScope()
+    val scale = remember { Animatable(1f) }
+    val rotation = remember { Animatable(0f) }
+    val offset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
 
     Box(
         modifier = modifier
             .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    zoomScale = (zoomScale * zoom).coerceIn(1f, 5f)
-                    zoomOffset += pan
+                detectTransformGestures { centroid, pan, zoom, rotate ->
+                    coroutineScope.launch {
+                        val newScale = (scale.value * zoom).coerceIn(1f, 5f)
+                        scale.snapTo(newScale)
+                        rotation.snapTo(rotation.value + rotate)
+                        offset.snapTo(offset.value + pan)
+                        onZoomStateChanged(newScale > 1f)
+                    }
                 }
             }
             .pointerInput(Unit) {
@@ -1507,15 +1558,21 @@ private fun FeedImage(
                     do {
                         val event = awaitPointerEvent()
                     } while (event.changes.any { it.pressed })
-                    zoomScale = 1f
-                    zoomOffset = Offset.Zero
+                    
+                    coroutineScope.launch {
+                        onZoomStateChanged(false)
+                        launch { scale.animateTo(1f, tween(300)) }
+                        launch { rotation.animateTo(0f, tween(300)) }
+                        launch { offset.animateTo(Offset.Zero, tween(300)) }
+                    }
                 }
             }
             .graphicsLayer {
-                scaleX = zoomScale
-                scaleY = zoomScale
-                translationX = zoomOffset.x
-                translationY = zoomOffset.y
+                scaleX = scale.value
+                scaleY = scale.value
+                rotationZ = rotation.value
+                translationX = offset.value.x
+                translationY = offset.value.y
             }
     ) {
         with(sharedTransitionScope) {
@@ -1556,13 +1613,16 @@ private fun FeedVideoPlayer(
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
     animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onLongPress: () -> Unit,
+    onZoomStateChanged: (Boolean) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var isLoading by remember(url) { mutableStateOf(true) }
     var isUserPaused by remember(url) { mutableStateOf(false) }
-    var zoomScale by remember { mutableStateOf(1f) }
-    var zoomOffset by remember { mutableStateOf(Offset.Zero) }
+    val scale = remember { Animatable(1f) }
+    val rotation = remember { Animatable(0f) }
+    val offset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
 
     val player = remember(url, mediaType) {
         ExoPlayer.Builder(context)
@@ -1626,9 +1686,14 @@ private fun FeedVideoPlayer(
     Box(
         modifier = modifier
             .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    zoomScale = (zoomScale * zoom).coerceIn(1f, 5f)
-                    zoomOffset += pan
+                detectTransformGestures { centroid, pan, zoom, rotate ->
+                    coroutineScope.launch {
+                        val newScale = (scale.value * zoom).coerceIn(1f, 5f)
+                        scale.snapTo(newScale)
+                        rotation.snapTo(rotation.value + rotate)
+                        offset.snapTo(offset.value + pan)
+                        onZoomStateChanged(newScale > 1f)
+                    }
                 }
             }
             .pointerInput(Unit) {
@@ -1637,15 +1702,21 @@ private fun FeedVideoPlayer(
                     do {
                         val event = awaitPointerEvent()
                     } while (event.changes.any { it.pressed })
-                    zoomScale = 1f
-                    zoomOffset = Offset.Zero
+                    
+                    coroutineScope.launch {
+                        onZoomStateChanged(false)
+                        launch { scale.animateTo(1f, tween(300)) }
+                        launch { rotation.animateTo(0f, tween(300)) }
+                        launch { offset.animateTo(Offset.Zero, tween(300)) }
+                    }
                 }
             }
             .graphicsLayer {
-                scaleX = zoomScale
-                scaleY = zoomScale
-                translationX = zoomOffset.x
-                translationY = zoomOffset.y
+                scaleX = scale.value
+                scaleY = scale.value
+                rotationZ = rotation.value
+                translationX = offset.value.x
+                translationY = offset.value.y
             }
     ) {
         with(sharedTransitionScope) {
