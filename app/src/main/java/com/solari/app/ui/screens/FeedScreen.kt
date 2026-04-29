@@ -748,13 +748,16 @@ private fun FeedPost(
                                 val oldScale = zoomScale.value
                                 val newScale = (oldScale * zoom).coerceIn(1f, 5f)
                                 
-                                val scaleFactor = newScale / oldScale
-                                val deltaFromScale = (centroid - zoomOffset.value) * (1 - scaleFactor)
-                                
-                                zoomScale.snapTo(newScale)
-                                zoomRotation.snapTo(zoomRotation.value + rotate)
-                                zoomOffset.snapTo(zoomOffset.value + pan + deltaFromScale)
-                                isZooming = newScale > 1f
+                                if (newScale > 1f || oldScale > 1f) {
+                                    val scaleFactor = newScale / oldScale
+                                    val deltaFromScale = (centroid - zoomOffset.value) * (1 - scaleFactor)
+                                    
+                                    zoomScale.snapTo(newScale)
+                                    zoomRotation.snapTo(zoomRotation.value + rotate)
+                                    // Ignore pan to prevent dragging (Task 5)
+                                    zoomOffset.snapTo(zoomOffset.value + deltaFromScale)
+                                    isZooming = true
+                                }
                             }
                         }
                     }
@@ -773,6 +776,7 @@ private fun FeedPost(
                             }
                         }
                     }
+                    .clip(RoundedCornerShape(14.dp))
                     .graphicsLayer {
                         scaleX = zoomScale.value
                         scaleY = zoomScale.value
@@ -780,7 +784,6 @@ private fun FeedPost(
                         translationX = zoomOffset.value.x
                         translationY = zoomOffset.value.y
                     }
-                    .clip(if (isZooming) RoundedCornerShape(0.dp) else RoundedCornerShape(14.dp))
                     .combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -797,7 +800,7 @@ private fun FeedPost(
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
                         onLongPress = onLongPress,
-                        onZoomStateChanged = { /* Handled by parent */ },
+                        onZoomStateChanged = { isZooming = it },
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
@@ -806,7 +809,7 @@ private fun FeedPost(
                         postId = post.id,
                         sharedTransitionScope = sharedTransitionScope,
                         animatedVisibilityScope = animatedVisibilityScope,
-                        onZoomStateChanged = { /* Handled by parent */ },
+                        onZoomStateChanged = { isZooming = it },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
@@ -1011,29 +1014,65 @@ private fun FeedPost(
         }
 
         activeInputOverlay?.let { overlayMode ->
-            Box(modifier = Modifier.fillMaxSize()) {
-                FeedInputKeyboardOverlay(
-                    mode = overlayMode,
-                    reactionValue = reactionNote,
-                    onReactionValueChange = { reactionNote = it.take(20) },
-                    messageValue = messageText,
-                    onMessageValueChange = { messageText = it },
-                    isEmojiPickerOpen = showEmojiPicker,
-                    onDismiss = ::dismissInputOverlay,
-                    onReact = ::sendReactionOptimistically,
-                    onOpenEmojiPicker = { showEmojiPicker = true },
-                    onSendMessage = ::sendMessageOptimistically
-                )
+            val density = LocalDensity.current
+            val keyboardBottomPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+            val scaffoldBottomPadding = innerPadding.calculateBottomPadding()
+            val focusRequester = remember { FocusRequester() }
 
-                if (showEmojiPicker) {
-                    EmojiPickerPopup(
-                        onClosed = { showEmojiPicker = false },
-                        selectedEmoji = null,
-                        recentEmojis = emptyList(),
-                        onReact = ::sendReactionOptimistically
-                    )
+            LaunchedEffect(overlayMode) {
+                focusRequester.requestFocus()
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(10f)
+                    .pointerInput(Unit) {
+                        detectTapGestures { dismissInputOverlay() }
+                    }
+                    .padding(bottom = maxOf(keyboardBottomPadding, scaffoldBottomPadding))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp, vertical = 16.dp)
+                ) {
+                    when (overlayMode) {
+                        FeedInputOverlayMode.Reaction -> {
+                            FeedReactionField(
+                                value = reactionNote,
+                                onValueChange = { reactionNote = it.take(20) },
+                                onReact = ::sendReactionOptimistically,
+                                onOpenEmojiPicker = { showEmojiPicker = true },
+                                isEditable = true,
+                                focusRequester = focusRequester,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        FeedInputOverlayMode.Message -> {
+                            FeedMessageField(
+                                value = messageText,
+                                onValueChange = { messageText = it },
+                                onSend = ::sendMessageOptimistically,
+                                isEditable = true,
+                                focusRequester = focusRequester,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
                 }
             }
+        }
+
+        if (showEmojiPicker) {
+            EmojiPickerPopup(
+                onClosed = { showEmojiPicker = false },
+                selectedEmoji = null,
+                recentEmojis = emptyList(),
+                onReact = ::sendReactionOptimistically
+            )
         }
     }
 }
@@ -1576,11 +1615,19 @@ private fun FeedImage(
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
                     coroutineScope.launch {
-                        val newScale = (scale.value * zoom).coerceIn(1f, 5f)
-                        scale.snapTo(newScale)
-                        rotation.snapTo(rotation.value + rotate)
-                        offset.snapTo(offset.value + pan)
-                        onZoomStateChanged(newScale > 1f)
+                        val oldScale = scale.value
+                        val newScale = (oldScale * zoom).coerceIn(1f, 5f)
+                        
+                        if (newScale > 1f || oldScale > 1f) {
+                            val scaleFactor = newScale / oldScale
+                            val deltaFromScale = (centroid - offset.value) * (1 - scaleFactor)
+                            
+                            scale.snapTo(newScale)
+                            rotation.snapTo(rotation.value + rotate)
+                            // Ignore pan to prevent dragging (Task 5)
+                            offset.snapTo(offset.value + deltaFromScale)
+                            onZoomStateChanged(true)
+                        }
                     }
                 }
             }
@@ -1720,11 +1767,19 @@ private fun FeedVideoPlayer(
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
                     coroutineScope.launch {
-                        val newScale = (scale.value * zoom).coerceIn(1f, 5f)
-                        scale.snapTo(newScale)
-                        rotation.snapTo(rotation.value + rotate)
-                        offset.snapTo(offset.value + pan)
-                        onZoomStateChanged(newScale > 1f)
+                        val oldScale = scale.value
+                        val newScale = (oldScale * zoom).coerceIn(1f, 5f)
+                        
+                        if (newScale > 1f || oldScale > 1f) {
+                            val scaleFactor = newScale / oldScale
+                            val deltaFromScale = (centroid - offset.value) * (1 - scaleFactor)
+                            
+                            scale.snapTo(newScale)
+                            rotation.snapTo(rotation.value + rotate)
+                            // Ignore pan to prevent dragging (Task 5)
+                            offset.snapTo(offset.value + deltaFromScale)
+                            onZoomStateChanged(true)
+                        }
                     }
                 }
             }

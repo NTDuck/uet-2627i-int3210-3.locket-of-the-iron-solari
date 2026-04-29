@@ -142,6 +142,7 @@ fun HomepageAfterCapturingScreen(
     onNavigateBack: () -> Unit,
     onSend: (OptimisticPostDraft) -> Unit,
     onCancel: () -> Unit,
+    onNavigateToEdit: () -> Unit,
     onNavigateToFeed: () -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToProfile: () -> Unit
@@ -363,6 +364,7 @@ fun HomepageAfterCapturingScreen(
                             CaptureActionButtons(
                                 sendState = sendState,
                                 onCancel = onCancel,
+                                onNavigateToEdit = onNavigateToEdit,
                                 onSend = {
                                     if (sendState != CaptureSendState.Idle) {
                                         return@CaptureActionButtons
@@ -445,13 +447,16 @@ private fun CapturePreviewCard(
                     coroutineScope.launch {
                         val oldScale = zoomScale.value
                         val newScale = (oldScale * zoom).coerceIn(1f, 5f)
-                        val scaleFactor = newScale / oldScale
-                        val deltaFromScale = (centroid - zoomOffset.value) * (1 - scaleFactor)
                         
-                        zoomScale.snapTo(newScale)
-                        zoomRotation.snapTo(zoomRotation.value + rotate)
-                        zoomOffset.snapTo(zoomOffset.value + pan + deltaFromScale)
-                        onZoomStateChanged(newScale > 1f)
+                        if (newScale > 1f || oldScale > 1f) {
+                            val scaleFactor = newScale / oldScale
+                            val deltaFromScale = (centroid - zoomOffset.value) * (1 - scaleFactor)
+                            
+                            zoomScale.snapTo(newScale)
+                            zoomRotation.snapTo(zoomRotation.value + rotate)
+                            zoomOffset.snapTo(zoomOffset.value + pan + deltaFromScale)
+                            onZoomStateChanged(true)
+                        }
                     }
                 }
             }
@@ -463,13 +468,14 @@ private fun CapturePreviewCard(
                     } while (event.changes.any { it.pressed })
                     
                     coroutineScope.launch {
-                        onZoomStateChanged(false)
                         launch { zoomScale.animateTo(1f, tween(300)) }
                         launch { zoomRotation.animateTo(0f, tween(300)) }
                         launch { zoomOffset.animateTo(Offset.Zero, tween(300)) }
+                        onZoomStateChanged(false)
                     }
                 }
             }
+            .clip(RoundedCornerShape(CapturePreviewCornerRadius))
             .graphicsLayer {
                 scaleX = zoomScale.value
                 scaleY = zoomScale.value
@@ -477,7 +483,6 @@ private fun CapturePreviewCard(
                 translationX = zoomOffset.value.x
                 translationY = zoomOffset.value.y
             }
-            .clip(if (zoomScale.value > 1f) RoundedCornerShape(0.dp) else RoundedCornerShape(CapturePreviewCornerRadius))
             .background(SolariTheme.colors.surface)
     ) {
         when {
@@ -785,6 +790,7 @@ private fun VisibilityFriendItem(
 private fun CaptureActionButtons(
     sendState: CaptureSendState,
     onCancel: () -> Unit,
+    onNavigateToEdit: () -> Unit,
     onSend: () -> Unit
 ) {
     val isSending = sendState == CaptureSendState.Sending
@@ -853,7 +859,7 @@ private fun CaptureActionButtons(
         RoundActionButton(
             size = 64.dp,
             backgroundColor = SolariTheme.colors.surfaceVariant,
-            onClick = { }
+            onClick = onNavigateToEdit
         ) {
             Icon(
                 imageVector = Icons.Default.Edit,
