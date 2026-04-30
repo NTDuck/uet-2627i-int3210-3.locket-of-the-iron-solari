@@ -1998,7 +1998,7 @@ private fun FeedBrowseButton(
             .height(48.dp)
             .scaledClickable(pressedScale = 1.05f, onClick = onClick)
             .clip(RoundedCornerShape(50))
-            .background(SolariTheme.colors.surfaceVariant)
+            .background(SolariTheme.colors.primary)
             .padding(horizontal = 26.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
