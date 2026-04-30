@@ -67,13 +67,15 @@ class SolariWidgetProvider : AppWidgetProvider() {
 
         if (latestPost != null) {
             views.setTextViewText(R.id.widget_post_caption, latestPost.caption)
+            views.setViewVisibility(R.id.widget_post_caption, android.view.View.VISIBLE)
             
             val imageLoader = ImageLoader(context)
             
             // Load post image
             val postImageRequest = ImageRequest.Builder(context)
                 .data(latestPost.imageUrl)
-                .allowHardware(false)
+                .allowHardware(false) // RemoteViews doesn't support hardware bitmaps
+                .bitmapConfig(Bitmap.Config.ARGB_8888)
                 .build()
             val postImageResult = imageLoader.execute(postImageRequest)
             postImageResult.drawable?.let {
@@ -86,6 +88,7 @@ class SolariWidgetProvider : AppWidgetProvider() {
                 .data(latestPost.author.profileImageUrl)
                 .transformations(CircleCropTransformation())
                 .allowHardware(false)
+                .bitmapConfig(Bitmap.Config.ARGB_8888)
                 .build()
             val avatarResult = imageLoader.execute(avatarRequest)
             avatarResult.drawable?.let {

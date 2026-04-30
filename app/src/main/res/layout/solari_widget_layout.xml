@@ -26,8 +26,9 @@
 
         <TextView
             android:id="@+id/widget_post_caption"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:layout_marginStart="8dp"
             android:background="@drawable/widget_caption_background"
             android:paddingHorizontal="14dp"
@@ -37,5 +38,10 @@
             android:fontFamily="@font/plus_jakarta_sans_medium"
             android:maxLines="2"
             android:ellipsize="end" />
+        
+        <!-- Spacer to prevent caption from hitting the right edge if too long -->
+        <View
+            android:layout_width="12dp"
+            android:layout_height="1dp" />
     </LinearLayout>
 </RelativeLayout>
