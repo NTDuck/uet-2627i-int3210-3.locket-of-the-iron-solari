@@ -479,7 +479,7 @@ private fun SolariApp(
                 popEnterTransition = {
                     if (initialState.destination.route?.contains("FeedBrowse") == true &&
                         targetState.destination.route?.contains("Main") == true) {
-                        scaleIn(initialScale = 0.8f, animationSpec = tween(500)) + fadeIn(tween(500))
+                        fadeIn(tween(500))
                     } else {
                         slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
                     }

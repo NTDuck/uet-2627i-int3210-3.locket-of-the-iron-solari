@@ -16,6 +16,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -1613,7 +1614,9 @@ private fun FeedImage(
                     .sharedElement(
                         rememberSharedContentState(key = "post_image_$postId"),
                         animatedVisibilityScope = animatedVisibilityScope,
-                        boundsTransform = { _, _ -> tween(durationMillis = 500) }
+                        boundsTransform = { _, _ -> 
+                            tween(durationMillis = 500, easing = FastOutSlowInEasing)
+                        }
                     ),
                 contentScale = ContentScale.Crop,
                 onLoading = { isLoading = true },
@@ -1714,7 +1717,9 @@ private fun FeedVideoPlayer(
                     .sharedElement(
                         rememberSharedContentState(key = "post_image_$postId"),
                         animatedVisibilityScope = animatedVisibilityScope,
-                        boundsTransform = { _, _ -> tween(durationMillis = 500) }
+                        boundsTransform = { _, _ -> 
+                            tween(durationMillis = 500, easing = FastOutSlowInEasing)
+                        }
                     ),
                 factory = { viewContext ->
                     PlayerView(viewContext).apply {
@@ -1992,8 +1997,8 @@ private fun FeedBrowseButton(
             .fillMaxWidth(0.6f)
             .height(48.dp)
             .scaledClickable(pressedScale = 1.05f, onClick = onClick)
-            .clip(CircleShape)
-            .background(SolariTheme.colors.background)
+            .clip(RoundedCornerShape(50))
+            .background(SolariTheme.colors.surfaceVariant)
             .padding(horizontal = 26.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center

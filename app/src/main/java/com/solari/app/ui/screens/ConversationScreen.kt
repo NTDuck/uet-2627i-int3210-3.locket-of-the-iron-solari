@@ -220,7 +220,8 @@ fun ConversationScreen(
                                     request = request,
                                     onAccept = { viewModel.acceptFriendRequest(request.id) },
                                     onDecline = { viewModel.declineFriendRequest(request.id) },
-                                    onCancel = { requestPendingCancel = request }
+                                    onCancel = { requestPendingCancel = request },
+                                    modifier = Modifier.animateItem()
                                 )
                             }
 
@@ -294,13 +295,14 @@ fun ConversationScreen(
                                 }
                             }
                         } else {
-                            items(sortedConversations) { conversation ->
+                            items(sortedConversations, key = { it.id }) { conversation ->
                                 ConversationItem(
                                     conversation = conversation,
                                     onClick = {
                                         viewModel.markConversationAsRead(conversation.id)
                                         onNavigateToChat(conversation)
-                                    }
+                                    },
+                                    modifier = Modifier.animateItem()
                                 )
                             }
                         }
@@ -392,14 +394,15 @@ fun FriendRequestItem(
     request: FriendRequest,
     onAccept: () -> Unit,
     onDecline: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val isOutgoing = request.direction == FriendRequestDirection.Outgoing
 
     Surface(
         color = SolariTheme.colors.surface,
         shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier.padding(13.dp),
@@ -533,7 +536,11 @@ private fun ConversationFeedbackPill(
 }
 
 @Composable
-fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
+fun ConversationItem(
+    conversation: Conversation,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val itemShape = RoundedCornerShape(10.dp)
     val displayName = if (conversation.isReadOnly) "Someone" else conversation.otherUser.displayName
     val avatarUsername = if (conversation.isReadOnly) "someone" else conversation.otherUser.username
@@ -563,7 +570,7 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
     Surface(
         color = SolariTheme.colors.surfaceVariant,
         shape = itemShape,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .scaledClickable(pressedScale = 0.95f, onClick = onClick)
             .clip(itemShape)

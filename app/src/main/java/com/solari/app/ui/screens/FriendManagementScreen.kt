@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -410,35 +411,30 @@ fun FriendManagementScreen(
                     )
                 }
             } else {
-                item {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        friends.forEach { friend ->
-                            FriendListItem(
-                                friend = friend,
-                                onSetNickname = { nicknameFriend ->
-                                    nicknameDialogState = NicknameDialogState(
-                                        friend = nicknameFriend,
-                                        action = NicknameAction.Set
-                                    )
-                                },
-                                onUpdateNickname = { nicknameFriend ->
-                                    nicknameDialogState = NicknameDialogState(
-                                        friend = nicknameFriend,
-                                        action = NicknameAction.Update
-                                    )
-                                },
-                                onRemoveNickname = viewModel::removeNickname,
-                                onMessage = { friend ->
-                                    viewModel.openConversation(friend, onNavigateToConversation)
-                                },
-                                messagingFriendIds = viewModel.messagingFriendIds,
-                                onUnfriend = { friendPendingUnfriend = it },
-                                onBlock = { friendPendingBlock = it }
+                items(friends, key = { it.id }) { friend ->
+                    FriendListItem(
+                        friend = friend,
+                        onSetNickname = { nicknameFriend ->
+                            nicknameDialogState = NicknameDialogState(
+                                friend = nicknameFriend,
+                                action = NicknameAction.Set
                             )
-                        }
-                    }
+                        },
+                        onUpdateNickname = { nicknameFriend ->
+                            nicknameDialogState = NicknameDialogState(
+                                friend = nicknameFriend,
+                                action = NicknameAction.Update
+                            )
+                        },
+                        onRemoveNickname = viewModel::removeNickname,
+                        onMessage = { friend ->
+                            viewModel.openConversation(friend, onNavigateToConversation)
+                        },
+                        messagingFriendIds = viewModel.messagingFriendIds,
+                        onUnfriend = { friendPendingUnfriend = it },
+                        onBlock = { friendPendingBlock = it },
+                        modifier = Modifier.animateItem()
+                    )
                 }
             }
         }
@@ -619,7 +615,8 @@ private fun FriendListItem(
     onMessage: (User) -> Unit,
     messagingFriendIds: Set<String>,
     onUnfriend: (User) -> Unit,
-    onBlock: (User) -> Unit
+    onBlock: (User) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var isMenuExpanded by remember { mutableStateOf(false) }
     var moreButtonPressPosition by remember { mutableStateOf(Offset.Unspecified) }
@@ -631,7 +628,7 @@ private fun FriendListItem(
     val hasNickname = !friend.nickname.isNullOrBlank()
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(64.dp)
             .clip(RoundedCornerShape(8.dp))

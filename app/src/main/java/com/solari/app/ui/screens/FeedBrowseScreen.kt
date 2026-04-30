@@ -317,6 +317,7 @@ fun FeedBrowseScreen(
                         items(filteredSortedPosts, key = { it.id }) { post ->
                             Box(
                                 modifier = Modifier
+                                    .animateItem()
                                     .aspectRatio(1f)
                                     .scaledClickable(pressedScale = 0.9f) {
                                         if (post.uploadStatus == PostUploadStatus.None) {
