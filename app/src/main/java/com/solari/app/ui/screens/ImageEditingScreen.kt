@@ -856,20 +856,39 @@ private fun TextWorkspace(
             if (o.text != "..." && o.text.isNotEmpty()) {
                 val result = currentWorkingBitmap.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = Canvas(result)
-                val scaleX = currentWorkingBitmap.width / canvasSize.width
-                val scaleY = currentWorkingBitmap.height / canvasSize.height
-                val scale = max(scaleX, scaleY)
-
+                
+                // Calculate the scale and offset of the image within canvasSize
+                val imageWidth = currentWorkingBitmap.width.toFloat()
+                val imageHeight = currentWorkingBitmap.height.toFloat()
+                val containerWidth = canvasSize.width
+                val containerHeight = canvasSize.height
+                
+                val scale = min(containerWidth / imageWidth, containerHeight / imageHeight)
+                val drawWidth = imageWidth * scale
+                val drawHeight = imageHeight * scale
+                val left = (containerWidth - drawWidth) / 2
+                val top = (containerHeight - drawHeight) / 2
+                
+                // Map Compose coordinates to Bitmap coordinates
+                val bitmapX = (o.position.x - left) / scale
+                val bitmapY = (o.position.y - top) / scale
+                
                 val paint = Paint().apply {
                     color = o.color.toArgb()
-                    textSize = with(density) { 24.sp.toPx() } * o.scale * scale
+                    textSize = with(density) { 24.sp.toPx() } * o.scale / scale
                     textAlign = Paint.Align.CENTER
                     isAntiAlias = true
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                 }
+                
+                // Adjust Y for vertical centering (drawText uses baseline)
+                val fontMetrics = paint.fontMetrics
+                val verticalOffset = (fontMetrics.ascent + fontMetrics.descent) / 2f
+                val finalY = bitmapY - verticalOffset
+
                 canvas.save()
-                canvas.rotate(o.rotation, o.position.x * scale, o.position.y * scale)
-                canvas.drawText(o.text, o.position.x * scale, o.position.y * scale, paint)
+                canvas.rotate(o.rotation, bitmapX, bitmapY)
+                canvas.drawText(o.text, bitmapX, finalY, paint)
                 canvas.restore()
                 currentWorkingBitmap = result
             }
@@ -910,7 +929,7 @@ private fun TextWorkspace(
                     }
                 }
             },
-        contentAlignment = Alignment.Center
+        contentAlignment = Alignment.TopStart
     ) {
         androidx.compose.foundation.Image(
             currentWorkingBitmap.asImageBitmap(),
