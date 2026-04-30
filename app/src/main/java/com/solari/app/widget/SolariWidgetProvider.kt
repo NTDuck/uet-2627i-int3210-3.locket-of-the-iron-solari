@@ -99,13 +99,11 @@ class SolariWidgetProvider : AppWidgetProvider() {
     }
 
     private fun drawableToBitmap(drawable: android.graphics.drawable.Drawable): Bitmap {
-        val bitmap = Bitmap.createBitmap(
-            drawable.intrinsicWidth.coerceAtLeast(1),
-            drawable.intrinsicHeight.coerceAtLeast(1),
-            Bitmap.Config.ARGB_8888
-        )
+        val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 512
+        val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 512
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.setBounds(0, 0, width, height)
         drawable.draw(canvas)
         return bitmap
     }

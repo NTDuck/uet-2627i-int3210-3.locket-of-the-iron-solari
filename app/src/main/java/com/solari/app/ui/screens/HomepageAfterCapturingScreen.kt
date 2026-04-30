@@ -364,6 +364,7 @@ fun HomepageAfterCapturingScreen(
                         ) {
                             CaptureActionButtons(
                                 sendState = sendState,
+                                isVideo = media?.isVideo == true,
                                 onCancel = onCancel,
                                 onNavigateToEdit = onNavigateToEdit,
                                 onSend = {
@@ -798,6 +799,7 @@ private fun VisibilityFriendItem(
 @Composable
 private fun CaptureActionButtons(
     sendState: CaptureSendState,
+    isVideo: Boolean,
     onCancel: () -> Unit,
     onNavigateToEdit: () -> Unit,
     onSend: () -> Unit
@@ -867,13 +869,14 @@ private fun CaptureActionButtons(
 
         RoundActionButton(
             size = 64.dp,
-            backgroundColor = SolariTheme.colors.surfaceVariant,
+            backgroundColor = SolariTheme.colors.surfaceVariant.copy(alpha = if (isVideo) 0.5f else 1f),
+            enabled = !isVideo,
             onClick = onNavigateToEdit
         ) {
             Icon(
                 imageVector = Icons.Default.Edit,
                 contentDescription = "Edit",
-                tint = SolariTheme.colors.onSurface,
+                tint = SolariTheme.colors.onSurface.copy(alpha = if (isVideo) 0.5f else 1f),
                 modifier = Modifier.size(27.dp)
             )
         }

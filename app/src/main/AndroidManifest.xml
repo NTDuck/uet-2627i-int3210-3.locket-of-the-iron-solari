@@ -58,7 +58,7 @@
         <receiver
             android:name=".widget.SolariWidgetProvider"
             android:exported="true"
-            android:label="Solari Post Widget">
+            android:label="Solari">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
