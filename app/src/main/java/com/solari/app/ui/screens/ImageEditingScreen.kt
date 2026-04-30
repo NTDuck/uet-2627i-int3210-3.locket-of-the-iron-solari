@@ -97,13 +97,15 @@ private class TextOverlay(
     position: Offset = Offset.Zero,
     rotation: Float = 0f,
     scale: Float = 1f,
-    color: Color = Color.Red
+    color: Color = Color.Red,
+    isPlaceholder: Boolean = true
 ) {
     var text by mutableStateOf(text)
     var position by mutableStateOf(position)
     var rotation by mutableStateOf(rotation)
     var scale by mutableStateOf(scale)
     var color by mutableStateOf(color)
+    var isPlaceholder by mutableStateOf(isPlaceholder)
 }
 
 private val PresetColors = listOf(
@@ -724,6 +726,7 @@ private fun DrawWorkspace(
                 paint.strokeWidth = drawPath.strokeWidth * scale
                 if (drawPath.isEraser) {
                     paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                    paint.strokeWidth = drawPath.strokeWidth * scale * 3f // 200% increase (100% base + 200% = 300%)
                 } else {
                     paint.xfermode = null
                 }
@@ -786,12 +789,14 @@ private fun DrawWorkspace(
                 paths.forEach { drawPath ->
                     paint.color = drawPath.color
                     paint.blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
+                    paint.strokeWidth = if (drawPath.isEraser) 30f else 10f // 200% increase for eraser
                     canvas.drawPath(drawPath.path.asComposePath(), paint)
                 }
                 
                 currentPath?.let { path ->
                     paint.color = selectedColor
                     paint.blendMode = if (selectedTool == DrawTool.Eraser) BlendMode.Clear else BlendMode.SrcOver
+                    paint.strokeWidth = if (selectedTool == DrawTool.Eraser) 30f else 10f
                     canvas.drawPath(path.asComposePath(), paint)
                 }
                 
@@ -995,12 +1000,25 @@ private fun TextWorkspace(
 
                 BasicTextField(
                     value = o.text,
-                    onValueChange = { o.text = it },
+                    onValueChange = { newVal ->
+                        if (o.isPlaceholder && newVal.isNotEmpty() && newVal != "...") {
+                            // Typing something while placeholder is active: replace it
+                            // Note: We check newVal != "..." to allow initial autofocus to not trigger this
+                            o.text = newVal.removeSuffix("...")
+                            o.isPlaceholder = false
+                        } else if (!o.isPlaceholder && newVal.isEmpty()) {
+                            // Deleting everything: restore placeholder
+                            o.text = "..."
+                            o.isPlaceholder = true
+                        } else {
+                            o.text = newVal
+                        }
+                    },
                     modifier = Modifier
                         .padding(horizontal = 32.dp, vertical = 24.dp)
                         .focusRequester(focusRequester)
                         .onGloballyPositioned {
-                             if (o.text == "...") {
+                             if (o.text == "..." && o.isPlaceholder) {
                                  focusRequester.requestFocus()
                                  keyboardController?.show()
                              }
