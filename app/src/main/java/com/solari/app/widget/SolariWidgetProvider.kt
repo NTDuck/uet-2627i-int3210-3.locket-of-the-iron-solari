@@ -43,21 +43,9 @@ class SolariWidgetProvider : AppWidgetProvider() {
     }
 
     private suspend fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
-        val appContainer = (context.applicationContext as SolariApplication).appContainer
-        val feedRepository = appContainer.feedRepository
-        val userRepository = appContainer.userRepository
-
-        val meResult = userRepository.getMe()
-        val myId = (meResult as? ApiResult.Success)?.data?.id
-
-        val feedResult = feedRepository.getFeed(limit = 20)
-        val latestPost = if (feedResult is ApiResult.Success) {
-            feedResult.data.posts.firstOrNull { it.author.id != myId }
-        } else null
-
         val views = RemoteViews(context.packageName, R.layout.solari_widget_layout)
-
-        // Click intent to open the app
+        
+        // Set up click intent first so widget is interactive even while loading
         val intent = Intent(context, com.solari.app.MainActivity::class.java)
         val pendingIntent = android.app.PendingIntent.getActivity(
             context, 0, intent,
@@ -65,40 +53,61 @@ class SolariWidgetProvider : AppWidgetProvider() {
         )
         views.setOnClickPendingIntent(R.id.widget_post_image, pendingIntent)
 
-        if (latestPost != null) {
-            views.setTextViewText(R.id.widget_post_caption, latestPost.caption)
-            views.setViewVisibility(R.id.widget_post_caption, android.view.View.VISIBLE)
-            
-            val imageLoader = ImageLoader(context)
-            
-            // Load post image
-            val postImageRequest = ImageRequest.Builder(context)
-                .data(latestPost.imageUrl)
-                .allowHardware(false) // RemoteViews doesn't support hardware bitmaps
-                .bitmapConfig(Bitmap.Config.ARGB_8888)
-                .build()
-            val postImageResult = imageLoader.execute(postImageRequest)
-            postImageResult.drawable?.let {
-                val bitmap = drawableToBitmap(it)
-                views.setImageViewBitmap(R.id.widget_post_image, bitmap)
-            }
+        try {
+            val appContainer = (context.applicationContext as SolariApplication).appContainer
+            val feedRepository = appContainer.feedRepository
+            val userRepository = appContainer.userRepository
 
-            // Load author avatar
-            val avatarRequest = ImageRequest.Builder(context)
-                .data(latestPost.author.profileImageUrl)
-                .transformations(CircleCropTransformation())
-                .allowHardware(false)
-                .bitmapConfig(Bitmap.Config.ARGB_8888)
-                .build()
-            val avatarResult = imageLoader.execute(avatarRequest)
-            avatarResult.drawable?.let {
-                val bitmap = drawableToBitmap(it)
-                views.setImageViewBitmap(R.id.widget_author_avatar, bitmap)
+            val meResult = withContext(Dispatchers.IO) { userRepository.getMe() }
+            val myId = (meResult as? ApiResult.Success)?.data?.id
+
+            val feedResult = withContext(Dispatchers.IO) { feedRepository.getFeed(limit = 20) }
+            val latestPost = if (feedResult is ApiResult.Success) {
+                feedResult.data.posts.firstOrNull { it.author.id != myId }
+            } else null
+
+            if (latestPost != null) {
+                views.setTextViewText(R.id.widget_post_caption, latestPost.caption)
+                views.setViewVisibility(R.id.widget_post_caption, android.view.View.VISIBLE)
+                
+                val imageLoader = ImageLoader(context)
+                
+                // Load post image - Resize to avoid Binder transaction limit (1MB)
+                val postImageRequest = ImageRequest.Builder(context)
+                    .data(latestPost.imageUrl)
+                    .size(512, 512) // Resize to reasonable widget size
+                    .allowHardware(false)
+                    .bitmapConfig(Bitmap.Config.ARGB_8888)
+                    .build()
+                
+                val postImageResult = withContext(Dispatchers.IO) { imageLoader.execute(postImageRequest) }
+                postImageResult.drawable?.let {
+                    val bitmap = drawableToBitmap(it)
+                    views.setImageViewBitmap(R.id.widget_post_image, bitmap)
+                }
+
+                // Load author avatar
+                val avatarRequest = ImageRequest.Builder(context)
+                    .data(latestPost.author.profileImageUrl)
+                    .transformations(CircleCropTransformation())
+                    .size(128, 128)
+                    .allowHardware(false)
+                    .bitmapConfig(Bitmap.Config.ARGB_8888)
+                    .build()
+                
+                val avatarResult = withContext(Dispatchers.IO) { imageLoader.execute(avatarRequest) }
+                avatarResult.drawable?.let {
+                    val bitmap = drawableToBitmap(it)
+                    views.setImageViewBitmap(R.id.widget_author_avatar, bitmap)
+                }
+            } else {
+                views.setTextViewText(R.id.widget_post_caption, "No posts yet")
+                views.setImageViewResource(R.id.widget_post_image, android.R.color.black)
+                views.setImageViewResource(R.id.widget_author_avatar, android.R.color.transparent)
             }
-        } else {
-            views.setTextViewText(R.id.widget_post_caption, "No posts yet")
-            views.setImageViewResource(R.id.widget_post_image, android.R.color.black)
-            views.setImageViewResource(R.id.widget_author_avatar, android.R.color.transparent)
+        } catch (e: Exception) {
+            Log.e("SolariWidget", "Error updating widget", e)
+            views.setTextViewText(R.id.widget_post_caption, "Error loading data")
         }
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
