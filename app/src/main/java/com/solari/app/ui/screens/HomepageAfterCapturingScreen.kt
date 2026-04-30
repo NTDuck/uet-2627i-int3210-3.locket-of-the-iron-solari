@@ -668,13 +668,18 @@ private fun PreviewTopActionButton(
 private fun RoundActionButton(
     size: androidx.compose.ui.unit.Dp,
     backgroundColor: Color,
+    enabled: Boolean = true,
     onClick: () -> Unit,
     content: @Composable () -> Unit
 ) {
     Box(
         modifier = Modifier
             .size(size)
-            .scaledClickable(pressedScale = 1.12f, onClick = onClick)
+            .scaledClickable(
+                pressedScale = 1.12f,
+                enabled = enabled,
+                onClick = onClick
+            )
             .clip(CircleShape)
             .background(backgroundColor),
         contentAlignment = Alignment.Center

@@ -52,6 +52,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
@@ -494,6 +495,22 @@ private fun CropWorkspace(
                 val cLeft = left + (drawWidth - size) / 2
                 val cTop = top + (drawHeight - size) / 2
                 cropRect = RectF(cLeft, cTop, cLeft + size, cTop + size)
+            } else {
+                // Constrain existing cropRect to new imageRect
+                val newLeft = cropRect.left.coerceIn(imageRect.left, imageRect.right - 100f)
+                val newTop = cropRect.top.coerceIn(imageRect.top, imageRect.bottom - 100f)
+                val newRight = cropRect.right.coerceIn(newLeft + 100f, imageRect.right)
+                val newBottom = cropRect.bottom.coerceIn(newTop + 100f, imageRect.bottom)
+                
+                // If the aspect ratio changed significantly (e.g. rotation), we might need to reset or scale
+                // For simplicity, just ensuring it's within bounds. 
+                // To keep it square if it was moved/constrained:
+                val size = min(newRight - newLeft, newBottom - newTop)
+                if (size != cropRect.width() || size != cropRect.height()) {
+                    cropRect = RectF(newLeft, newTop, newLeft + size, newTop + size)
+                } else {
+                    cropRect = RectF(newLeft, newTop, newRight, newBottom)
+                }
             }
 
             Box(modifier = Modifier.fillMaxSize()) {
@@ -503,11 +520,11 @@ private fun CropWorkspace(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            // Only animate the visuals, the actual crop uses transformedBitmap
-                            // Wait, transformedBitmap already has rotation/flip.
-                            // If I animate here, it will be double-animated or misaligned.
-                            // Actually, I should probably NOT pre-transform bitmap if I want smooth animation.
-                            // But for simplicity, let's just use the transformedBitmap for now as it was.
+                            // Relative animation: animate from the previous state to the current one
+                            // since transformedBitmap already contains the target rotation/flip.
+                            rotationZ = animRotation - rotation
+                            scaleX = if (flipH != 0f) animFlipH / flipH else 1f
+                            scaleY = if (flipV != 0f) animFlipV / flipV else 1f
                         },
                     contentScale = ContentScale.Fit
                 )
@@ -536,25 +553,66 @@ private fun CropWorkspace(
                                 val newRect = RectF(cropRect)
                                 
                                 when (draggingEdge) {
-                                    CropEdge.Left -> newRect.left = (newRect.left + dragAmount.x).coerceIn(imageRect.left, newRect.right - 100f)
-                                    CropEdge.Right -> newRect.right = (newRect.right + dragAmount.x).coerceIn(newRect.left + 100f, imageRect.right)
-                                    CropEdge.Top -> newRect.top = (newRect.top + dragAmount.y).coerceIn(imageRect.top, newRect.bottom - 100f)
-                                    CropEdge.Bottom -> newRect.bottom = (newRect.bottom + dragAmount.y).coerceIn(newRect.top + 100f, imageRect.bottom)
+                                    CropEdge.Left -> {
+                                        val delta = dragAmount.x
+                                        newRect.left = (newRect.left + delta).coerceIn(imageRect.left, newRect.right - 100f)
+                                        // To keep it square, adjust top/bottom or just use the delta for both
+                                        val newWidth = newRect.width()
+                                        newRect.bottom = (newRect.top + newWidth).coerceAtMost(imageRect.bottom)
+                                        if (newRect.bottom - newRect.top < newWidth) {
+                                            newRect.left = newRect.right - newRect.height()
+                                        }
+                                    }
+                                    CropEdge.Right -> {
+                                        val delta = dragAmount.x
+                                        newRect.right = (newRect.right + delta).coerceIn(newRect.left + 100f, imageRect.right)
+                                        val newWidth = newRect.width()
+                                        newRect.bottom = (newRect.top + newWidth).coerceAtMost(imageRect.bottom)
+                                        if (newRect.bottom - newRect.top < newWidth) {
+                                            newRect.right = newRect.left + newRect.height()
+                                        }
+                                    }
+                                    CropEdge.Top -> {
+                                        val delta = dragAmount.y
+                                        newRect.top = (newRect.top + delta).coerceIn(imageRect.top, newRect.bottom - 100f)
+                                        val newHeight = newRect.height()
+                                        newRect.right = (newRect.left + newHeight).coerceAtMost(imageRect.right)
+                                        if (newRect.right - newRect.left < newHeight) {
+                                            newRect.top = newRect.bottom - newRect.width()
+                                        }
+                                    }
+                                    CropEdge.Bottom -> {
+                                        val delta = dragAmount.y
+                                        newRect.bottom = (newRect.bottom + delta).coerceIn(newRect.top + 100f, imageRect.bottom)
+                                        val newHeight = newRect.height()
+                                        newRect.right = (newRect.left + newHeight).coerceAtMost(imageRect.right)
+                                        if (newRect.right - newRect.left < newHeight) {
+                                            newRect.bottom = newRect.top + newRect.width()
+                                        }
+                                    }
                                     CropEdge.TopLeft -> {
-                                        newRect.left = (newRect.left + dragAmount.x).coerceIn(imageRect.left, newRect.right - 100f)
-                                        newRect.top = (newRect.top + dragAmount.y).coerceIn(imageRect.top, newRect.bottom - 100f)
+                                        val delta = if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else dragAmount.y
+                                        val size = (newRect.width() - delta).coerceIn(100f, min(newRect.right - imageRect.left, newRect.bottom - imageRect.top))
+                                        newRect.left = newRect.right - size
+                                        newRect.top = newRect.bottom - size
                                     }
                                     CropEdge.TopRight -> {
-                                        newRect.right = (newRect.right + dragAmount.x).coerceIn(newRect.left + 100f, imageRect.right)
-                                        newRect.top = (newRect.top + dragAmount.y).coerceIn(imageRect.top, newRect.bottom - 100f)
+                                        val delta = if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else -dragAmount.y
+                                        val size = (newRect.width() + delta).coerceIn(100f, min(imageRect.right - newRect.left, newRect.bottom - imageRect.top))
+                                        newRect.right = newRect.left + size
+                                        newRect.top = newRect.bottom - size
                                     }
                                     CropEdge.BottomLeft -> {
-                                        newRect.left = (newRect.left + dragAmount.x).coerceIn(imageRect.left, newRect.right - 100f)
-                                        newRect.bottom = (newRect.bottom + dragAmount.y).coerceIn(newRect.top + 100f, imageRect.bottom)
+                                        val delta = if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else -dragAmount.y
+                                        val size = (newRect.width() - delta).coerceIn(100f, min(newRect.right - imageRect.left, imageRect.bottom - newRect.top))
+                                        newRect.left = newRect.right - size
+                                        newRect.bottom = newRect.top + size
                                     }
                                     CropEdge.BottomRight -> {
-                                        newRect.right = (newRect.right + dragAmount.x).coerceIn(newRect.left + 100f, imageRect.right)
-                                        newRect.bottom = (newRect.bottom + dragAmount.y).coerceIn(newRect.top + 100f, imageRect.bottom)
+                                        val delta = if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else dragAmount.y
+                                        val size = (newRect.width() + delta).coerceIn(100f, min(imageRect.right - newRect.left, imageRect.bottom - imageRect.top))
+                                        newRect.right = newRect.left + size
+                                        newRect.bottom = newRect.top + size
                                     }
                                     else -> {}
                                 }
@@ -640,13 +698,19 @@ private fun DrawWorkspace(
     // To trigger recomposition during drawing
     var drawCounter by remember { mutableIntStateOf(0) }
 
+    val imageWidth = bitmap.width.toFloat()
+    val imageHeight = bitmap.height.toFloat()
+    val screenScale = if (canvasSize.width > 0) min(canvasSize.width / imageWidth, canvasSize.height / imageHeight) else 1f
+    val drawWidth = imageWidth * screenScale
+    val drawHeight = imageHeight * screenScale
+    val imgLeft = (canvasSize.width - drawWidth) / 2
+    val imgTop = (canvasSize.height - drawHeight) / 2
+
     LaunchedEffect(applyTrigger) {
         if (applyTrigger) {
             val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
             val canvas = Canvas(result)
-            val scaleX = bitmap.width / canvasSize.width
-            val scaleY = bitmap.height / canvasSize.height
-            val scale = max(scaleX, scaleY)
+            val scale = bitmap.width / drawWidth
 
             val paint = Paint().apply {
                 isAntiAlias = true
@@ -678,17 +742,17 @@ private fun DrawWorkspace(
         modifier = Modifier
             .fillMaxSize()
             .onGloballyPositioned { canvasSize = it.size.toSize() }
-            .pointerInput(selectedColor, selectedTool) {
+            .pointerInput(selectedColor, selectedTool, imgLeft, imgTop) {
                 detectDragGestures(
                     onDragStart = { offset ->
                         val path = NativePath()
-                        path.moveTo(offset.x, offset.y)
+                        path.moveTo(offset.x - imgLeft, offset.y - imgTop)
                         currentPath = path
                         drawCounter++
                     },
                     onDrag = { change, _ ->
                         change.consume()
-                        currentPath?.lineTo(change.position.x, change.position.y)
+                        currentPath?.lineTo(change.position.x - imgLeft, change.position.y - imgTop)
                         drawCounter++
                     },
                     onDragEnd = {
@@ -705,18 +769,12 @@ private fun DrawWorkspace(
             drawCounter // Observe drawCounter for recomposition
             
             drawIntoCanvas { canvas ->
-                val imageWidth = bitmap.width.toFloat()
-                val imageHeight = bitmap.height.toFloat()
-                val scale = min(size.width / imageWidth, size.height / imageHeight)
-                val drawWidth = imageWidth * scale
-                val drawHeight = imageHeight * scale
-                val left = (size.width - drawWidth) / 2
-                val top = (size.height - drawHeight) / 2
-
-                canvas.nativeCanvas.drawBitmap(bitmap, null, RectF(left, top, left + drawWidth, top + drawHeight), null)
+                canvas.nativeCanvas.drawBitmap(bitmap, null, RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight), null)
                 
                 // Use a layer for CLEAR blend mode to work
                 canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), androidx.compose.ui.graphics.Paint())
+
+                canvas.translate(imgLeft, imgTop)
 
                 val paint = androidx.compose.ui.graphics.Paint().apply {
                     strokeWidth = 10f
@@ -862,17 +920,27 @@ private fun TextWorkspace(
         )
 
         overlay?.let { o ->
+            var boxSize by remember(o.id) { mutableStateOf(Size.Zero) }
             Box(
                 modifier = Modifier
-                    .offset(
-                        with(density) { (o.position.x).toDp() } - 60.dp,
-                        with(density) { (o.position.y).toDp() } - 40.dp
-                    )
+                    .offset {
+                        IntOffset(
+                            (o.position.x - boxSize.width / 2).toInt(),
+                            (o.position.y - boxSize.height / 2).toInt()
+                        )
+                    }
+                    .onGloballyPositioned { boxSize = it.size.toSize() }
                     .graphicsLayer(
                         rotationZ = o.rotation,
                         scaleX = o.scale,
                         scaleY = o.scale
                     )
+                    .pointerInput(o.id) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            o.position += dragAmount
+                        }
+                    }
                     .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
                     .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                     .padding(8.dp)
