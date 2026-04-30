@@ -169,6 +169,16 @@ fun FeedScreen(
     }
     val pagerState = rememberPagerState(initialPage = initialPostPage) { posts.size }
 
+    LaunchedEffect(authorFilterIds, sortMode, initialPostId) {
+        viewModel.updateFilters(authorFilterIds, sortMode, initialPostId)
+    }
+
+    LaunchedEffect(pagerState.currentPage, posts.size) {
+        if (posts.size > 0 && pagerState.currentPage >= posts.size - 3) {
+            viewModel.loadNextPage()
+        }
+    }
+
     var activeInputOverlay by remember { mutableStateOf<FeedInputOverlayMode?>(null) }
     var messageText by remember { mutableStateOf("") }
     var reactionNote by remember { mutableStateOf("") }
@@ -1042,7 +1052,7 @@ private fun FeedPost(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(if (isCurrentUserPost) 24.dp else 4.dp))
 
                         FeedBrowseButton(
                             modifier = Modifier.animateEnterExit(
@@ -1982,7 +1992,7 @@ private fun FeedBrowseButton(
             .fillMaxWidth(0.6f)
             .height(48.dp)
             .scaledClickable(pressedScale = 1.05f, onClick = onClick)
-            .clip(RoundedCornerShape(16.dp))
+            .clip(CircleShape)
             .background(SolariTheme.colors.background)
             .padding(horizontal = 26.dp),
         verticalAlignment = Alignment.CenterVertically,

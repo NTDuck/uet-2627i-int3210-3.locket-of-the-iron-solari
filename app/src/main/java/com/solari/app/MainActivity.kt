@@ -82,6 +82,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent?.action == "com.solari.app.ACTION_EXIT") {
+            finishAffinity()
+            return
+        }
         pendingFriendInviteDeepLink = intent.extractFriendInviteDeepLink()
         preferHighestRefreshRate()
         enableEdgeToEdge()
@@ -109,6 +113,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == "com.solari.app.ACTION_EXIT") {
+            finishAffinity()
+            return
+        }
         pendingFriendInviteDeepLink = intent.extractFriendInviteDeepLink()
     }
 
@@ -471,7 +479,7 @@ private fun SolariApp(
                 popEnterTransition = {
                     if (initialState.destination.route?.contains("FeedBrowse") == true &&
                         targetState.destination.route?.contains("Main") == true) {
-                        fadeIn(tween(500))
+                        scaleIn(initialScale = 0.8f, animationSpec = tween(500)) + fadeIn(tween(500))
                     } else {
                         slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
                     }

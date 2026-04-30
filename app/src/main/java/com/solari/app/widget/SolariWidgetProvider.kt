@@ -63,19 +63,25 @@ class SolariWidgetProvider : AppWidgetProvider() {
 
             val feedResult = withContext(Dispatchers.IO) { feedRepository.getFeed(limit = 20) }
             val latestPost = if (feedResult is ApiResult.Success) {
+                // Find latest post that is NOT from the current user
                 feedResult.data.posts.firstOrNull { it.author.id != myId }
             } else null
 
             if (latestPost != null) {
-                views.setTextViewText(R.id.widget_post_caption, latestPost.caption)
-                views.setViewVisibility(R.id.widget_post_caption, android.view.View.VISIBLE)
+                if (!latestPost.caption.isNullOrEmpty()) {
+                    views.setTextViewText(R.id.widget_post_caption, latestPost.caption)
+                    views.setViewVisibility(R.id.widget_post_caption, android.view.View.VISIBLE)
+                } else {
+                    views.setViewVisibility(R.id.widget_post_caption, android.view.View.GONE)
+                }
                 
                 val imageLoader = ImageLoader(context)
                 
                 // Load post image - Resize to avoid Binder transaction limit (1MB)
+                // 384 * 384 * 4 = ~576KB, safe for Binder
                 val postImageRequest = ImageRequest.Builder(context)
                     .data(latestPost.imageUrl)
-                    .size(512, 512) // Resize to reasonable widget size
+                    .size(384, 384)
                     .allowHardware(false)
                     .bitmapConfig(Bitmap.Config.ARGB_8888)
                     .build()
@@ -90,7 +96,7 @@ class SolariWidgetProvider : AppWidgetProvider() {
                 val avatarRequest = ImageRequest.Builder(context)
                     .data(latestPost.author.profileImageUrl)
                     .transformations(CircleCropTransformation())
-                    .size(128, 128)
+                    .size(96, 96)
                     .allowHardware(false)
                     .bitmapConfig(Bitmap.Config.ARGB_8888)
                     .build()
@@ -101,13 +107,15 @@ class SolariWidgetProvider : AppWidgetProvider() {
                     views.setImageViewBitmap(R.id.widget_author_avatar, bitmap)
                 }
             } else {
-                views.setTextViewText(R.id.widget_post_caption, "No posts yet")
+                views.setTextViewText(R.id.widget_post_caption, "No new posts")
+                views.setViewVisibility(R.id.widget_post_caption, android.view.View.VISIBLE)
                 views.setImageViewResource(R.id.widget_post_image, android.R.color.black)
                 views.setImageViewResource(R.id.widget_author_avatar, android.R.color.transparent)
             }
         } catch (e: Exception) {
             Log.e("SolariWidget", "Error updating widget", e)
-            views.setTextViewText(R.id.widget_post_caption, "Error loading data")
+            views.setViewVisibility(R.id.widget_post_caption, android.view.View.VISIBLE)
+            views.setTextViewText(R.id.widget_post_caption, "Error loading widget")
         }
 
         appWidgetManager.updateAppWidget(appWidgetId, views)

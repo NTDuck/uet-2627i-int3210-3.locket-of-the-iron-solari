@@ -532,7 +532,7 @@ fun HomepageBeforeCapturingScreen(
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(CapturePreviewCornerRadius))
                 .background(SolariTheme.colors.background)
-                .border(1.dp, SolariTheme.colors.onSurfaceVariant, RoundedCornerShape(CapturePreviewCornerRadius))
+                .border(1.dp, Color.Transparent, RoundedCornerShape(CapturePreviewCornerRadius))
                 .pointerInput(boundCamera) {
                     awaitEachGesture {
                         val firstDown = awaitFirstDown(requireUnconsumed = false)

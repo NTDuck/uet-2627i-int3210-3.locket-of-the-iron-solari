@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import androidx.compose.animation.core.tween
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
@@ -175,24 +176,23 @@ fun FeedBrowseScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    FilterToggleButton(
-                        selected = currentSortSelection,
-                        onToggle = { selection ->
-                            viewModel.updateSelectedSort(selection.apiValue ?: "newest")
-                            scrollFeedListToTop()
-                        },
-                        iconTint = SolariTheme.colors.secondary,
-                        modifier = Modifier.size(28.dp),
-                        iconSize = 18
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
                     Text(
                         text = "POSTS",
                         fontSize = 12.sp * 1.4f,
                         fontWeight = FontWeight.Bold,
                         color = SolariTheme.colors.secondary
+                    )
+                    FilterToggleButton(
+                        selected = currentSortSelection,
+                        onToggle = { selection ->
+                            viewModel.updateSelectedSort(selection.apiValue ?: "newest")
+                        },
+                        iconTint = SolariTheme.colors.secondary,
+                        modifier = Modifier.size(28.dp),
+                        iconSize = 18
                     )
                 }
 
@@ -338,7 +338,8 @@ fun FeedBrowseScreen(
                                             .fillMaxSize()
                                             .sharedElement(
                                                 rememberSharedContentState(key = "post_image_${post.id}"),
-                                                animatedVisibilityScope = animatedVisibilityScope
+                                                animatedVisibilityScope = animatedVisibilityScope,
+                                                boundsTransform = { _, _ -> tween(durationMillis = 500) }
                                             ),
                                         contentScale = ContentScale.Crop
                                     )

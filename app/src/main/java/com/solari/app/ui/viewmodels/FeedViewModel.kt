@@ -57,6 +57,13 @@ class FeedViewModel(
     var sortMode by mutableStateOf("default")
         private set
 
+    var isFetchingNextPage by mutableStateOf(false)
+        private set
+
+    var hasReachedEnd by mutableStateOf(false)
+        private set
+
+    private var nextCursor: String? = null
     private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
     private var remotePosts: List<Post> = emptyList()
     private var uploadEntries: List<PostUploadEntry> = emptyList()
@@ -72,50 +79,90 @@ class FeedViewModel(
         refresh()
     }
 
-    fun updateFilters(authorIds: Set<String>, sort: String) {
+    fun updateFilters(authorIds: Set<String>, sort: String, targetPostId: String? = null) {
+        if (authorFilterIds == authorIds && sortMode == sort && (targetPostId == null || posts.any { it.id == targetPostId })) return
         authorFilterIds = authorIds
         sortMode = sort
-        applyDisplayPosts()
+        refresh(resetPagination = true, targetPostId = targetPostId)
     }
 
     fun resetFilters() {
+        if (authorFilterIds.isEmpty() && sortMode == "default") return
         authorFilterIds = emptySet()
         sortMode = "default"
-        applyDisplayPosts()
+        refresh(resetPagination = true)
     }
 
-    fun refresh() {
+    fun loadNextPage() {
+        if (isLoading || isFetchingNextPage || hasReachedEnd) return
+        refresh(resetPagination = false)
+    }
+
+    fun refresh(resetPagination: Boolean = true, targetPostId: String? = null) {
         viewModelScope.launch {
-            isLoading = true
-            errorMessage = null
+            if (resetPagination) {
+                isLoading = true
+                nextCursor = null
+                hasReachedEnd = false
+                remotePosts = emptyList()
+                errorMessage = null
 
-            when (val userResult = userRepository.getMe()) {
-                is ApiResult.Success -> {
-                    currentUser = userResult.data
-                    applyDisplayPosts()
+                when (val userResult = userRepository.getMe()) {
+                    is ApiResult.Success -> {
+                        currentUser = userResult.data
+                    }
+                    is ApiResult.Failure -> errorMessage = userResult.message
                 }
-                is ApiResult.Failure -> errorMessage = userResult.message
+
+                when (val friendsResult = friendRepository.getFriends()) {
+                    is ApiResult.Success -> users = friendsResult.data
+                    is ApiResult.Failure -> if (errorMessage == null) errorMessage = friendsResult.message
+                }
+            } else {
+                isFetchingNextPage = true
             }
 
-            when (val friendsResult = friendRepository.getFriends()) {
-                is ApiResult.Success -> users = friendsResult.data
-                is ApiResult.Failure -> if (errorMessage == null) errorMessage = friendsResult.message
-            }
-
-            when (val feedResult = feedRepository.getFeed()) {
+            when (val feedResult = feedRepository.getFeed(
+                authorIds = authorFilterIds,
+                sort = sortMode,
+                cursor = nextCursor,
+                limit = if (resetPagination) 20 else 15
+            )) {
                 is ApiResult.Success -> {
-                    remotePosts = feedResult.data.posts
-                    val livePostIds = feedResult.data.posts.map { it.id }.toSet()
+                    val newPosts = feedResult.data.posts
+                    nextCursor = feedResult.data.nextCursor
+                    hasReachedEnd = nextCursor == null
 
+                    var postsToDisplay = newPosts
+                    if (resetPagination && targetPostId != null && newPosts.none { it.id == targetPostId }) {
+                        when (val postResult = feedRepository.getPost(targetPostId)) {
+                            is ApiResult.Success -> {
+                                postsToDisplay = listOf(postResult.data) + newPosts.filter { it.id != targetPostId }
+                            }
+                            is ApiResult.Failure -> {
+                                // Fallback to just newPosts if fetching target fails
+                            }
+                        }
+                    }
+
+                    remotePosts = if (resetPagination) {
+                        postsToDisplay
+                    } else {
+                        val existingIds = remotePosts.map { it.id }.toSet()
+                        remotePosts + newPosts.filter { it.id !in existingIds }
+                    }
+                    
+                    val livePostIds = newPosts.map { it.id }.toSet()
                     postUploadCoordinator.removeSyncedUploads(livePostIds)
                     applyDisplayPosts()
+                    
                     val displayedPostIds = posts.map(Post::id).toSet()
                     postActivities = postActivities.filterKeys { it in displayedPostIds }
                 }
                 is ApiResult.Failure -> if (errorMessage == null) errorMessage = feedResult.message
             }
 
-            isLoading = false
+            if (resetPagination) isLoading = false else isFetchingNextPage = false
         }
     }
 

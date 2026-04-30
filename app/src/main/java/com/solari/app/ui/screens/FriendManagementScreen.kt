@@ -76,7 +76,7 @@ import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
-import com.solari.app.ui.components.SortDropdownButton
+import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.User
@@ -372,15 +372,13 @@ fun FriendManagementScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     FriendManagementSectionTitle(text = "FRIEND LIST")
-                    SortDropdownButton(
+                    FilterToggleButton(
                         selected = sortSelection,
-                        onSelected = { selection ->
+                        onToggle = { selection ->
                             sortSelection = selection
                             viewModel.loadFriends(selection.apiValue)
                         },
                         iconTint = SolariTheme.colors.onSurface,
-                        menuContainerColor = SolariTheme.colors.surface,
-                        menuContentColor = SolariTheme.colors.onBackground,
                         modifier = Modifier.size(28.dp),
                         iconSize = 17
                     )

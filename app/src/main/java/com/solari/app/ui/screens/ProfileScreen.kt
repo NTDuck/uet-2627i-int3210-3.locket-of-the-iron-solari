@@ -544,15 +544,19 @@ fun ProfileScreen(
                                 val myProvider = android.content.ComponentName(context, com.solari.app.widget.SolariWidgetProvider::class.java)
 
                                 if (appWidgetManager.isRequestPinAppWidgetSupported) {
-                                    appWidgetManager.requestPinAppWidget(myProvider, null, null)
-                                    // "When clicking 'Add', it should exit the app" 
-                                    // Move to back to allow user to see the home screen for widget placement
-                                    (context as? android.app.Activity)?.moveTaskToBack(true)
+                                    val successCallback = android.app.PendingIntent.getBroadcast(
+                                        context,
+                                        0,
+                                        android.content.Intent(context, com.solari.app.widget.WidgetPinReceiver::class.java),
+                                        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                                    )
+                                    appWidgetManager.requestPinAppWidget(myProvider, null, successCallback)
                                 }
                             }
                         },
                         trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant) }
-                    )                }
+                    )
+                }
 
                 item { Spacer(modifier = Modifier.height(8.dp)) }
 
