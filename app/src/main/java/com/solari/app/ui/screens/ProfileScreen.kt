@@ -540,17 +540,17 @@ fun ProfileScreen(
                         title = "Add the Widget",
                         onClick = {
                             val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
-                            val myProvider = android.content.ComponentName(context, "com.solari.app.widget.SolariWidgetProvider")
+                            val myProvider = android.content.ComponentName(context, com.solari.app.widget.SolariWidgetProvider::class.java)
 
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
                                 if (appWidgetManager.isRequestPinAppWidgetSupported) {
                                     appWidgetManager.requestPinAppWidget(myProvider, null, null)
+                                    (context as? android.app.Activity)?.finish()
                                 }
                             }
                         },
                         trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant) }
-                    )
-                }
+                    )                }
 
                 item { Spacer(modifier = Modifier.height(8.dp)) }
 

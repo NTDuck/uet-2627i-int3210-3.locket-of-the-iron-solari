@@ -269,234 +269,218 @@ fun FeedScreen(
         }
     }
 
-    Scaffold(
-        containerColor = SolariTheme.colors.background,
-        bottomBar = {
-            SolariBottomNavBar(
-                selectedRoute = SolariRoute.Screen.Feed.name,
-                onNavigate = { route ->
-                    when (route) {
-                        SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
-                        SolariRoute.Screen.Conversations.name -> onNavigateToConversations()
-                        SolariRoute.Screen.Profile.name -> onNavigateToProfile()
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            if (posts.isEmpty()) {
-                PullToRefreshBox(
-                    isRefreshing = isUserRefreshing,
-                    onRefresh = {
-                        isUserRefreshing = true
-                        viewModel.refresh()
-                    },
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        item {
-                            Box(
-                                modifier = Modifier.fillParentMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                when {
-                                    viewModel.isLoading -> CircularProgressIndicator(
-                                        color = SolariTheme.colors.primary,
-                                        trackColor = SolariTheme.colors.surface
-                                    )
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SolariTheme.colors.background)
+    ) {
+        if (posts.isEmpty()) {
+            PullToRefreshBox(
+                isRefreshing = isUserRefreshing,
+                onRefresh = {
+                    isUserRefreshing = true
+                    viewModel.refresh()
+                },
+                modifier = Modifier.fillMaxSize()
+            ) {
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    item {
+                        Box(
+                            modifier = Modifier.fillParentMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            when {
+                                viewModel.isLoading -> CircularProgressIndicator(
+                                    color = SolariTheme.colors.primary,
+                                    trackColor = SolariTheme.colors.surface
+                                )
 
-                                    else -> Text(
-                                        text = viewModel.errorMessage ?: "No posts yet",
-                                        color = SolariTheme.colors.onBackground,
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                VerticalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    userScrollEnabled = !isActivitySheetVisible && !isInputOverlayVisible
-                ) { page ->
-                    FeedPost(
-                        post = posts[page],
-                        isActive = page == pagerState.currentPage,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        onLongPress = { showMenuForPost = posts[page] },
-                        onMoreClick = { showMenuForPost = posts[page] },
-                        activityEntries = viewModel.postActivities[posts[page].id].orEmpty(),
-                        onShowActivity = {
-                            activitySheetPostId = posts[page].id
-                            viewModel.loadPostActivity(posts[page].id, force = true)
-                            isActivitySheetVisible = true
-                        },
-                        onSendPostReaction = { emoji, note, onSent ->
-                            viewModel.sendPostReaction(posts[page], emoji, note, onSent)
-                        },
-                        onSendPostReply = { content, onSent ->
-                            viewModel.sendPostReply(posts[page], content, onSent)
-                        },
-                        onNavigateToBrowse = onNavigateToBrowse,
-                        onInputOverlayVisibilityChanged = { isVisible ->
-                            isInputOverlayVisible = isVisible
-                        },
-                        isInputOverlayActive = isInputOverlayVisible,
-                        currentUser = currentUser,
-                        activeInputOverlay = activeInputOverlay,
-                        onShowInputOverlay = { activeInputOverlay = it },
-                        reactionNote = reactionNote,
-                        onReactionNoteChange = { reactionNote = it },
-                        messageText = messageText,
-                        onMessageTextChange = { messageText = it },
-                        onOpenEmojiPicker = { showEmojiPicker = true },
-                        onSendReaction = ::sendReactionOptimistically,
-                        onSendMessage = ::sendMessageOptimistically
-                    )
-                }
-            }
-
-            val currentActivitySheetPostId = activitySheetPostId
-            FeedActivitySheet(
-                visible = isActivitySheetVisible,
-                activities = currentActivitySheetPostId
-                    ?.let { viewModel.postActivities[it] }
-                    .orEmpty(),
-                isLoading = currentActivitySheetPostId in viewModel.loadingPostActivityIds,
-                onDismiss = { isActivitySheetVisible = false }
-            )
-
-            if (showMenuForPost != null) {
-                val post = showMenuForPost!!
-                Dialog(
-                    onDismissRequest = { showMenuForPost = null },
-                ) {
-                    Surface(
-                        color = SolariTheme.colors.surface,
-                        shape = RoundedCornerShape(14.dp),
-                        shadowElevation = 12.dp,
-                        modifier = Modifier.width(220.dp)
-                    ) {
-                        Column {
-                            val canDeletePost = currentUser != null && post.author.id == currentUser.id
-                            FeedPostActionButton(
-                                text = "Download",
-                                textColor = SolariTheme.colors.onSurface,
-                                shape = if (canDeletePost) {
-                                    RoundedCornerShape(
-                                        topStart = 14.dp,
-                                        topEnd = 14.dp,
-                                        bottomEnd = 0.dp,
-                                        bottomStart = 0.dp
-                                    )
-                                } else {
-                                    RoundedCornerShape(14.dp)
-                                },
-                                onClick = {
-                                    showMenuForPost = null
-                                    if (
-                                        Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
-                                        ContextCompat.checkSelfPermission(
-                                            context,
-                                            Manifest.permission.WRITE_EXTERNAL_STORAGE
-                                        ) != PackageManager.PERMISSION_GRANTED
-                                    ) {
-                                        postPendingLegacyDownload = post
-                                        storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                                    } else {
-                                        downloadPost(post)
-                                    }
-                                }
-                            )
-
-                            if (canDeletePost) {
-                                FeedPostActionButton(
-                                    text = "Delete",
-                                    textColor = SolariTheme.colors.error,
-                                    shape = RoundedCornerShape(
-                                        topStart = 0.dp,
-                                        topEnd = 0.dp,
-                                        bottomEnd = 14.dp,
-                                        bottomStart = 14.dp
-                                    ),
-                                    onClick = {
-                                        postPendingDelete = post
-                                        showMenuForPost = null
-                                    }
+                                else -> Text(
+                                    text = viewModel.errorMessage ?: "No posts yet",
+                                    color = SolariTheme.colors.onBackground,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold
                                 )
                             }
                         }
                     }
                 }
             }
-
-            postPendingDelete?.let { post ->
-                SolariConfirmationDialog(
-                    title = "Delete post?",
-                    message = "This post will be removed from your feed.",
-                    confirmText = "Delete",
-                    onConfirm = {
-                        viewModel.deletePost(post.id)
-                        postPendingDelete = null
+        } else {
+            VerticalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = !isActivitySheetVisible && !isInputOverlayVisible
+            ) { page ->
+                FeedPost(
+                    post = posts[page],
+                    isActive = page == pagerState.currentPage,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    onLongPress = { showMenuForPost = posts[page] },
+                    onMoreClick = { showMenuForPost = posts[page] },
+                    activityEntries = viewModel.postActivities[posts[page].id].orEmpty(),
+                    onShowActivity = {
+                        activitySheetPostId = posts[page].id
+                        viewModel.loadPostActivity(posts[page].id, force = true)
+                        isActivitySheetVisible = true
                     },
-                    onDismiss = { postPendingDelete = null }
+                    onSendPostReaction = { emoji, note, onSent ->
+                        viewModel.sendPostReaction(posts[page], emoji, note, onSent)
+                    },
+                    onSendPostReply = { content, onSent ->
+                        viewModel.sendPostReply(posts[page], content, onSent)
+                    },
+                    onNavigateToBrowse = onNavigateToBrowse,
+                    onInputOverlayVisibilityChanged = { isVisible ->
+                        isInputOverlayVisible = isVisible
+                    },
+                    isInputOverlayActive = isInputOverlayVisible,
+                    currentUser = currentUser,
+                    activeInputOverlay = activeInputOverlay,
+                    onShowInputOverlay = { activeInputOverlay = it },
+                    reactionNote = reactionNote,
+                    onReactionNoteChange = { reactionNote = it },
+                    messageText = messageText,
+                    onMessageTextChange = { messageText = it },
+                    onOpenEmojiPicker = { showEmojiPicker = true },
+                    onSendReaction = ::sendReactionOptimistically,
+                    onSendMessage = ::sendMessageOptimistically
                 )
             }
+        }
 
-            AnimatedVisibility(
-                visible = feedbackPillVisible,
-                enter = slideInVertically(
-                    animationSpec = tween(durationMillis = 260),
-                    initialOffsetY = { -it * 2 }
-                ) + fadeIn(animationSpec = tween(durationMillis = 180)),
-                exit = slideOutVertically(
-                    animationSpec = tween(durationMillis = 220),
-                    targetOffsetY = { -it * 2 }
-                ) + fadeOut(animationSpec = tween(durationMillis = 160)),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 12.dp, start = 24.dp, end = 24.dp)
+        val currentActivitySheetPostId = activitySheetPostId
+        FeedActivitySheet(
+            visible = isActivitySheetVisible,
+            activities = currentActivitySheetPostId
+                ?.let { viewModel.postActivities[it] }
+                .orEmpty(),
+            isLoading = currentActivitySheetPostId in viewModel.loadingPostActivityIds,
+            onDismiss = { isActivitySheetVisible = false }
+        )
+
+        if (showMenuForPost != null) {
+            val post = showMenuForPost!!
+            Dialog(
+                onDismissRequest = { showMenuForPost = null },
             ) {
-                FeedFeedbackPill(message = feedbackPillMessage)
+                Surface(
+                    color = SolariTheme.colors.surface,
+                    shape = RoundedCornerShape(14.dp),
+                    shadowElevation = 12.dp,
+                    modifier = Modifier.width(220.dp)
+                ) {
+                    Column {
+                        val canDeletePost = currentUser != null && post.author.id == currentUser.id
+                        FeedPostActionButton(
+                            text = "Download",
+                            textColor = SolariTheme.colors.onSurface,
+                            shape = if (canDeletePost) {
+                                RoundedCornerShape(
+                                    topStart = 14.dp,
+                                    topEnd = 14.dp,
+                                    bottomEnd = 0.dp,
+                                    bottomStart = 0.dp
+                                )
+                            } else {
+                                RoundedCornerShape(14.dp)
+                            },
+                            onClick = {
+                                showMenuForPost = null
+                                if (
+                                    Build.VERSION.SDK_INT <= Build.VERSION_CODES.P &&
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                                    ) != PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    postPendingLegacyDownload = post
+                                    storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                                } else {
+                                    downloadPost(post)
+                                }
+                            }
+                        )
+
+                        if (canDeletePost) {
+                            FeedPostActionButton(
+                                text = "Delete",
+                                textColor = SolariTheme.colors.error,
+                                shape = RoundedCornerShape(
+                                    topStart = 0.dp,
+                                    topEnd = 0.dp,
+                                    bottomEnd = 14.dp,
+                                    bottomStart = 14.dp
+                                ),
+                                onClick = {
+                                    postPendingDelete = post
+                                    showMenuForPost = null
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        postPendingDelete?.let { post ->
+            SolariConfirmationDialog(
+                title = "Delete post?",
+                message = "This post will be removed from your feed.",
+                confirmText = "Delete",
+                onConfirm = {
+                    viewModel.deletePost(post.id)
+                    postPendingDelete = null
+                },
+                onDismiss = { postPendingDelete = null }
+            )
+        }
+
+        AnimatedVisibility(
+            visible = feedbackPillVisible,
+            enter = slideInVertically(
+                animationSpec = tween(durationMillis = 260),
+                initialOffsetY = { -it * 2 }
+            ) + fadeIn(animationSpec = tween(durationMillis = 180)),
+            exit = slideOutVertically(
+                animationSpec = tween(durationMillis = 220),
+                targetOffsetY = { -it * 2 }
+            ) + fadeOut(animationSpec = tween(durationMillis = 160)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 12.dp, start = 24.dp, end = 24.dp)
+        ) {
+            FeedFeedbackPill(message = feedbackPillMessage)
+        }
+
+        activeInputOverlay?.let { overlayMode ->
+            val density = LocalDensity.current
+            val keyboardBottomPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+            val focusRequester = remember { FocusRequester() }
+
+            LaunchedEffect(overlayMode) {
+                focusRequester.requestFocus()
             }
 
-            activeInputOverlay?.let { overlayMode ->
-                val density = LocalDensity.current
-                val keyboardBottomPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
-                val scaffoldBottomPadding = innerPadding.calculateBottomPadding()
-                val focusRequester = remember { FocusRequester() }
-
-                LaunchedEffect(overlayMode) {
-                    focusRequester.requestFocus()
-                }
-
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(10f)
+                    .pointerInput(Unit) {
+                        detectTapGestures { dismissInputOverlay() }
+                    }
+                    .padding(bottom = keyboardBottomPadding)
+            ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .zIndex(10f)
-                        .pointerInput(Unit) {
-                            detectTapGestures { dismissInputOverlay() }
-                        }
-                        .padding(bottom = maxOf(keyboardBottomPadding, scaffoldBottomPadding))
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp, vertical = 16.dp)
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .padding(horizontal = 32.dp, vertical = 16.dp)
-                    ) {
-                        when (overlayMode) {
-                            FeedInputOverlayMode.Reaction -> {
+                    when (overlayMode) {
+                        FeedInputOverlayMode.Reaction -> {
                                 FeedReactionField(
                                     value = reactionNote,
                                     onValueChange = { reactionNote = it.take(20) },
@@ -533,7 +517,6 @@ fun FeedScreen(
             }
         }
     }
-}
 
 private suspend fun saveFeedPostMediaToPictures(
     context: Context,

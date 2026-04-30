@@ -880,7 +880,12 @@ private fun SolariApp(
                 chatId = chatId,
                 initialPartner = selectedConversation?.otherUser,
                 viewModel = viewModel,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = {
+                    navController.navigate(SolariRoute.Screen.Main.name + "/2") {
+                        popUpTo(SolariRoute.Screen.Main.name + "/2") { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToSettings = { settingsChatId, partner ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
