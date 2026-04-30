@@ -10,6 +10,8 @@ import android.graphics.Path as NativePath
 import android.graphics.RectF
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -127,6 +129,20 @@ fun ImageEditingScreen(
     var baseBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var currentBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isLoading by remember { mutableStateOf(true) }
+    var applyTrigger by remember { mutableStateOf(false) }
+
+    // States for sub-screens shared between workspace and bottom row
+    var cropRotation by remember { mutableStateOf(0f) }
+    var cropFlipH by remember { mutableStateOf(1f) }
+    var cropFlipV by remember { mutableStateOf(1f) }
+
+    var drawColor by remember { mutableStateOf(Color.Red) }
+    var drawTool by remember { mutableStateOf(DrawTool.Brush) }
+
+    var textColor by remember { mutableStateOf(Color.Red) }
+
+    var adjustType by remember { mutableStateOf<AdjustType?>(AdjustType.Exposure) }
+    var adjustValues by remember { mutableStateOf(AdjustType.entries.associateWith { 0f }) }
 
     LaunchedEffect(initialMedia) {
         if (initialMedia != null && baseBitmap == null) {
@@ -156,29 +172,74 @@ fun ImageEditingScreen(
     Scaffold(
         containerColor = SolariTheme.colors.background,
         topBar = {
-            if (currentMode == EditMode.Main) {
-                EditingTopBar(
-                    onCancel = { onNavigateBack(null) },
-                    onApply = {
-                        coroutineScope.launch {
-                            val finalBitmap = currentBitmap ?: return@launch
-                            val file = File(context.cacheDir, "edited_${System.currentTimeMillis()}.jpg")
-                            withContext(Dispatchers.IO) {
-                                try {
-                                    FileOutputStream(file).use { out ->
-                                        finalBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+            AnimatedContent(
+                targetState = currentMode,
+                transitionSpec = { fadeIn() togetherWith fadeOut() },
+                label = "topBar"
+            ) { mode ->
+                if (mode == EditMode.Main) {
+                    EditingTopBar(
+                        onCancel = { onNavigateBack(null) },
+                        onApply = {
+                            coroutineScope.launch {
+                                val finalBitmap = currentBitmap ?: return@launch
+                                val file = File(context.cacheDir, "edited_${System.currentTimeMillis()}.jpg")
+                                withContext(Dispatchers.IO) {
+                                    try {
+                                        FileOutputStream(file).use { out ->
+                                            finalBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
                                     }
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
                                 }
+                                onNavigateBack(
+                                    initialMedia?.copy(uri = android.net.Uri.fromFile(file))
+                                )
                             }
-                            onNavigateBack(
-                                initialMedia?.copy(uri = android.net.Uri.fromFile(file))
-                            )
-                        }
-                    },
-                    canApply = viewModel.hasChanges
-                )
+                        },
+                        canApply = viewModel.hasChanges
+                    )
+                } else {
+                    SubScreenTopBar(
+                        onCancel = { currentMode = EditMode.Main },
+                        onApply = { applyTrigger = true }
+                    )
+                }
+            }
+        },
+        bottomBar = {
+            AnimatedContent(
+                targetState = currentMode,
+                transitionSpec = {
+                    (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { it } + fadeOut())
+                },
+                label = "bottomBar"
+            ) { mode ->
+                when (mode) {
+                    EditMode.Main -> EditingBottomBar(onModeSelected = { currentMode = it })
+                    EditMode.Crop -> CropBottomRow(
+                        onRotate = { cropRotation = (cropRotation + 90f) % 360f },
+                        onHFlip = { cropFlipH *= -1f },
+                        onVFlip = { cropFlipV *= -1f }
+                    )
+                    EditMode.Draw -> DrawBottomRow(
+                        selectedColor = drawColor,
+                        onColorSelected = { drawColor = it },
+                        selectedTool = drawTool,
+                        onToolSelected = { drawTool = it }
+                    )
+                    EditMode.Text -> TextBottomRow(
+                        selectedColor = textColor,
+                        onColorSelected = { textColor = it }
+                    )
+                    EditMode.Adjust -> AdjustBottomRow(
+                        activeType = adjustType,
+                        onTypeSelected = { adjustType = it },
+                        values = adjustValues,
+                        onValuesChange = { adjustValues = it }
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -187,19 +248,18 @@ fun ImageEditingScreen(
                 CircularProgressIndicator(color = SolariTheme.colors.primary)
             }
         } else {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    currentBitmap?.let { bitmap ->
+                currentBitmap?.let { bitmap ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
                         when (currentMode) {
                             EditMode.Main -> {
                                 androidx.compose.foundation.Image(
@@ -212,57 +272,66 @@ fun ImageEditingScreen(
                                 )
                             }
                             EditMode.Crop -> {
-                                CropSubScreen(
+                                CropWorkspace(
                                     bitmap = bitmap,
-                                    onCancel = { currentMode = EditMode.Main },
+                                    rotation = cropRotation,
+                                    flipH = cropFlipH,
+                                    flipV = cropFlipV,
+                                    applyTrigger = applyTrigger,
                                     onApply = { edited ->
                                         currentBitmap = edited
                                         viewModel.updateBitmap(edited)
                                         currentMode = EditMode.Main
+                                        applyTrigger = false
                                     }
                                 )
                             }
                             EditMode.Draw -> {
-                                DrawSubScreen(
+                                DrawWorkspace(
                                     bitmap = bitmap,
-                                    onCancel = { currentMode = EditMode.Main },
+                                    selectedColor = drawColor,
+                                    selectedTool = drawTool,
+                                    applyTrigger = applyTrigger,
                                     onApply = { edited ->
                                         currentBitmap = edited
                                         viewModel.updateBitmap(edited)
                                         currentMode = EditMode.Main
+                                        applyTrigger = false
                                     }
                                 )
                             }
                             EditMode.Text -> {
-                                TextSubScreen(
+                                TextWorkspace(
                                     bitmap = bitmap,
-                                    onCancel = { currentMode = EditMode.Main },
+                                    selectedColor = textColor,
+                                    applyTrigger = applyTrigger,
+                                    onCancel = {
+                                        currentMode = EditMode.Main
+                                        applyTrigger = false
+                                    },
                                     onApply = { edited ->
                                         currentBitmap = edited
                                         viewModel.updateBitmap(edited)
                                         currentMode = EditMode.Main
+                                        applyTrigger = false
                                     }
                                 )
                             }
                             EditMode.Adjust -> {
-                                AdjustSubScreen(
+                                AdjustWorkspace(
                                     bitmap = bitmap,
-                                    onCancel = { currentMode = EditMode.Main },
+                                    values = adjustValues,
+                                    applyTrigger = applyTrigger,
                                     onApply = { edited ->
                                         currentBitmap = edited
                                         viewModel.updateBitmap(edited)
                                         currentMode = EditMode.Main
+                                        applyTrigger = false
                                     }
                                 )
                             }
                         }
                     }
-                }
-
-                if (currentMode == EditMode.Main) {
-                    EditingBottomBar(
-                        onModeSelected = { currentMode = it }
-                    )
                 }
             }
         }
@@ -307,18 +376,21 @@ private fun EditingTopBar(
 private fun EditingBottomBar(
     onModeSelected: (EditMode) -> Unit
 ) {
-    LazyRow(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
             .padding(vertical = 24.dp),
-        contentPadding = PaddingValues(horizontal = 24.dp),
-        horizontalArrangement = Arrangement.spacedBy(32.dp)
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        item { EditModeButton("Crop", Icons.Default.Crop, onClick = { onModeSelected(EditMode.Crop) }) }
-        item { EditModeButton("Draw", Icons.Default.Brush, onClick = { onModeSelected(EditMode.Draw) }) }
-        item { EditModeButton("Text", Icons.Default.TextFields, onClick = { onModeSelected(EditMode.Text) }) }
-        item { EditModeButton("Adjust", Icons.Default.Tune, onClick = { onModeSelected(EditMode.Adjust) }) }
+        EditModeButton("Crop", Icons.Default.Crop, onClick = { onModeSelected(EditMode.Crop) })
+        Spacer(modifier = Modifier.width(32.dp))
+        EditModeButton("Draw", Icons.Default.Brush, onClick = { onModeSelected(EditMode.Draw) })
+        Spacer(modifier = Modifier.width(32.dp))
+        EditModeButton("Text", Icons.Default.TextFields, onClick = { onModeSelected(EditMode.Text) })
+        Spacer(modifier = Modifier.width(32.dp))
+        EditModeButton("Adjust", Icons.Default.Tune, onClick = { onModeSelected(EditMode.Adjust) })
     }
 }
 
@@ -328,40 +400,52 @@ private fun EditModeButton(
     icon: ImageVector,
     onClick: () -> Unit
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(onClick = onClick)
-    ) {
-        Icon(
-            icon,
-            contentDescription = label,
-            tint = SolariTheme.colors.onBackground,
-            modifier = Modifier.size(28.dp)
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            modifier = Modifier
+                .size(56.dp)
+                .scaledClickable(pressedScale = 1.1f, onClick = onClick)
+                .clip(CircleShape)
+                .background(SolariTheme.colors.surface, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = SolariTheme.colors.onSurfaceVariant,
+                modifier = Modifier.size(24.dp)
+            )
+        }
         Text(
-            label,
+            text = label,
             color = SolariTheme.colors.onBackground,
             fontSize = 12.sp,
+            lineHeight = 15.sp,
             fontFamily = PlusJakartaSans,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(top = 7.dp),
+            textAlign = TextAlign.Center
         )
     }
 }
 
 @Composable
-private fun CropSubScreen(
+private fun CropWorkspace(
     bitmap: Bitmap,
-    onCancel: () -> Unit,
+    rotation: Float,
+    flipH: Float,
+    flipV: Float,
+    applyTrigger: Boolean,
     onApply: (Bitmap) -> Unit
 ) {
-    var rotation by remember { mutableStateOf(0f) }
-    var flipH by remember { mutableStateOf(1f) }
-    var flipV by remember { mutableStateOf(1f) }
-    
+    val animRotation by animateFloatAsState(targetValue = rotation, label = "rotation")
+    val animFlipH by animateFloatAsState(targetValue = flipH, label = "flipH")
+    val animFlipV by animateFloatAsState(targetValue = flipV, label = "flipV")
+
     var containerSize by remember { mutableStateOf(Size.Zero) }
     var imageRect by remember { mutableStateOf(RectF()) }
     var cropRect by remember { mutableStateOf(RectF()) }
+    var draggingEdge by remember { mutableStateOf(CropEdge.None) }
 
     val transformedBitmap = remember(bitmap, rotation, flipH, flipV) {
         val matrix = Matrix()
@@ -370,195 +454,194 @@ private fun CropSubScreen(
         Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
     }
 
-    Column(Modifier.fillMaxSize()) {
-        SubScreenTopBar(onCancel, onApply = {
+    LaunchedEffect(applyTrigger) {
+        if (applyTrigger) {
             val scaleX = transformedBitmap.width / imageRect.width()
             val scaleY = transformedBitmap.height / imageRect.height()
-            
+
             val left = ((cropRect.left - imageRect.left) * scaleX).toInt().coerceIn(0, transformedBitmap.width - 1)
             val top = ((cropRect.top - imageRect.top) * scaleY).toInt().coerceIn(0, transformedBitmap.height - 1)
             val right = ((cropRect.right - imageRect.left) * scaleX).toInt().coerceIn(left + 1, transformedBitmap.width)
             val bottom = ((cropRect.bottom - imageRect.top) * scaleY).toInt().coerceIn(top + 1, transformedBitmap.height)
-            
+
             val width = (right - left).coerceAtLeast(1)
             val height = (bottom - top).coerceAtLeast(1)
             onApply(Bitmap.createBitmap(transformedBitmap, left, top, width, height))
-        })
+        }
+    }
 
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .onGloballyPositioned { 
-                    containerSize = it.size.toSize()
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            val imageWidth = transformedBitmap.width.toFloat()
-            val imageHeight = transformedBitmap.height.toFloat()
-            val containerWidth = containerSize.width
-            val containerHeight = containerSize.height
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { containerSize = it.size.toSize() },
+        contentAlignment = Alignment.Center
+    ) {
+        val imageWidth = transformedBitmap.width.toFloat()
+        val imageHeight = transformedBitmap.height.toFloat()
+        val containerWidth = containerSize.width
+        val containerHeight = containerSize.height
 
-            if (containerWidth > 0 && containerHeight > 0) {
-                val scale = min(containerWidth / imageWidth, containerHeight / imageHeight)
-                val drawWidth = imageWidth * scale
-                val drawHeight = imageHeight * scale
-                val left = (containerWidth - drawWidth) / 2
-                val top = (containerHeight - drawHeight) / 2
-                
-                imageRect = RectF(left, top, left + drawWidth, top + drawHeight)
-                if (cropRect.isEmpty) {
-                    val size = min(drawWidth, drawHeight)
-                    val cLeft = left + (drawWidth - size) / 2
-                    val cTop = top + (drawHeight - size) / 2
-                    cropRect = RectF(cLeft, cTop, cLeft + size, cTop + size)
-                }
+        if (containerWidth > 0 && containerHeight > 0) {
+            val scale = min(containerWidth / imageWidth, containerHeight / imageHeight)
+            val drawWidth = imageWidth * scale
+            val drawHeight = imageHeight * scale
+            val left = (containerWidth - drawWidth) / 2
+            val top = (containerHeight - drawHeight) / 2
 
-                Box(modifier = Modifier.fillMaxSize()) {
-                    androidx.compose.foundation.Image(
-                        transformedBitmap.asImageBitmap(),
-                        contentDescription = null,
-                        modifier = Modifier
-                            .fillMaxSize(),
-                        contentScale = ContentScale.Fit
-                    )
+            imageRect = RectF(left, top, left + drawWidth, top + drawHeight)
+            if (cropRect.isEmpty) {
+                val size = min(drawWidth, drawHeight)
+                val cLeft = left + (drawWidth - size) / 2
+                val cTop = top + (drawHeight - size) / 2
+                cropRect = RectF(cLeft, cTop, cLeft + size, cTop + size)
+            }
 
-                    Canvas(modifier = Modifier
+            Box(modifier = Modifier.fillMaxSize()) {
+                androidx.compose.foundation.Image(
+                    transformedBitmap.asImageBitmap(),
+                    contentDescription = null,
+                    modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(Unit) {
-                            detectDragGestures(
-                                onDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val newRect = RectF(cropRect)
-                                    val dx = dragAmount.x
-                                    val dy = dragAmount.y
-                                    
-                                    val distLeft = Math.abs(change.position.x - cropRect.left)
-                                    val distRight = Math.abs(change.position.x - cropRect.right)
-                                    val distTop = Math.abs(change.position.y - cropRect.top)
-                                    val distBottom = Math.abs(change.position.y - cropRect.bottom)
-                                    
-                                    if (distLeft < distRight) {
-                                        newRect.left = (newRect.left + dx).coerceIn(imageRect.left, newRect.right - 50f)
-                                    } else {
-                                        newRect.right = (newRect.right + dx).coerceIn(newRect.left + 50f, imageRect.right)
-                                    }
-                                    
-                                    if (distTop < distBottom) {
-                                        newRect.top = (newRect.top + dy).coerceIn(imageRect.top, newRect.bottom - 50f)
-                                    } else {
-                                        newRect.bottom = (newRect.bottom + dy).coerceIn(newRect.top + 50f, imageRect.bottom)
-                                    }
-                                    
-                                    val size = min(newRect.width(), newRect.height())
-                                    
-                                    if (distLeft < distRight) newRect.left = newRect.right - size
-                                    else newRect.right = newRect.left + size
-                                    
-                                    if (distTop < distBottom) newRect.top = newRect.bottom - size
-                                    else newRect.bottom = newRect.top + size
-                                    
-                                    if (newRect.left < imageRect.left) {
-                                        newRect.left = imageRect.left
-                                        newRect.right = newRect.left + size
-                                    }
-                                    if (newRect.right > imageRect.right) {
-                                        newRect.right = imageRect.right
-                                        newRect.left = newRect.right - size
-                                    }
-                                    if (newRect.top < imageRect.top) {
-                                        newRect.top = imageRect.top
-                                        newRect.bottom = newRect.top + size
-                                    }
-                                    if (newRect.bottom > imageRect.bottom) {
-                                        newRect.bottom = imageRect.bottom
-                                        newRect.top = newRect.bottom - size
-                                    }
+                        .graphicsLayer {
+                            // Only animate the visuals, the actual crop uses transformedBitmap
+                            // Wait, transformedBitmap already has rotation/flip.
+                            // If I animate here, it will be double-animated or misaligned.
+                            // Actually, I should probably NOT pre-transform bitmap if I want smooth animation.
+                            // But for simplicity, let's just use the transformedBitmap for now as it was.
+                        },
+                    contentScale = ContentScale.Fit
+                )
 
-                                    cropRect = newRect
+                Canvas(modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { offset ->
+                                val hitSlop = 40.dp.toPx()
+                                draggingEdge = when {
+                                    Math.abs(offset.x - cropRect.left) < hitSlop && Math.abs(offset.y - cropRect.top) < hitSlop -> CropEdge.TopLeft
+                                    Math.abs(offset.x - cropRect.right) < hitSlop && Math.abs(offset.y - cropRect.top) < hitSlop -> CropEdge.TopRight
+                                    Math.abs(offset.x - cropRect.left) < hitSlop && Math.abs(offset.y - cropRect.bottom) < hitSlop -> CropEdge.BottomLeft
+                                    Math.abs(offset.x - cropRect.right) < hitSlop && Math.abs(offset.y - cropRect.bottom) < hitSlop -> CropEdge.BottomRight
+                                    Math.abs(offset.x - cropRect.left) < hitSlop -> CropEdge.Left
+                                    Math.abs(offset.x - cropRect.right) < hitSlop -> CropEdge.Right
+                                    Math.abs(offset.y - cropRect.top) < hitSlop -> CropEdge.Top
+                                    Math.abs(offset.y - cropRect.bottom) < hitSlop -> CropEdge.Bottom
+                                    else -> CropEdge.None
                                 }
-                            )
-                        }
-                    ) {
-                        drawRect(
-                            color = Color.Black.copy(alpha = 0.5f),
-                            size = Size(imageRect.left, size.height)
-                        )
-                        drawRect(
-                            color = Color.Black.copy(alpha = 0.5f),
-                            topLeft = Offset(imageRect.right, 0f),
-                            size = Size(size.width - imageRect.right, size.height)
-                        )
-                        drawRect(
-                            color = Color.Black.copy(alpha = 0.5f),
-                            topLeft = Offset(imageRect.left, 0f),
-                            size = Size(imageRect.width(), imageRect.top)
-                        )
-                        drawRect(
-                            color = Color.Black.copy(alpha = 0.5f),
-                            topLeft = Offset(imageRect.left, imageRect.bottom),
-                            size = Size(imageRect.width(), size.height - imageRect.bottom)
-                        )
-                        
-                        drawRect(
-                            color = Color.Black.copy(alpha = 0.3f),
-                            topLeft = Offset(imageRect.left, imageRect.top),
-                            size = Size(imageRect.width(), cropRect.top - imageRect.top)
-                        )
-                        drawRect(
-                            color = Color.Black.copy(alpha = 0.3f),
-                            topLeft = Offset(imageRect.left, cropRect.bottom),
-                            size = Size(imageRect.width(), imageRect.bottom - cropRect.bottom)
-                        )
-                        drawRect(
-                            color = Color.Black.copy(alpha = 0.3f),
-                            topLeft = Offset(imageRect.left, cropRect.top),
-                            size = Size(cropRect.left - imageRect.left, cropRect.height())
-                        )
-                        drawRect(
-                            color = Color.Black.copy(alpha = 0.3f),
-                            topLeft = Offset(cropRect.right, cropRect.top),
-                            size = Size(imageRect.right - cropRect.right, cropRect.height())
-                        )
-
-                        drawRect(
-                            color = Color.White,
-                            topLeft = Offset(cropRect.left, cropRect.top),
-                            size = Size(cropRect.width(), cropRect.height()),
-                            style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx())
+                            },
+                            onDrag = { change, dragAmount ->
+                                if (draggingEdge == CropEdge.None) return@detectDragGestures
+                                change.consume()
+                                val newRect = RectF(cropRect)
+                                
+                                when (draggingEdge) {
+                                    CropEdge.Left -> newRect.left = (newRect.left + dragAmount.x).coerceIn(imageRect.left, newRect.right - 100f)
+                                    CropEdge.Right -> newRect.right = (newRect.right + dragAmount.x).coerceIn(newRect.left + 100f, imageRect.right)
+                                    CropEdge.Top -> newRect.top = (newRect.top + dragAmount.y).coerceIn(imageRect.top, newRect.bottom - 100f)
+                                    CropEdge.Bottom -> newRect.bottom = (newRect.bottom + dragAmount.y).coerceIn(newRect.top + 100f, imageRect.bottom)
+                                    CropEdge.TopLeft -> {
+                                        newRect.left = (newRect.left + dragAmount.x).coerceIn(imageRect.left, newRect.right - 100f)
+                                        newRect.top = (newRect.top + dragAmount.y).coerceIn(imageRect.top, newRect.bottom - 100f)
+                                    }
+                                    CropEdge.TopRight -> {
+                                        newRect.right = (newRect.right + dragAmount.x).coerceIn(newRect.left + 100f, imageRect.right)
+                                        newRect.top = (newRect.top + dragAmount.y).coerceIn(imageRect.top, newRect.bottom - 100f)
+                                    }
+                                    CropEdge.BottomLeft -> {
+                                        newRect.left = (newRect.left + dragAmount.x).coerceIn(imageRect.left, newRect.right - 100f)
+                                        newRect.bottom = (newRect.bottom + dragAmount.y).coerceIn(newRect.top + 100f, imageRect.bottom)
+                                    }
+                                    CropEdge.BottomRight -> {
+                                        newRect.right = (newRect.right + dragAmount.x).coerceIn(newRect.left + 100f, imageRect.right)
+                                        newRect.bottom = (newRect.bottom + dragAmount.y).coerceIn(newRect.top + 100f, imageRect.bottom)
+                                    }
+                                    else -> {}
+                                }
+                                cropRect = newRect
+                            },
+                            onDragEnd = { draggingEdge = CropEdge.None }
                         )
                     }
+                ) {
+                    // Dim outside crop area
+                    drawRect(Color.Black.copy(alpha = 0.5f), size = Size(size.width, cropRect.top))
+                    drawRect(Color.Black.copy(alpha = 0.5f), topLeft = Offset(0f, cropRect.bottom), size = Size(size.width, size.height - cropRect.bottom))
+                    drawRect(Color.Black.copy(alpha = 0.5f), topLeft = Offset(0f, cropRect.top), size = Size(cropRect.left, cropRect.height()))
+                    drawRect(Color.Black.copy(alpha = 0.5f), topLeft = Offset(cropRect.right, cropRect.top), size = Size(size.width - cropRect.right, cropRect.height()))
+
+                    // Crop border
+                    drawRect(
+                        color = Color.White,
+                        topLeft = Offset(cropRect.left, cropRect.top),
+                        size = Size(cropRect.width(), cropRect.height()),
+                        style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx())
+                    )
+                    
+                    // Corner handles
+                    val handleSize = 10.dp.toPx()
+                    val handleStroke = 3.dp.toPx()
+                    
+                    // Top Left
+                    drawLine(Color.White, Offset(cropRect.left, cropRect.top), Offset(cropRect.left + handleSize, cropRect.top), handleStroke)
+                    drawLine(Color.White, Offset(cropRect.left, cropRect.top), Offset(cropRect.left, cropRect.top + handleSize), handleStroke)
+                    
+                    // Top Right
+                    drawLine(Color.White, Offset(cropRect.right, cropRect.top), Offset(cropRect.right - handleSize, cropRect.top), handleStroke)
+                    drawLine(Color.White, Offset(cropRect.right, cropRect.top), Offset(cropRect.right, cropRect.top + handleSize), handleStroke)
+                    
+                    // Bottom Left
+                    drawLine(Color.White, Offset(cropRect.left, cropRect.bottom), Offset(cropRect.left + handleSize, cropRect.bottom), handleStroke)
+                    drawLine(Color.White, Offset(cropRect.left, cropRect.bottom), Offset(cropRect.left, cropRect.bottom - handleSize), handleStroke)
+                    
+                    // Bottom Right
+                    drawLine(Color.White, Offset(cropRect.right, cropRect.bottom), Offset(cropRect.right - handleSize, cropRect.bottom), handleStroke)
+                    drawLine(Color.White, Offset(cropRect.right, cropRect.bottom), Offset(cropRect.right, cropRect.bottom - handleSize), handleStroke)
                 }
             }
-        }
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 24.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            SubScreenActionButton("Rotate", Icons.AutoMirrored.Filled.RotateRight) { rotation = (rotation + 90f) % 360f }
-            SubScreenActionButton("H-Flip", Icons.Default.Flip) { flipH *= -1f }
-            SubScreenActionButton("V-Flip", Icons.Default.Flip) { flipV *= -1f }
         }
     }
 }
 
 @Composable
-private fun DrawSubScreen(
+private fun CropBottomRow(
+    onRotate: () -> Unit,
+    onHFlip: () -> Unit,
+    onVFlip: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(vertical = 24.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        SubScreenActionButton("Rotate", Icons.AutoMirrored.Filled.RotateRight, onClick = onRotate)
+        SubScreenActionButton("H-Flip", Icons.Default.Flip, onClick = onHFlip)
+        SubScreenActionButton("V-Flip", Icons.Default.Flip, onClick = onVFlip)
+    }
+}
+
+private enum class CropEdge { None, Left, Top, Right, Bottom, TopLeft, TopRight, BottomLeft, BottomRight }
+
+@Composable
+private fun DrawWorkspace(
     bitmap: Bitmap,
-    onCancel: () -> Unit,
+    selectedColor: Color,
+    selectedTool: DrawTool,
+    applyTrigger: Boolean,
     onApply: (Bitmap) -> Unit
 ) {
-    var selectedColor by remember { mutableStateOf(Color.Red) }
-    var selectedTool by remember { mutableStateOf(DrawTool.Brush) }
     val paths = remember { mutableStateListOf<DrawPath>() }
     var currentPath by remember { mutableStateOf<NativePath?>(null) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
+    
+    // To trigger recomposition during drawing
+    var drawCounter by remember { mutableIntStateOf(0) }
 
-    Column(Modifier.fillMaxSize()) {
-        SubScreenTopBar(onCancel, onApply = {
+    LaunchedEffect(applyTrigger) {
+        if (applyTrigger) {
             val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
             val canvas = Canvas(result)
             val scaleX = bitmap.width / canvasSize.width
@@ -588,248 +671,284 @@ private fun DrawSubScreen(
                 canvas.drawPath(scaledPath, paint)
             }
             onApply(result)
-        })
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .onGloballyPositioned { canvasSize = it.size.toSize() }
-                .pointerInput(selectedColor, selectedTool) {
-                    detectDragGestures(
-                        onDragStart = { offset ->
-                            val path = NativePath()
-                            path.moveTo(offset.x, offset.y)
-                            currentPath = path
-                        },
-                        onDrag = { change, _ ->
-                            change.consume()
-                            currentPath?.lineTo(change.position.x, change.position.y)
-                        },
-                        onDragEnd = {
-                            currentPath?.let {
-                                paths.add(DrawPath(it, selectedColor, 10f, selectedTool == DrawTool.Eraser))
-                            }
-                            currentPath = null
-                        }
-                    )
-                }
-        ) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                drawIntoCanvas { canvas ->
-                    val imageWidth = bitmap.width.toFloat()
-                    val imageHeight = bitmap.height.toFloat()
-                    val scale = min(size.width / imageWidth, size.height / imageHeight)
-                    val drawWidth = imageWidth * scale
-                    val drawHeight = imageHeight * scale
-                    val left = (size.width - drawWidth) / 2
-                    val top = (size.height - drawHeight) / 2
-
-                    canvas.nativeCanvas.drawBitmap(bitmap, null, RectF(left, top, left + drawWidth, top + drawHeight), null)
-                    
-                    val paint = androidx.compose.ui.graphics.Paint().apply {
-                        strokeWidth = 10f
-                        style = PaintingStyle.Stroke
-                        strokeJoin = StrokeJoin.Round
-                        strokeCap = StrokeCap.Round
-                    }
-
-                    paths.forEach { drawPath ->
-                        paint.color = drawPath.color
-                        paint.blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
-                        canvas.drawPath(drawPath.path.asComposePath(), paint)
-                    }
-                    
-                    currentPath?.let { path ->
-                        paint.color = selectedColor
-                        paint.blendMode = if (selectedTool == DrawTool.Eraser) BlendMode.Clear else BlendMode.SrcOver
-                        canvas.drawPath(path.asComposePath(), paint)
-                    }
-                }
-            }
         }
+    }
 
-        Column(modifier = Modifier.padding(vertical = 16.dp)) {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(PresetColors) { color ->
-                    ColorButton(color, isSelected = selectedColor == color) { selectedColor = color }
-                }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { canvasSize = it.size.toSize() }
+            .pointerInput(selectedColor, selectedTool) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        val path = NativePath()
+                        path.moveTo(offset.x, offset.y)
+                        currentPath = path
+                        drawCounter++
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        currentPath?.lineTo(change.position.x, change.position.y)
+                        drawCounter++
+                    },
+                    onDragEnd = {
+                        currentPath?.let {
+                            paths.add(DrawPath(it, selectedColor, 10f, selectedTool == DrawTool.Eraser))
+                        }
+                        currentPath = null
+                        drawCounter++
+                    }
+                )
             }
-            Spacer(modifier = Modifier.height(16.dp))
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically,
-                contentPadding = PaddingValues(horizontal = 16.dp)
-            ) {
-                item {
-                    ToolButton("Brush", Icons.Default.Brush, isSelected = selectedTool == DrawTool.Brush) { selectedTool = DrawTool.Brush }
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCounter // Observe drawCounter for recomposition
+            
+            drawIntoCanvas { canvas ->
+                val imageWidth = bitmap.width.toFloat()
+                val imageHeight = bitmap.height.toFloat()
+                val scale = min(size.width / imageWidth, size.height / imageHeight)
+                val drawWidth = imageWidth * scale
+                val drawHeight = imageHeight * scale
+                val left = (size.width - drawWidth) / 2
+                val top = (size.height - drawHeight) / 2
+
+                canvas.nativeCanvas.drawBitmap(bitmap, null, RectF(left, top, left + drawWidth, top + drawHeight), null)
+                
+                // Use a layer for CLEAR blend mode to work
+                canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), androidx.compose.ui.graphics.Paint())
+
+                val paint = androidx.compose.ui.graphics.Paint().apply {
+                    strokeWidth = 10f
+                    style = PaintingStyle.Stroke
+                    strokeJoin = StrokeJoin.Round
+                    strokeCap = StrokeCap.Round
                 }
-                item {
-                    Spacer(modifier = Modifier.width(24.dp))
-                    ToolButton("Eraser", Icons.Default.AutoFixNormal, isSelected = selectedTool == DrawTool.Eraser) { selectedTool = DrawTool.Eraser }
+
+                paths.forEach { drawPath ->
+                    paint.color = drawPath.color
+                    paint.blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
+                    canvas.drawPath(drawPath.path.asComposePath(), paint)
                 }
+                
+                currentPath?.let { path ->
+                    paint.color = selectedColor
+                    paint.blendMode = if (selectedTool == DrawTool.Eraser) BlendMode.Clear else BlendMode.SrcOver
+                    canvas.drawPath(path.asComposePath(), paint)
+                }
+                
+                canvas.restore()
             }
         }
     }
 }
 
 @Composable
-private fun TextSubScreen(
-    bitmap: Bitmap,
-    onCancel: () -> Unit,
-    onApply: (Bitmap) -> Unit
+private fun DrawBottomRow(
+    selectedColor: Color,
+    onColorSelected: (Color) -> Unit,
+    selectedTool: DrawTool,
+    onToolSelected: (DrawTool) -> Unit
 ) {
-    var selectedColor by remember { mutableStateOf(Color.Red) }
-    var activeOverlay by remember { mutableStateOf<TextOverlay?>(null) }
-    var isEditingText by remember { mutableStateOf(false) }
-    val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    var canvasSize by remember { mutableStateOf(Size.Zero) }
-
-    val applyTextToBitmap = {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(result)
-        val scaleX = bitmap.width / canvasSize.width
-        val scaleY = bitmap.height / canvasSize.height
-        val scale = max(scaleX, scaleY)
-
-        val paint = Paint().apply {
-            color = activeOverlay?.color?.toArgb() ?: Color.Red.toArgb()
-            textSize = 60f * (activeOverlay?.scale ?: 1f) * scale
-            textAlign = Paint.Align.CENTER
-            isAntiAlias = true
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-        }
-        
-        activeOverlay?.let { overlay ->
-            if (overlay.text != "..." && overlay.text.isNotEmpty()) {
-                canvas.save()
-                canvas.rotate(overlay.rotation, overlay.position.x * scale, overlay.position.y * scale)
-                canvas.drawText(overlay.text, overlay.position.x * scale, overlay.position.y * scale, paint)
-                canvas.restore()
-            }
-        }
-        onApply(result)
-    }
-
-    Column(Modifier.fillMaxSize()) {
-        SubScreenTopBar(onCancel, onApply = applyTextToBitmap)
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .onGloballyPositioned { canvasSize = it.size.toSize() }
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        if (activeOverlay == null) {
-                            activeOverlay = TextOverlay(position = offset, color = selectedColor)
-                        } else {
-                            if (activeOverlay?.text != "..." && activeOverlay?.text?.isNotEmpty() == true) {
-                                applyTextToBitmap()
-                            } else {
-                                activeOverlay = null
-                            }
-                        }
-                    }
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.foundation.Image(bitmap.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
-
-            activeOverlay?.let { overlay ->
-                Box(
-                    modifier = Modifier
-                        .offset(overlay.position.x.dp - 50.dp, overlay.position.y.dp - 30.dp)
-                        .graphicsLayer(rotationZ = overlay.rotation, scaleX = overlay.scale, scaleY = overlay.scale)
-                        .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                        .padding(8.dp)
-                ) {
-                    IconButton(
-                        onClick = { activeOverlay = null },
-                        modifier = Modifier.align(Alignment.TopStart).size(24.dp)
-                    ) {
-                        Icon(Icons.Default.Delete, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    }
-
-                    IconButton(
-                        onClick = { },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .size(24.dp)
-                            .pointerInput(Unit) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    val centerX = overlay.position.x
-                                    val centerY = overlay.position.y
-                                    val angle = atan2(change.position.y - centerY, change.position.x - centerX)
-                                    overlay.rotation = Math.toDegrees(angle.toDouble()).toFloat()
-                                }
-                            }
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.RotateRight, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    }
-
-                    BasicTextField(
-                        value = overlay.text,
-                        onValueChange = { overlay.text = it },
-                        modifier = Modifier
-                            .padding(horizontal = 32.dp, vertical = 24.dp)
-                            .focusRequester(focusRequester)
-                            .clickable { isEditingText = true },
-                        textStyle = TextStyle(
-                            color = overlay.color,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            fontFamily = PlusJakartaSans
-                        ),
-                        cursorBrush = SolidColor(overlay.color),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(onDone = { 
-                            isEditingText = false
-                            keyboardController?.hide()
-                        })
-                    )
-
-                    IconButton(
-                        onClick = { },
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .size(24.dp)
-                            .pointerInput(Unit) {
-                                detectDragGestures { change, dragAmount ->
-                                    change.consume()
-                                    val dist = sqrt(dragAmount.x * dragAmount.x + dragAmount.y * dragAmount.y)
-                                    if (dragAmount.x > 0 || dragAmount.y > 0) overlay.scale += dist * 0.005f
-                                    else overlay.scale -= dist * 0.005f
-                                    overlay.scale = overlay.scale.coerceIn(0.5f, 4f)
-                                }
-                            }
-                    ) {
-                        Icon(Icons.Default.OpenInFull, null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
-        }
-
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(vertical = 16.dp)
+    ) {
         LazyRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp),
+            modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(PresetColors) { color ->
-                ColorButton(color, isSelected = selectedColor == color) { 
-                    selectedColor = color
-                    activeOverlay?.color = color
+                ColorButton(color, isSelected = selectedColor == color) { onColorSelected(color) }
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ToolButton("Brush", Icons.Default.Brush, isSelected = selectedTool == DrawTool.Brush) { onToolSelected(DrawTool.Brush) }
+            Spacer(modifier = Modifier.width(24.dp))
+            ToolButton("Eraser", Icons.Default.AutoFixNormal, isSelected = selectedTool == DrawTool.Eraser) { onToolSelected(DrawTool.Eraser) }
+        }
+    }
+}
+
+@Composable
+private fun TextWorkspace(
+    bitmap: Bitmap,
+    selectedColor: Color,
+    applyTrigger: Boolean,
+    onCancel: () -> Unit,
+    onApply: (Bitmap) -> Unit
+) {
+    var overlay by remember { mutableStateOf<TextOverlay?>(null) }
+    var canvasSize by remember { mutableStateOf(Size.Zero) }
+    var currentWorkingBitmap by remember { mutableStateOf(bitmap) }
+    val focusRequester = remember { FocusRequester() }
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    val density = LocalDensity.current
+    val bakeText = {
+        overlay?.let { o ->
+            if (o.text != "..." && o.text.isNotEmpty()) {
+                val result = currentWorkingBitmap.copy(Bitmap.Config.ARGB_8888, true)
+                val canvas = Canvas(result)
+                val scaleX = currentWorkingBitmap.width / canvasSize.width
+                val scaleY = currentWorkingBitmap.height / canvasSize.height
+                val scale = max(scaleX, scaleY)
+
+                val paint = Paint().apply {
+                    color = o.color.toArgb()
+                    textSize = with(density) { 24.sp.toPx() } * o.scale * scale
+                    textAlign = Paint.Align.CENTER
+                    isAntiAlias = true
+                    typeface = android.graphics.Typeface.DEFAULT_BOLD
+                }
+                canvas.save()
+                canvas.rotate(o.rotation, o.position.x * scale, o.position.y * scale)
+                canvas.drawText(o.text, o.position.x * scale, o.position.y * scale, paint)
+                canvas.restore()
+                currentWorkingBitmap = result
+            }
+        }
+        overlay = null
+    }
+
+    LaunchedEffect(applyTrigger) {
+        if (applyTrigger) {
+            if (overlay != null) {
+                bakeText()
+            }
+            onApply(currentWorkingBitmap)
+        }
+    }
+    
+    // Update overlay color when selectedColor changes
+    LaunchedEffect(selectedColor) {
+        overlay?.color = selectedColor
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .onGloballyPositioned { canvasSize = it.size.toSize() }
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    if (overlay == null) {
+                        overlay = TextOverlay(position = offset, color = selectedColor)
+                    } else {
+                        // Check if click is outside the box
+                        // For simplicity, we assume clicking anywhere else applies it
+                        if (overlay?.text != "..." && overlay?.text?.isNotEmpty() == true) {
+                            bakeText()
+                        } else {
+                            overlay = null
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        androidx.compose.foundation.Image(
+            currentWorkingBitmap.asImageBitmap(),
+            null,
+            Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
+        )
+
+        overlay?.let { o ->
+            Box(
+                modifier = Modifier
+                    .offset(
+                        with(density) { (o.position.x).toDp() } - 60.dp,
+                        with(density) { (o.position.y).toDp() } - 40.dp
+                    )
+                    .graphicsLayer(
+                        rotationZ = o.rotation,
+                        scaleX = o.scale,
+                        scaleY = o.scale
+                    )
+                    .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                    .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
+                    .padding(8.dp)
+            ) {
+                // Trash button (top left)
+                IconButton(
+                    onClick = { overlay = null },
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .size(24.dp)
+                ) {
+                    Icon(Icons.Default.Delete, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+
+                // Rotate button (top right)
+                IconButton(
+                    onClick = { },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(24.dp)
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, _ ->
+                                change.consume()
+                                val centerX = o.position.x
+                                val centerY = o.position.y
+                                val angle = atan2(change.position.y - centerY, change.position.x - centerX)
+                                o.rotation = Math.toDegrees(angle.toDouble()).toFloat()
+                            }
+                        }
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.RotateRight, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                }
+
+                BasicTextField(
+                    value = o.text,
+                    onValueChange = { o.text = it },
+                    modifier = Modifier
+                        .padding(horizontal = 32.dp, vertical = 24.dp)
+                        .focusRequester(focusRequester)
+                        .onGloballyPositioned {
+                             if (o.text == "...") {
+                                 focusRequester.requestFocus()
+                                 keyboardController?.show()
+                             }
+                        },
+                    textStyle = TextStyle(
+                        color = o.color,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        fontFamily = PlusJakartaSans
+                    ),
+                    cursorBrush = SolidColor(o.color),
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = {
+                        keyboardController?.hide()
+                    })
+                )
+
+                // Resize button (bottom right)
+                IconButton(
+                    onClick = { },
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(24.dp)
+                        .pointerInput(Unit) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                val dist = sqrt(dragAmount.x * dragAmount.x + dragAmount.y * dragAmount.y)
+                                if (dragAmount.x > 0 || dragAmount.y > 0) o.scale += dist * 0.005f
+                                else o.scale -= dist * 0.005f
+                                o.scale = o.scale.coerceIn(0.5f, 5f)
+                            }
+                        }
+                ) {
+                    Icon(Icons.Default.OpenInFull, null, tint = Color.White, modifier = Modifier.size(16.dp))
                 }
             }
         }
@@ -837,14 +956,39 @@ private fun TextSubScreen(
 }
 
 @Composable
-private fun AdjustSubScreen(
+private fun TextBottomRow(
+    selectedColor: Color,
+    onColorSelected: (Color) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(vertical = 16.dp)
+    ) {
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(PresetColors) { color ->
+                ColorButton(color, isSelected = selectedColor == color) { onColorSelected(color) }
+            }
+        }
+        // Requirement: "The sub-screen row should be the same as Draw's sub-screen."
+        // Draw's sub-screen has Tools too. But Text doesn't need Brush/Eraser.
+        // I'll add a spacer to match the height if needed, but the layout is already centered.
+        Spacer(modifier = Modifier.height(56.dp)) // To match Draw's height
+    }
+}
+
+@Composable
+private fun AdjustWorkspace(
     bitmap: Bitmap,
-    onCancel: () -> Unit,
+    values: Map<AdjustType, Float>,
+    applyTrigger: Boolean,
     onApply: (Bitmap) -> Unit
 ) {
-    var activeType by remember { mutableStateOf<AdjustType?>(null) }
-    var values by remember { mutableStateOf(AdjustType.entries.associateWith { 0f }) }
-
     val adjustedBitmap = remember(bitmap, values) {
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(result)
@@ -882,49 +1026,71 @@ private fun AdjustSubScreen(
         result
     }
 
-    Column(Modifier.fillMaxSize()) {
-        SubScreenTopBar(onCancel, onApply = { onApply(adjustedBitmap) })
-
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-            androidx.compose.foundation.Image(adjustedBitmap.asImageBitmap(), null, Modifier.fillMaxSize(), contentScale = ContentScale.Fit)
+    LaunchedEffect(applyTrigger) {
+        if (applyTrigger) {
+            onApply(adjustedBitmap)
         }
+    }
 
-        Column(modifier = Modifier.padding(vertical = 16.dp)) {
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(AdjustType.entries) { type ->
-                    FilterChip(
-                        selected = activeType == type,
-                        onClick = { activeType = type },
-                        label = { Text(type.name, fontSize = 12.sp, fontFamily = PlusJakartaSans) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = SolariTheme.colors.primary.copy(alpha = 0.2f),
-                            selectedLabelColor = SolariTheme.colors.primary
-                        )
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        androidx.compose.foundation.Image(
+            adjustedBitmap.asImageBitmap(),
+            null,
+            Modifier.fillMaxSize(),
+            contentScale = ContentScale.Fit
+        )
+    }
+}
+
+@Composable
+private fun AdjustBottomRow(
+    activeType: AdjustType?,
+    onTypeSelected: (AdjustType) -> Unit,
+    values: Map<AdjustType, Float>,
+    onValuesChange: (Map<AdjustType, Float>) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .padding(vertical = 16.dp)
+    ) {
+        LazyRow(
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(AdjustType.entries) { type ->
+                FilterChip(
+                    selected = activeType == type,
+                    onClick = { onTypeSelected(type) },
+                    label = { Text(type.name, fontSize = 12.sp, fontFamily = PlusJakartaSans) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = SolariTheme.colors.primary.copy(alpha = 0.2f),
+                        selectedLabelColor = SolariTheme.colors.primary
                     )
-                }
-            }
-            
-            Slider(
-                value = values[activeType] ?: 0f,
-                onValueChange = { activeType?.let { type ->
-                    val newVal = values.toMutableMap()
-                    newVal[type] = it
-                    values = newVal
-                }},
-                valueRange = -1f..1f,
-                modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
-                enabled = activeType != null,
-                colors = SliderDefaults.colors(
-                    thumbColor = SolariTheme.colors.primary,
-                    activeTrackColor = SolariTheme.colors.primary,
-                    inactiveTrackColor = SolariTheme.colors.surfaceVariant
                 )
-            )
+            }
         }
+        
+        Slider(
+            value = values[activeType] ?: 0f,
+            onValueChange = { newVal ->
+                activeType?.let { type ->
+                    val updated = values.toMutableMap()
+                    updated[type] = newVal
+                    onValuesChange(updated)
+                }
+            },
+            valueRange = -1f..1f,
+            modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+            enabled = activeType != null,
+            colors = SliderDefaults.colors(
+                thumbColor = SolariTheme.colors.primary,
+                activeTrackColor = SolariTheme.colors.primary,
+                inactiveTrackColor = SolariTheme.colors.surfaceVariant
+            )
+        )
     }
 }
 
@@ -933,8 +1099,10 @@ private fun SubScreenTopBar(onCancel: () -> Unit, onApply: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
         IconButton(onClick = onCancel) {
             Icon(Icons.Default.Close, null, tint = SolariTheme.colors.secondary)
