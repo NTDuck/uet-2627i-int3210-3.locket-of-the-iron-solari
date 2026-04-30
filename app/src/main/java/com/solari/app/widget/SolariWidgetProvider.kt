@@ -30,72 +30,75 @@ class SolariWidgetProvider : AppWidgetProvider() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        for (appWidgetId in appWidgetIds) {
-            updateAppWidget(context, appWidgetManager, appWidgetId)
+        val pendingResult = goAsync()
+        scope.launch {
+            try {
+                for (appWidgetId in appWidgetIds) {
+                    updateAppWidget(context, appWidgetManager, appWidgetId)
+                }
+            } finally {
+                pendingResult.finish()
+            }
         }
     }
 
-    private fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: IntArray) {
-        // Not used, plural version called
-    }
+    private suspend fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
+        val appContainer = (context.applicationContext as SolariApplication).appContainer
+        val feedRepository = appContainer.feedRepository
+        val userRepository = appContainer.userRepository
 
-    private fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
-        scope.launch {
-            val appContainer = (context.applicationContext as SolariApplication).appContainer
-            val feedRepository = appContainer.feedRepository
-            val userRepository = appContainer.userRepository
+        val meResult = userRepository.getMe()
+        val myId = (meResult as? ApiResult.Success)?.data?.id
 
-            val meResult = userRepository.getMe()
-            val myId = (meResult as? ApiResult.Success)?.data?.id
+        val feedResult = feedRepository.getFeed(limit = 20)
+        val latestPost = if (feedResult is ApiResult.Success) {
+            feedResult.data.posts.firstOrNull { it.author.id != myId }
+        } else null
 
-            val feedResult = feedRepository.getFeed(limit = 10)
-            val latestPost = if (feedResult is ApiResult.Success) {
-                feedResult.data.posts.firstOrNull { it.author.id != myId }
-            } else null
+        val views = RemoteViews(context.packageName, R.layout.solari_widget_layout)
 
-            val views = RemoteViews(context.packageName, R.layout.solari_widget_layout)
+        // Click intent to open the app
+        val intent = Intent(context, com.solari.app.MainActivity::class.java)
+        val pendingIntent = android.app.PendingIntent.getActivity(
+            context, 0, intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        views.setOnClickPendingIntent(R.id.widget_post_image, pendingIntent)
 
-            // Click intent to open the app
-            val intent = Intent(context, com.solari.app.MainActivity::class.java)
-            val pendingIntent = android.app.PendingIntent.getActivity(
-                context, 0, intent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            views.setOnClickPendingIntent(R.id.widget_post_image, pendingIntent)
-
-            if (latestPost != null) {
-                views.setTextViewText(R.id.widget_post_caption, latestPost.caption)
-                
-                val imageLoader = ImageLoader(context)
-                
-                // Load post image
-                val postImageRequest = ImageRequest.Builder(context)
-                    .data(latestPost.imageUrl)
-                    .allowHardware(false)
-                    .build()
-                val postImageResult = imageLoader.execute(postImageRequest)
-                postImageResult.drawable?.let {
-                    val bitmap = drawableToBitmap(it)
-                    views.setImageViewBitmap(R.id.widget_post_image, bitmap)
-                }
-
-                // Load author avatar
-                val avatarRequest = ImageRequest.Builder(context)
-                    .data(latestPost.author.profileImageUrl)
-                    .transformations(CircleCropTransformation())
-                    .allowHardware(false)
-                    .build()
-                val avatarResult = imageLoader.execute(avatarRequest)
-                avatarResult.drawable?.let {
-                    val bitmap = drawableToBitmap(it)
-                    views.setImageViewBitmap(R.id.widget_author_avatar, bitmap)
-                }
-            } else {
-                views.setTextViewText(R.id.widget_post_caption, "No posts yet")
+        if (latestPost != null) {
+            views.setTextViewText(R.id.widget_post_caption, latestPost.caption)
+            
+            val imageLoader = ImageLoader(context)
+            
+            // Load post image
+            val postImageRequest = ImageRequest.Builder(context)
+                .data(latestPost.imageUrl)
+                .allowHardware(false)
+                .build()
+            val postImageResult = imageLoader.execute(postImageRequest)
+            postImageResult.drawable?.let {
+                val bitmap = drawableToBitmap(it)
+                views.setImageViewBitmap(R.id.widget_post_image, bitmap)
             }
 
-            appWidgetManager.updateAppWidget(appWidgetId, views)
+            // Load author avatar
+            val avatarRequest = ImageRequest.Builder(context)
+                .data(latestPost.author.profileImageUrl)
+                .transformations(CircleCropTransformation())
+                .allowHardware(false)
+                .build()
+            val avatarResult = imageLoader.execute(avatarRequest)
+            avatarResult.drawable?.let {
+                val bitmap = drawableToBitmap(it)
+                views.setImageViewBitmap(R.id.widget_author_avatar, bitmap)
+            }
+        } else {
+            views.setTextViewText(R.id.widget_post_caption, "No posts yet")
+            views.setImageViewResource(R.id.widget_post_image, android.R.color.black)
+            views.setImageViewResource(R.id.widget_author_avatar, android.R.color.transparent)
         }
+
+        appWidgetManager.updateAppWidget(appWidgetId, views)
     }
 
     private fun drawableToBitmap(drawable: android.graphics.drawable.Drawable): Bitmap {

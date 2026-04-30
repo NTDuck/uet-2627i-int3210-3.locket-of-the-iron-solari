@@ -539,13 +539,15 @@ fun ProfileScreen(
                         icon = Icons.Default.Widgets,
                         title = "Add the Widget",
                         onClick = {
-                            val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
-                            val myProvider = android.content.ComponentName(context, com.solari.app.widget.SolariWidgetProvider::class.java)
-
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
+                                val myProvider = android.content.ComponentName(context, com.solari.app.widget.SolariWidgetProvider::class.java)
+
                                 if (appWidgetManager.isRequestPinAppWidgetSupported) {
                                     appWidgetManager.requestPinAppWidget(myProvider, null, null)
-                                    (context as? android.app.Activity)?.finish()
+                                    // "When clicking 'Add', it should exit the app" 
+                                    // Move to back to allow user to see the home screen for widget placement
+                                    (context as? android.app.Activity)?.moveTaskToBack(true)
                                 }
                             }
                         },
