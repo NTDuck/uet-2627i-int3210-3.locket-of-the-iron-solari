@@ -436,40 +436,58 @@ private fun CapturePreviewCard(
     onZoomStateChanged: (Boolean) -> Unit
 ) {
     var size by remember { mutableStateOf(IntSize.Zero) }
-    var zoomScale by remember { mutableFloatStateOf(1f) }
-    var zoomRotation by remember { mutableFloatStateOf(0f) }
-    var zoomOffset by remember { mutableStateOf(Offset.Zero) }
+    val coroutineScope = rememberCoroutineScope()
+    val zoomScale = remember { Animatable(1f) }
+    val zoomRotation = remember { Animatable(0f) }
+    val zoomOffset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(1f)
-            .zIndex(if (zoomScale > 1f) 10f else 0f)
+            .zIndex(if (zoomScale.value > 1f) 10f else 0f)
             .onGloballyPositioned { size = it.size }
             .pointerInput(Unit) {
                 detectTransformGestures { centroid, pan, zoom, rotate ->
-                    val oldScale = zoomScale
-                    val newScale = (oldScale * zoom).coerceIn(1f, 5f)
+                    coroutineScope.launch {
+                        val oldScale = zoomScale.value
+                        val newScale = (oldScale * zoom).coerceIn(1f, 5f)
+                        
+                        if (newScale >= 1f) {
+                            val scaleFactor = newScale / oldScale
+                            
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            val newOffset = zoomOffset.value * scaleFactor + (centroid - center) * (1 - scaleFactor) + pan
+                            
+                            zoomScale.snapTo(newScale)
+                            zoomRotation.snapTo(zoomRotation.value + rotate)
+                            zoomOffset.snapTo(newOffset)
+                            onZoomStateChanged(newScale > 1f)
+                        }
+                    }
+                }
+            }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                    } while (event.changes.any { it.pressed })
                     
-                    if (newScale >= 1f) {
-                        val scaleFactor = newScale / oldScale
-                        
-                        val center = Offset(size.width / 2f, size.height / 2f)
-                        val newOffset = zoomOffset * scaleFactor + (centroid - center) * (1 - scaleFactor) + pan
-                        
-                        zoomScale = newScale
-                        zoomRotation += rotate
-                        zoomOffset = newOffset
-                        onZoomStateChanged(newScale > 1f)
+                    coroutineScope.launch {
+                        launch { zoomScale.animateTo(1f, tween(300)) }
+                        launch { zoomRotation.animateTo(0f, tween(300)) }
+                        launch { zoomOffset.animateTo(Offset.Zero, tween(300)) }
+                        onZoomStateChanged(false)
                     }
                 }
             }
             .graphicsLayer {
-                scaleX = zoomScale
-                scaleY = zoomScale
-                rotationZ = zoomRotation
-                translationX = zoomOffset.x
-                translationY = zoomOffset.y
+                scaleX = zoomScale.value
+                scaleY = zoomScale.value
+                rotationZ = zoomRotation.value
+                translationX = zoomOffset.value.x
+                translationY = zoomOffset.value.y
                 clip = true
                 shape = RoundedCornerShape(CapturePreviewCornerRadius)
             }

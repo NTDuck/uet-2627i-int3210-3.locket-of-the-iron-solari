@@ -496,6 +496,7 @@ fun FeedScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(10f)
+                    .background(Color.Black.copy(alpha = 0.45f))
                     .pointerInput(Unit) {
                         detectTapGestures { dismissInputOverlay() }
                     }
@@ -505,7 +506,7 @@ fun FeedScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 32.dp, vertical = 16.dp)
+                        .padding(horizontal = 32.dp, vertical = 12.dp)
                 ) {
                     when (overlayMode) {
                         FeedInputOverlayMode.Reaction -> {

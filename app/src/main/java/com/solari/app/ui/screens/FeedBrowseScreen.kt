@@ -144,6 +144,12 @@ fun FeedBrowseScreen(
         else -> SortSelection.Newest
     }
 
+    LaunchedEffect(selectedSort, selectedFriendIds) {
+        if (posts.isNotEmpty()) {
+            scrollFeedListToTop()
+        }
+    }
+
     Scaffold(
         containerColor = SolariTheme.colors.background,
         bottomBar = {

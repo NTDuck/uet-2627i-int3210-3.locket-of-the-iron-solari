@@ -463,7 +463,7 @@ private fun SolariApp(
                 enterTransition = {
                     if (initialState.destination.route?.contains("FeedBrowse") == true &&
                         targetState.destination.route?.contains("Main") == true) {
-                        fadeIn(tween(500))
+                        fadeIn(tween(500, delayMillis = 400))
                     } else {
                         slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
                     }
@@ -479,7 +479,10 @@ private fun SolariApp(
                 popEnterTransition = {
                     if (initialState.destination.route?.contains("FeedBrowse") == true &&
                         targetState.destination.route?.contains("Main") == true) {
-                        fadeIn(tween(500))
+                        fadeIn(tween(500, delayMillis = 400))
+                    } else if (initialState.destination.route?.contains("Main") == true &&
+                        targetState.destination.route?.contains("FeedBrowse") == true) {
+                        fadeIn(tween(500, delayMillis = 400))
                     } else {
                         slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
                     }
