@@ -23,8 +23,10 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculateRotation
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -51,6 +53,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -114,6 +117,12 @@ private enum class FeedInputOverlayMode {
     Message
 }
 
+private const val FeedSharedMediaTransitionMillis = 200
+private val FeedSharedMediaCornerRadius = 8.dp
+private val FeedPostMediaCornerRadius = 14.dp
+private val FeedInputOverlayKeyboardGap = 14.dp
+private val FeedInputOverlayBottomBarCompensation = 104.dp
+
 private data class FeedActivityUserGroup(
     val user: User,
     val activities: List<PostActivityEntry>
@@ -124,6 +133,9 @@ private data class FeedActivityUserGroup(
 fun FeedScreen(
     viewModel: FeedViewModel,
     initialPostId: String? = null,
+    initialPost: Post? = null,
+    initialPosts: List<Post>? = null,
+    enableInitialSharedTransition: Boolean = false,
     authorFilterIds: Set<String> = emptySet(),
     sortMode: String = "default",
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
@@ -148,23 +160,64 @@ fun FeedScreen(
     var feedbackPillEventId by remember { mutableStateOf(0) }
     var isInputOverlayVisible by remember { mutableStateOf(false) }
     var isUserRefreshing by remember { mutableStateOf(false) }
+    var isOpeningMediaSharedTransitionEnabled by remember(initialPostId, enableInitialSharedTransition) {
+        mutableStateOf(enableInitialSharedTransition && initialPostId != null && initialPosts != null)
+    }
+    var hasOpeningMediaSharedTransitionStarted by remember(initialPostId) { mutableStateOf(false) }
     val sourcePosts = viewModel.posts
-    val posts = remember(sourcePosts, authorFilterIds, sortMode) {
-        val filteredPosts = if (authorFilterIds.isEmpty()) {
-            sourcePosts
-        } else {
-            sourcePosts.filter { it.author.id in authorFilterIds }
-        }
+    val isSourceListSyncedToRequestedFilters = viewModel.authorFilterIds == authorFilterIds &&
+            viewModel.sortMode == sortMode &&
+            !viewModel.isLoading
+    val posts = remember(
+        sourcePosts,
+        initialPostId,
+        initialPost,
+        initialPosts,
+        authorFilterIds,
+        sortMode,
+        isSourceListSyncedToRequestedFilters
+    ) {
+        val refreshedPostsById = sourcePosts.associateBy(Post::id)
 
-        when (sortMode) {
-            "newest" -> filteredPosts.sortedByDescending { it.timestamp }
-            "oldest" -> filteredPosts.sortedBy { it.timestamp }
-            else -> filteredPosts
+        if (!initialPosts.isNullOrEmpty()) {
+            val initialPostIds = initialPosts.map(Post::id).toSet()
+            val syncedInitialPosts = initialPosts.map { post ->
+                refreshedPostsById[post.id] ?: post
+            }
+            val additionalPosts = if (isSourceListSyncedToRequestedFilters) {
+                sourcePosts.filterNot { it.id in initialPostIds }
+            } else {
+                emptyList()
+            }
+            syncedInitialPosts + additionalPosts
+        } else {
+            val selectedPost = initialPostId
+                ?.let { targetPostId -> refreshedPostsById[targetPostId] }
+                ?: initialPost
+            val remainingPosts = selectedPost
+                ?.let { selected -> sourcePosts.filterNot { it.id == selected.id } }
+                ?: sourcePosts
+            val filteredPosts = if (authorFilterIds.isEmpty()) {
+                remainingPosts
+            } else {
+                remainingPosts.filter { it.author.id in authorFilterIds }
+            }
+
+            val sortedPosts = when (sortMode) {
+                "newest" -> filteredPosts.sortedByDescending { it.timestamp }
+                "oldest" -> filteredPosts.sortedBy { it.timestamp }
+                else -> filteredPosts
+            }
+
+            if (selectedPost != null) {
+                listOf(selectedPost) + sortedPosts
+            } else {
+                sortedPosts
+            }
         }
     }
     val currentUser = viewModel.currentUser
-    var lastHandledInitialPostId by remember { mutableStateOf<String?>(null) }
-    val initialPostPage = remember(posts.size) {
+    val initialPostPage = remember(posts, initialPostId) {
         if (initialPostId != null) {
             val index = posts.indexOfFirst { it.id == initialPostId }
             if (index >= 0) index else 0
@@ -187,6 +240,20 @@ fun FeedScreen(
         viewModel.updateFilters(authorFilterIds, sortMode, initialPostId)
     }
 
+    LaunchedEffect(
+        isOpeningMediaSharedTransitionEnabled,
+        sharedTransitionScope.isTransitionActive
+    ) {
+        if (!isOpeningMediaSharedTransitionEnabled) return@LaunchedEffect
+
+        if (sharedTransitionScope.isTransitionActive) {
+            hasOpeningMediaSharedTransitionStarted = true
+        } else if (hasOpeningMediaSharedTransitionStarted) {
+            isOpeningMediaSharedTransitionEnabled = false
+            hasOpeningMediaSharedTransitionStarted = false
+        }
+    }
+
     LaunchedEffect(pagerState.currentPage, posts.size) {
         if (posts.size > 0 && pagerState.currentPage >= posts.size - 3) {
             viewModel.loadNextPage()
@@ -199,8 +266,15 @@ fun FeedScreen(
     var showEmojiPicker by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val feedScreenDensity = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+    var hasInputOverlayKeyboardOpened by remember { mutableStateOf(false) }
+    // When true, the overlay was dismissed via keyboard-close (back gesture);
+    // skip the exit animation so the input bar disappears instantly.
+    var isOverlayDismissedByKeyboard by remember { mutableStateOf(false) }
 
-    fun dismissInputOverlay() {
+    fun dismissInputOverlay(fromKeyboard: Boolean = false) {
+        isOverlayDismissedByKeyboard = fromKeyboard
         activeInputOverlay = null
         showEmojiPicker = false
         isInputOverlayVisible = false
@@ -242,6 +316,22 @@ fun FeedScreen(
         viewModel.sendPostReply(post, content) {}
     }
 
+    LaunchedEffect(activeInputOverlay) {
+        hasInputOverlayKeyboardOpened = false
+    }
+
+    LaunchedEffect(activeInputOverlay, feedScreenDensity) {
+        if (activeInputOverlay == null) return@LaunchedEffect
+
+        snapshotFlow { imeInsets.getBottom(feedScreenDensity) }
+            .collect { keyboardBottom ->
+                when {
+                    keyboardBottom > 0 -> hasInputOverlayKeyboardOpened = true
+                    hasInputOverlayKeyboardOpened -> dismissInputOverlay(fromKeyboard = true)
+                }
+            }
+    }
+
     val storagePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -249,16 +339,6 @@ fun FeedScreen(
         postPendingLegacyDownload = null
         if (granted && pendingPost != null) {
             downloadPost(pendingPost)
-        }
-    }
-
-    LaunchedEffect(initialPostId, posts) {
-        if (initialPostId == null || posts.isEmpty() || initialPostId == lastHandledInitialPostId) return@LaunchedEffect
-
-        val requestedPostPage = posts.indexOfFirst { it.id == initialPostId }
-        if (requestedPostPage >= 0) {
-            lastHandledInitialPostId = initialPostId
-            pagerState.scrollToPage(requestedPostPage)
         }
     }
 
@@ -317,13 +397,8 @@ fun FeedScreen(
                             modifier = Modifier.fillParentMaxSize(),
                             contentAlignment = Alignment.Center
                         ) {
-                            when {
-                                viewModel.isLoading -> CircularProgressIndicator(
-                                    color = SolariTheme.colors.primary,
-                                    trackColor = SolariTheme.colors.surface
-                                )
-
-                                else -> Text(
+                            if (!viewModel.isLoading) {
+                                Text(
                                     text = viewModel.errorMessage ?: "No posts yet",
                                     color = SolariTheme.colors.onBackground,
                                     fontFamily = PlusJakartaSans,
@@ -338,26 +413,33 @@ fun FeedScreen(
             VerticalPager(
                 state = pagerState,
                 modifier = Modifier.fillMaxSize(),
-                userScrollEnabled = !isActivitySheetVisible && !isInputOverlayVisible
+                userScrollEnabled = !isActivitySheetVisible && !isInputOverlayVisible,
+                key = { page -> posts[page].id }
             ) { page ->
+                val post = posts[page]
+                val transitionPlaceholderUrl = post.thumbnailUrl
+                    .takeIf { post.id == initialPostId && it.isNotBlank() }
                 FeedPost(
-                    post = posts[page],
+                    post = post,
                     isActive = page == pagerState.currentPage,
+                    enableMediaSharedTransition = isOpeningMediaSharedTransitionEnabled &&
+                            post.id == initialPostId,
+                    transitionPlaceholderUrl = transitionPlaceholderUrl,
                     sharedTransitionScope = sharedTransitionScope,
                     animatedVisibilityScope = animatedVisibilityScope,
-                    onLongPress = { showMenuForPost = posts[page] },
-                    onMoreClick = { showMenuForPost = posts[page] },
-                    activityEntries = viewModel.postActivities[posts[page].id].orEmpty(),
+                    onLongPress = { showMenuForPost = post },
+                    onMoreClick = { showMenuForPost = post },
+                    activityEntries = viewModel.postActivities[post.id].orEmpty(),
                     onShowActivity = {
-                        activitySheetPostId = posts[page].id
-                        viewModel.loadPostActivity(posts[page].id, force = true)
+                        activitySheetPostId = post.id
+                        viewModel.loadPostActivity(post.id, force = true)
                         isActivitySheetVisible = true
                     },
                     onSendPostReaction = { emoji, note, onSent ->
-                        viewModel.sendPostReaction(posts[page], emoji, note, onSent)
+                        viewModel.sendPostReaction(post, emoji, note, onSent)
                     },
                     onSendPostReply = { content, onSent ->
-                        viewModel.sendPostReply(posts[page], content, onSent)
+                        viewModel.sendPostReply(post, content, onSent)
                     },
                     onNavigateToBrowse = onNavigateToBrowse,
                     onInputOverlayVisibilityChanged = { isVisible ->
@@ -483,9 +565,27 @@ fun FeedScreen(
             FeedFeedbackPill(message = feedbackPillMessage)
         }
 
-        activeInputOverlay?.let { overlayMode ->
+        // Reset keyboard-dismiss flag when overlay is shown again
+        LaunchedEffect(activeInputOverlay) {
+            if (activeInputOverlay != null) {
+                isOverlayDismissedByKeyboard = false
+            }
+        }
+
+        // Render overlay: if dismissed by keyboard back gesture, skip rendering
+        // entirely (instant disappear). Otherwise use normal animated flow.
+        if (activeInputOverlay != null && !isOverlayDismissedByKeyboard) {
+            val overlayMode = activeInputOverlay!!
             val density = LocalDensity.current
-            val keyboardBottomPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+            val keyboardBottom = WindowInsets.ime.getBottom(density)
+            val keyboardBottomPadding = with(density) { keyboardBottom.toDp() }
+            // Subtract the Scaffold bottom bar height from IME inset — our container's
+            // bottom is already offset upward by the nav bar, so raw IME inset overshoots.
+            val compensatedKeyboardPadding = if (keyboardBottom > 0) {
+                (keyboardBottomPadding - FeedInputOverlayBottomBarCompensation).coerceAtLeast(0.dp)
+            } else {
+                0.dp
+            }
             val focusRequester = remember { FocusRequester() }
 
             LaunchedEffect(overlayMode) {
@@ -500,13 +600,13 @@ fun FeedScreen(
                     .pointerInput(Unit) {
                         detectTapGestures { dismissInputOverlay() }
                     }
-                    .padding(bottom = keyboardBottomPadding)
             ) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(horizontal = 32.dp, vertical = 12.dp)
+                        .padding(horizontal = 32.dp)
+                        .padding(bottom = compensatedKeyboardPadding + FeedInputOverlayKeyboardGap)
                 ) {
                     when (overlayMode) {
                         FeedInputOverlayMode.Reaction -> {
@@ -761,6 +861,8 @@ private fun FeedPostActionButton(
 private fun FeedPost(
     post: Post,
     isActive: Boolean,
+    enableMediaSharedTransition: Boolean,
+    transitionPlaceholderUrl: String?,
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
     animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onLongPress: () -> Unit,
@@ -799,10 +901,15 @@ private fun FeedPost(
     val zoomScale = remember { Animatable(1f) }
     val zoomRotation = remember { Animatable(0f) }
     val zoomOffset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    var isPostChromeVisible by remember(post.id) { mutableStateOf(false) }
 
     val density = LocalDensity.current
     val keyboardHeight = WindowInsets.ime.getBottom(density)
     val keyboardHeightDp = with(density) { keyboardHeight.toDp() }
+
+    LaunchedEffect(post.id) {
+        isPostChromeVisible = true
+    }
 
     Box(
         modifier = Modifier
@@ -825,21 +932,44 @@ private fun FeedPost(
                     .zIndex(if (isZooming) 10f else 0f)
                     .onGloballyPositioned { size = it.size }
                     .pointerInput(Unit) {
-                        detectTransformGestures { centroid, pan, zoom, rotate ->
-                            coroutineScope.launch {
+                        awaitEachGesture {
+                            var didTransform = false
+
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val pressedChanges = event.changes.filter { it.pressed }
+                                if (pressedChanges.isEmpty()) break
+                                if (pressedChanges.size < 2) continue
+
+                                val zoom = event.calculateZoom()
+                                val rotate = event.calculateRotation()
+                                val centroid = event.calculateCentroid(useCurrent = true)
                                 val oldScale = zoomScale.value
                                 val newScale = (oldScale * zoom).coerceIn(1f, 5f)
-                                
+
                                 if (newScale > 1f || oldScale > 1f) {
                                     val scaleFactor = newScale / oldScale
-                                    
                                     val center = Offset(size.width / 2f, size.height / 2f)
-                                    val newOffset = zoomOffset.value * scaleFactor + (centroid - center) * (1 - scaleFactor)
-                                    
-                                    zoomScale.snapTo(newScale)
-                                    zoomRotation.snapTo(zoomRotation.value + rotate)
-                                    zoomOffset.snapTo(newOffset)
+                                    val newOffset = zoomOffset.value * scaleFactor +
+                                            (centroid - center) * (1 - scaleFactor)
+
+                                    coroutineScope.launch {
+                                        zoomScale.snapTo(newScale)
+                                        zoomRotation.snapTo(zoomRotation.value + rotate)
+                                        zoomOffset.snapTo(newOffset)
+                                    }
                                     isZooming = true
+                                    didTransform = true
+                                    pressedChanges.forEach { it.consume() }
+                                }
+                            }
+
+                            if (didTransform) {
+                                coroutineScope.launch {
+                                    isZooming = false
+                                    launch { zoomScale.animateTo(1f, tween(300)) }
+                                    launch { zoomRotation.animateTo(0f, tween(300)) }
+                                    launch { zoomOffset.animateTo(Offset.Zero, tween(300)) }
                                 }
                             }
                         }
@@ -866,7 +996,7 @@ private fun FeedPost(
                         translationX = zoomOffset.value.x
                         translationY = zoomOffset.value.y
                         clip = true
-                        shape = RoundedCornerShape(14.dp)
+                        shape = RoundedCornerShape(FeedPostMediaCornerRadius)
                     }
                     .combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
@@ -875,43 +1005,57 @@ private fun FeedPost(
                         onLongClick = onLongPress
                     )
             ) {
-                if (post.isVideoMedia()) {
-                    FeedVideoPlayer(
-                        url = post.imageUrl,
-                        mediaType = post.mediaType,
-                        postId = post.id,
-                        isActive = isActive,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        onLongPress = onLongPress,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                val mediaModifier = if (enableMediaSharedTransition) {
+                    with(sharedTransitionScope) {
+                        Modifier
+                            .fillMaxSize()
+                            .sharedBounds(
+                                rememberSharedContentState(key = "post_media_${post.id}"),
+                                animatedVisibilityScope = animatedVisibilityScope,
+                                boundsTransform = { _, _ ->
+                                    tween(
+                                        durationMillis = FeedSharedMediaTransitionMillis,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                },
+                                resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.RemeasureToBounds,
+                                clipInOverlayDuringTransition = OverlayClip(
+                                    RoundedCornerShape(FeedSharedMediaCornerRadius)
+                                )
+                            )
+                    }
                 } else {
-                    FeedImage(
-                        url = post.imageUrl,
-                        postId = post.id,
-                        sharedTransitionScope = sharedTransitionScope,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                    Modifier.fillMaxSize()
+                }
+
+                Box(
+                    modifier = mediaModifier
+                        .clip(RoundedCornerShape(FeedPostMediaCornerRadius))
+                ) {
+                    if (post.isVideoMedia()) {
+                        FeedVideoPlayer(
+                            url = post.imageUrl,
+                            placeholderUrl = transitionPlaceholderUrl,
+                            mediaType = post.mediaType,
+                            isActive = isActive,
+                            onLongPress = onLongPress,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        FeedImage(
+                            url = post.imageUrl,
+                            placeholderUrl = transitionPlaceholderUrl,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    }
                 }
 
                 androidx.compose.animation.AnimatedVisibility(
-                    visible = !isZooming && !isInputOverlayActive,
-                    enter = fadeIn(),
+                    visible = isPostChromeVisible && !isZooming && !isInputOverlayActive,
+                    enter = fadeIn(animationSpec = tween(durationMillis = 180)),
                     exit = fadeOut()
                 ) {
                     with(animatedVisibilityScope) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .animateEnterExit(
-                                    enter = fadeIn(animationSpec = tween(500)),
-                                    exit = fadeOut(animationSpec = tween(500))
-                                )
-                                .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f))
-                        )
-
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
@@ -934,167 +1078,162 @@ private fun FeedPost(
                             )
                         }
 
-                        if (!post.caption.isEmpty()) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .align(Alignment.BottomCenter)
-                                    .padding(bottom = 14.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = post.caption,
-                                    color = SolariTheme.colors.onBackground,
-                                    fontSize = 15.sp,
-                                    lineHeight = 20.sp,
-                                    fontFamily = PlusJakartaSans,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier
-                                        .animateEnterExit(
-                                            enter = fadeIn(animationSpec = tween(500)),
-                                            exit = fadeOut(animationSpec = tween(500))
-                                        )
-                                        .clip(RoundedCornerShape(14.dp))
-                                        .background(SolariTheme.colors.background.copy(alpha = 0.58f))
-                                        .padding(horizontal = 28.dp, vertical = 8.dp)
-                                )
-                            }
-                        }
                     }
                 }
             }
 
+            // Caption below media
+            if (post.caption.isNotEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = post.caption,
+                        color = SolariTheme.colors.onBackground,
+                        fontSize = 10.sp,
+                        lineHeight = 16.sp,
+                        fontFamily = PlusJakartaSans,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
             androidx.compose.animation.AnimatedVisibility(
-                visible = !isZooming && !isInputOverlayActive,
-                enter = fadeIn(),
+                visible = isPostChromeVisible && !isZooming && !isInputOverlayActive,
+                enter = fadeIn(animationSpec = tween(durationMillis = 180)),
                 exit = fadeOut(),
                 modifier = Modifier.weight(1f)
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxSize()
                 ) {
                     with(animatedVisibilityScope) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Spacer(modifier = Modifier.height(36.dp))
+                        // Author block
+                        Spacer(modifier = Modifier.weight(1f))
 
-                            Row(
+                        Row(
+                            modifier = Modifier
+                                .animateEnterExit(
+                                    enter = fadeIn(animationSpec = tween(500)),
+                                    exit = fadeOut(animationSpec = tween(500))
+                                )
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onNavigateToBrowse(displayAuthor.id) }
+                                .padding(vertical = 8.dp, horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            SolariAvatar(
+                                imageUrl = displayAuthor.profileImageUrl,
+                                username = displayAuthor.username,
+                                contentDescription = "Author Avatar",
                                 modifier = Modifier
-                                    .animateEnterExit(
-                                        enter = fadeIn(animationSpec = tween(500)),
-                                        exit = fadeOut(animationSpec = tween(500))
-                                    )
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .clickable { onNavigateToBrowse(displayAuthor.id) }
-                                    .padding(vertical = 8.dp, horizontal = 16.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                SolariAvatar(
-                                    imageUrl = displayAuthor.profileImageUrl,
-                                    username = displayAuthor.username,
-                                    contentDescription = "Author Avatar",
-                                    modifier = Modifier
-                                        .size(40.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    fontSize = 16.sp
-                                )
-
-                                Spacer(modifier = Modifier.width(12.dp))
-
-                                Column {
-                                    Text(
-                                        text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
-                                        color = SolariTheme.colors.onBackground,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = PlusJakartaSans,
-                                        fontSize = 16.sp,
-                                        lineHeight = 16.sp
-                                    )
-                                    Spacer(modifier = Modifier.height(3.dp))
-                                    Text(
-                                        text = post.timestamp.toFeedRelativeTimeLabel(),
-                                        color = SolariTheme.colors.onSurfaceVariant,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = PlusJakartaSans,
-                                        fontSize = 11.sp,
-                                        lineHeight = 13.sp
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(32.dp))
-
-                            Box(
-                                modifier = Modifier.animateEnterExit(
-                                    enter = fadeIn(animationSpec = tween(500)),
-                                    exit = fadeOut(animationSpec = tween(500))
-                                )
-                            ) {
-                                if (isCurrentUserPost) {
-                                    when (post.uploadStatus) {
-                                        PostUploadStatus.None -> {
-                                            FeedActivityPill(
-                                                users = activityUsers.take(3),
-                                                overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
-                                                onClick = onShowActivity
-                                            )
-                                        }
-
-                                        PostUploadStatus.Uploading,
-                                        PostUploadStatus.Processing -> {
-                                            FeedUploadStatusPill(
-                                                text = "Uploading post",
-                                                isLoading = true,
-                                                isError = false
-                                            )
-                                        }
-
-                                        PostUploadStatus.Failed -> {
-                                            FeedUploadStatusPill(
-                                                text = post.uploadError ?: "Upload failed",
-                                                isLoading = false,
-                                                isError = true
-                                            )
-                                        }
-                                    }
-                                } else {
-                                    Column {
-                                        FeedReactionField(
-                                            value = reactionNote,
-                                            onValueChange = onReactionNoteChange,
-                                            onReact = onSendReaction,
-                                            onOpenEmojiPicker = onOpenEmojiPicker,
-                                            isEditable = false,
-                                            onActivate = { onShowInputOverlay(FeedInputOverlayMode.Reaction) }
-                                        )
-
-                                        Spacer(modifier = Modifier.height(14.dp))
-
-                                        FeedMessageField(
-                                            value = messageText,
-                                            onValueChange = onMessageTextChange,
-                                            onSend = onSendMessage,
-                                            isEditable = false,
-                                            onActivate = { onShowInputOverlay(FeedInputOverlayMode.Message) }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            FeedBrowseButton(
-                                modifier = Modifier.animateEnterExit(
-                                    enter = fadeIn(animationSpec = tween(500)),
-                                    exit = fadeOut(animationSpec = tween(500))
-                                ),
-                                onClick = { onNavigateToBrowse(null) }
+                                    .size(40.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                fontSize = 16.sp
                             )
 
-                            Spacer(modifier = Modifier.height(24.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column {
+                                Text(
+                                    text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
+                                    color = SolariTheme.colors.onBackground,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = PlusJakartaSans,
+                                    fontSize = 16.sp,
+                                    lineHeight = 16.sp
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = post.timestamp.toFeedRelativeTimeLabel(),
+                                    color = SolariTheme.colors.onSurfaceVariant,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = PlusJakartaSans,
+                                    fontSize = 11.sp,
+                                    lineHeight = 13.sp
+                                )
+                            }
                         }
+
+                        // Content section: activity/inputs
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        Box(
+                            modifier = Modifier.animateEnterExit(
+                                enter = fadeIn(animationSpec = tween(500)),
+                                exit = fadeOut(animationSpec = tween(500))
+                            )
+                        ) {
+                            if (isCurrentUserPost) {
+                                when (post.uploadStatus) {
+                                    PostUploadStatus.None -> {
+                                        FeedActivityPill(
+                                            users = activityUsers.take(3),
+                                            overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
+                                            onClick = onShowActivity
+                                        )
+                                    }
+
+                                    PostUploadStatus.Uploading,
+                                    PostUploadStatus.Processing -> {
+                                        FeedUploadStatusPill(
+                                            text = "Uploading post",
+                                            isLoading = true,
+                                            isError = false
+                                        )
+                                    }
+
+                                    PostUploadStatus.Failed -> {
+                                        FeedUploadStatusPill(
+                                            text = post.uploadError ?: "Upload failed",
+                                            isLoading = false,
+                                            isError = true
+                                        )
+                                    }
+                                }
+                            } else {
+                                Column {
+                                    FeedReactionField(
+                                        value = reactionNote,
+                                        onValueChange = onReactionNoteChange,
+                                        onReact = onSendReaction,
+                                        onOpenEmojiPicker = onOpenEmojiPicker,
+                                        isEditable = false,
+                                        onActivate = { onShowInputOverlay(FeedInputOverlayMode.Reaction) }
+                                    )
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    FeedMessageField(
+                                        value = messageText,
+                                        onValueChange = onMessageTextChange,
+                                        onSend = onSendMessage,
+                                        isEditable = false,
+                                        onActivate = { onShowInputOverlay(FeedInputOverlayMode.Message) }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Browse button
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        FeedBrowseButton(
+                            modifier = Modifier.animateEnterExit(
+                                enter = fadeIn(animationSpec = tween(500)),
+                                exit = fadeOut(animationSpec = tween(500))
+                            ),
+                            onClick = { onNavigateToBrowse(null) }
+                        )
+
+                        Spacer(modifier = Modifier.weight(1f))
                     }
                 }
             }
@@ -1619,65 +1758,72 @@ private fun FeedActivityTrailing(activity: PostActivityEntry) {
     }
 }
 
-@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun FeedImage(
     url: String,
-    postId: String,
-    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
-    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
+    placeholderUrl: String?,
     modifier: Modifier = Modifier
 ) {
     var isLoading by remember(url) { mutableStateOf(true) }
+    val fullImageAlpha by animateFloatAsState(
+        targetValue = if (isLoading && placeholderUrl != null) 0f else 1f,
+        animationSpec = tween(durationMillis = 120),
+        label = "feedFullImageAlpha"
+    )
 
     Box(
         modifier = modifier
     ) {
-        with(sharedTransitionScope) {
+        if (placeholderUrl != null) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(url)
-                    .crossfade(true)
+                    .data(placeholderUrl)
                     .build(),
-                contentDescription = "Post Image",
-                modifier = Modifier
-                    .fillMaxSize()
-                    .sharedElement(
-                        rememberSharedContentState(key = "post_image_$postId"),
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        boundsTransform = { _, _ -> 
-                            tween(durationMillis = 500, easing = FastOutSlowInEasing)
-                        }
-                    ),
-                contentScale = ContentScale.Crop,
-                onLoading = { isLoading = true },
-                onSuccess = { isLoading = false },
-                onError = { isLoading = false }
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
             )
         }
 
-        if (isLoading) {
+        AsyncImage(
+            model = ImageRequest.Builder(LocalContext.current)
+                .data(url)
+                .build(),
+            contentDescription = "Post Image",
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(fullImageAlpha),
+            contentScale = ContentScale.Crop,
+            onLoading = { isLoading = true },
+            onSuccess = { isLoading = false },
+            onError = { isLoading = false }
+        )
+
+        if (isLoading && placeholderUrl == null) {
             FeedMediaLoadingIndicator()
         }
     }
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
-@OptIn(ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FeedVideoPlayer(
     url: String,
+    placeholderUrl: String?,
     mediaType: String,
-    postId: String,
     isActive: Boolean,
-    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
-    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var isLoading by remember(url) { mutableStateOf(true) }
     var isUserPaused by remember(url) { mutableStateOf(false) }
+    val videoAlpha by animateFloatAsState(
+        targetValue = if (isLoading && placeholderUrl != null) 0f else 1f,
+        animationSpec = tween(durationMillis = 120),
+        label = "feedVideoAlpha"
+    )
 
     val player = remember(url, mediaType) {
         ExoPlayer.Builder(context)
@@ -1741,36 +1887,39 @@ private fun FeedVideoPlayer(
     Box(
         modifier = modifier
     ) {
-        with(sharedTransitionScope) {
-            AndroidView(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .sharedElement(
-                        rememberSharedContentState(key = "post_image_$postId"),
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        boundsTransform = { _, _ -> 
-                            tween(durationMillis = 500, easing = FastOutSlowInEasing)
-                        }
-                    ),
-                factory = { viewContext ->
-                    PlayerView(viewContext).apply {
-                        useController = false
-                        controllerAutoShow = false
-                        hideController()
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                        this.player = player
-                    }
-                },
-                update = { playerView ->
-                    playerView.useController = false
-                    playerView.controllerAutoShow = false
-                    playerView.hideController()
-                    if (playerView.player !== player) {
-                        playerView.player = player
-                    }
-                }
+        if (placeholderUrl != null) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(placeholderUrl)
+                    .build(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
             )
         }
+
+        AndroidView(
+            modifier = Modifier
+                .fillMaxSize()
+                .alpha(videoAlpha),
+            factory = { viewContext ->
+                PlayerView(viewContext).apply {
+                    useController = false
+                    controllerAutoShow = false
+                    hideController()
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    this.player = player
+                }
+            },
+            update = { playerView ->
+                playerView.useController = false
+                playerView.controllerAutoShow = false
+                playerView.hideController()
+                if (playerView.player !== player) {
+                    playerView.player = player
+                }
+            }
+        )
 
         Box(
             modifier = Modifier
@@ -1783,7 +1932,7 @@ private fun FeedVideoPlayer(
                 )
         )
 
-        if (isLoading) {
+        if (isLoading && placeholderUrl == null) {
             FeedMediaLoadingIndicator()
         }
     }

@@ -1252,7 +1252,7 @@ private fun ChatBubble(
     onReactToMessage: (Message, String) -> Unit,
     onReplyToMessage: (Message) -> Unit,
     onJumpToMessage: (String) -> Unit
-) {
+) { 
     var isActionMenuExpanded by remember { mutableStateOf(false) }
     var isEmojiPickerExpanded by remember { mutableStateOf(false) }
     var isConfirmingUnsend by remember { mutableStateOf(false) }

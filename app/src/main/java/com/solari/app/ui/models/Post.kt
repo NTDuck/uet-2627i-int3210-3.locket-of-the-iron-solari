@@ -1,5 +1,7 @@
 package com.solari.app.ui.models
 
+import java.io.Serializable
+
 data class Post(
     val id: String,
     val author: User,
@@ -11,9 +13,9 @@ data class Post(
     val uploadStatus: PostUploadStatus = PostUploadStatus.None,
     val uploadError: String? = null,
     val replies: List<Reply> = emptyList()
-)
+) : Serializable
 
-enum class PostUploadStatus {
+enum class PostUploadStatus : Serializable {
     None,
     Uploading,
     Processing,

@@ -17,6 +17,7 @@ import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.OptimisticPostDraft
+import com.solari.app.ui.models.Post
 import com.solari.app.ui.viewmodels.*
 import kotlinx.coroutines.launch
 @OptIn(ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
@@ -24,6 +25,9 @@ import kotlinx.coroutines.launch
 fun MainScreen(
     initialPage: Int = 0,
     initialFeedPostId: String? = null,
+    initialFeedPost: Post? = null,
+    initialFeedPosts: List<Post>? = null,
+    isInitialFeedSharedTransitionEnabled: Boolean = false,
     initialFeedAuthorFilterIds: Set<String> = emptySet(),
     initialFeedSort: String = "default",
     pageHistory: List<Int> = listOf(initialPage),
@@ -152,6 +156,9 @@ fun MainScreen(
                         FeedScreen(
                             viewModel = viewModel,
                             initialPostId = initialFeedPostId,
+                            initialPost = initialFeedPost,
+                            initialPosts = initialFeedPosts,
+                            enableInitialSharedTransition = isInitialFeedSharedTransitionEnabled,
                             authorFilterIds = initialFeedAuthorFilterIds,
                             sortMode = initialFeedSort,
                             sharedTransitionScope = sharedTransitionScope,

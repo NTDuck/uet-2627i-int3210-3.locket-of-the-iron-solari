@@ -36,9 +36,13 @@ class DefaultFeedRepository(
         cursor: String?
     ): ApiResult<PaginatedFeed> {
         val authors = authorIds.takeIf { it.isNotEmpty() }?.joinToString(",")
+        val feedSort = when (sort) {
+            "oldest" -> "oldest"
+            else -> "newest"
+        }
         return when (
             val result = apiExecutor.execute {
-                feedApi.getFeed(limit = limit, cursor = cursor, authors = authors, sort = sort)
+                feedApi.getFeed(limit = limit, cursor = cursor, authors = authors, sort = feedSort)
             }
         ) {
             is ApiResult.Failure -> result

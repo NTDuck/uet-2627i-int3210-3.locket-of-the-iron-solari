@@ -58,6 +58,7 @@ import com.solari.app.ui.screens.*
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.OptimisticPostDraft
+import com.solari.app.ui.models.Post
 import com.solari.app.ui.viewmodels.*
 import com.solari.app.ui.models.Conversation
 import kotlinx.coroutines.delay
@@ -65,6 +66,9 @@ import kotlinx.coroutines.launch
 
 private const val FriendManagementTransitionMillis = 360
 private const val SelectedConversationKey = "selected_conversation"
+private const val SelectedFeedPostKey = "selected_feed_post"
+private const val SelectedFeedPostsKey = "selected_feed_posts"
+private const val SelectedFeedSharedTransitionEnabledKey = "selected_feed_shared_transition_enabled"
 private const val ChatSettingsPartnerKey = "chat_settings_partner"
 private const val CapturedMediaUriKey = "captured_media_uri"
 private const val CapturedMediaTypeKey = "captured_media_type"
@@ -219,6 +223,14 @@ private fun NavController.navigateToFeedPost(
 
 private fun String?.isFriendManagementRoute(): Boolean {
     return this?.startsWith(SolariRoute.Screen.FriendManagement.name) == true
+}
+
+private fun String?.isFeedBrowseRoute(): Boolean {
+    return this?.startsWith(SolariRoute.Screen.FeedBrowse.name) == true
+}
+
+private fun String?.isFeedPostRoute(): Boolean {
+    return this?.startsWith("${SolariRoute.Screen.Main.name}/{page}/{postId}") == true
 }
 
 private fun String?.toFeedAuthorFilterIds(): Set<String> {
@@ -497,36 +509,33 @@ private fun SolariApp(
                 modifier = Modifier.background(SolariTheme.colors.background),
                 startDestination = startDestination,
                 enterTransition = {
-                    if (initialState.destination.route?.contains("FeedBrowse") == true &&
-                        targetState.destination.route?.contains("Main") == true) {
-                        fadeIn(tween(500, delayMillis = 400))
+                    if (targetState.destination.route.isFeedBrowseRoute()) {
+                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300))
                     } else {
                         slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
                     }
                 },
                 exitTransition = {
-                    if (initialState.destination.route?.contains("Main") == true &&
-                        targetState.destination.route?.contains("FeedBrowse") == true) {
-                        fadeOut(tween(500))
+                    if (targetState.destination.route.isFeedBrowseRoute()) {
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300))
                     } else {
                         slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
                     }
                 },
                 popEnterTransition = {
-                    if (initialState.destination.route?.contains("FeedBrowse") == true &&
-                        targetState.destination.route?.contains("Main") == true) {
-                        fadeIn(tween(500, delayMillis = 400))
-                    } else if (initialState.destination.route?.contains("Main") == true &&
-                        targetState.destination.route?.contains("FeedBrowse") == true) {
-                        fadeIn(tween(500, delayMillis = 400))
+                    if (initialState.destination.route.isFeedPostRoute() &&
+                        targetState.destination.route.isFeedBrowseRoute()
+                    ) {
+                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300))
                     } else {
                         slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
                     }
                 },
                 popExitTransition = {
-                    if (initialState.destination.route?.contains("Main") == true &&
-                        targetState.destination.route?.contains("FeedBrowse") == true) {
-                        fadeOut(tween(500))
+                    if (initialState.destination.route.isFeedPostRoute() &&
+                        targetState.destination.route.isFeedBrowseRoute()
+                    ) {
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300))
                     } else {
                         slideOutHorizontally(targetOffsetX = { 1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
                     }
@@ -658,10 +667,11 @@ private fun SolariApp(
         composable(
             route = SolariRoute.Screen.Main.name + "/{page}",
             exitTransition = {
-                if (targetState.destination.route.isFriendManagementRoute()) {
-                    ExitTransition.None
-                } else {
-                    null
+                when {
+                    targetState.destination.route.isFriendManagementRoute() -> ExitTransition.None
+                    targetState.destination.route.isFeedBrowseRoute() ->
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300))
+                    else -> null
                 }
             },
             popEnterTransition = {
@@ -714,8 +724,23 @@ private fun SolariApp(
         }
         composable(
             route = SolariRoute.Screen.Main.name + "/{page}/{postId}?authorIds={authorIds}&sort={sort}",
-            enterTransition = { fadeIn(tween(500)) },
-            exitTransition = { fadeOut(tween(500)) },
+            enterTransition = {
+                val isSharedFeedOpen = initialState.savedStateHandle
+                    .get<Boolean>(SelectedFeedSharedTransitionEnabledKey) == true
+
+                if (initialState.destination.route.isFeedBrowseRoute() && !isSharedFeedOpen) {
+                    slideInHorizontally(initialOffsetX = { it }, animationSpec = tween(300))
+                } else {
+                    fadeIn(tween(500))
+                }
+            },
+            exitTransition = {
+                if (targetState.destination.route.isFeedBrowseRoute()) {
+                    slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300))
+                } else {
+                    fadeOut(tween(500))
+                }
+            },
             arguments = listOf(
                 navArgument("authorIds") {
                     type = NavType.StringType
@@ -738,12 +763,26 @@ private fun SolariApp(
                 ?.getString("sort")
                 ?.takeIf { it == "newest" || it == "oldest" }
                 ?: "default"
+            val initialFeedPost = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<Post>(SelectedFeedPostKey)
+                ?.takeIf { it.id == postId }
+            val initialFeedPosts = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<ArrayList<Post>>(SelectedFeedPostsKey)
+                ?.toList()
+            val isInitialFeedSharedTransitionEnabled = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<Boolean>(SelectedFeedSharedTransitionEnabledKey) == true
             MainScreen(
                 initialPage = page,
                 pageHistory = mainPageHistory,
                 onPageHistoryChange = ::replacePageHistory,
                 onCurrentPageChange = { selectedMainPage = it.coerceIn(0, 3) },
                 initialFeedPostId = postId,
+                initialFeedPost = initialFeedPost,
+                initialFeedPosts = initialFeedPosts,
+                isInitialFeedSharedTransitionEnabled = isInitialFeedSharedTransitionEnabled,
                 initialFeedAuthorFilterIds = feedAuthorFilterIds,
                 initialFeedSort = feedSort,
                 profileFeedbackMessage = profileFeedbackMessage,
@@ -891,6 +930,16 @@ private fun SolariApp(
         }
         composable(
             route = SolariRoute.Screen.FeedBrowse.name + "?authorId={authorId}",
+            exitTransition = {
+                val isSharedFeedOpen = initialState.savedStateHandle
+                    .get<Boolean>(SelectedFeedSharedTransitionEnabledKey) == true
+
+                if (targetState.destination.route.isFeedPostRoute() && !isSharedFeedOpen) {
+                    slideOutHorizontally(targetOffsetX = { -it }, animationSpec = tween(300))
+                } else {
+                    null
+                }
+            },
             arguments = listOf(
                 navArgument("authorId") {
                     type = NavType.StringType
@@ -911,9 +960,14 @@ private fun SolariApp(
                 onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
                 onNavigateToChat = { navigateToMainPage(2, replaceCurrent = true) },
                 onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) },
-                onNavigateToPost = { postId, authorIds, sort ->
+                onNavigateToPost = { post, posts, authorIds, sort, enableSharedTransition ->
                     recordMainPage(1)
-                    navController.navigateToFeedPost(postId, authorIds, sort)
+                    navController.currentBackStackEntry?.savedStateHandle?.apply {
+                        set(SelectedFeedPostKey, post)
+                        set(SelectedFeedPostsKey, ArrayList(posts))
+                        set(SelectedFeedSharedTransitionEnabledKey, enableSharedTransition)
+                    }
+                    navController.navigateToFeedPost(post.id, authorIds, sort)
                 }
             )
         }

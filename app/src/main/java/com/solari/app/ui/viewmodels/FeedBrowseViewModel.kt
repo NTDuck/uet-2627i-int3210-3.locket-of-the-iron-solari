@@ -24,7 +24,7 @@ class FeedBrowseViewModel(
     private val userRepository: UserRepository,
     private val postUploadCoordinator: PostUploadCoordinator
 ) : ViewModel() {
-    var selectedSort by mutableStateOf("default")
+    var selectedSort by mutableStateOf("newest")
         private set
 
     var selectedFriendIds by mutableStateOf<Set<String>>(emptySet())
@@ -58,6 +58,7 @@ class FeedBrowseViewModel(
         private set
 
     private var nextCursor: String? = null
+    private var feedRequestSequence = 0
 
     private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
     private var remotePosts: List<Post> = emptyList()
@@ -78,13 +79,18 @@ class FeedBrowseViewModel(
     fun applyInitialAuthorFilter(authorId: String?) {
         if (hasAppliedInitialAuthorFilter) return
         hasAppliedInitialAuthorFilter = true
-        selectedFriendIds = authorId?.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty()
+        val initialAuthorIds = authorId?.takeIf { it.isNotBlank() }?.let { setOf(it) }.orEmpty()
+        if (initialAuthorIds == selectedFriendIds) return
+
+        selectedFriendIds = initialAuthorIds
         resetFeedListScroll()
+        refresh(resetPagination = true)
     }
 
     fun updateSelectedSort(sort: String) {
-        if (sort == selectedSort) return
-        selectedSort = sort
+        val normalizedSort = sort.toFeedSort()
+        if (normalizedSort == selectedSort) return
+        selectedSort = normalizedSort
         resetFeedListScroll()
         refresh(resetPagination = true)
     }
@@ -126,8 +132,19 @@ class FeedBrowseViewModel(
 
     fun refresh(resetPagination: Boolean = true) {
         viewModelScope.launch {
+            val requestSequence = if (resetPagination) {
+                feedRequestSequence += 1
+                feedRequestSequence
+            } else {
+                feedRequestSequence
+            }
+            val requestAuthorIds = selectedFriendIds
+            val requestSort = selectedSort.toFeedSort()
+            val requestCursor = if (resetPagination) null else nextCursor
+
             if (resetPagination) {
                 isLoading = true
+                isFetchingNextPage = false
                 nextCursor = null
                 hasReachedEnd = false
                 remotePosts = emptyList()
@@ -147,22 +164,29 @@ class FeedBrowseViewModel(
 
             when (
                 val feedResult = feedRepository.getFeed(
-                    authorIds = selectedFriendIds,
-                    sort = selectedSort,
+                    authorIds = requestAuthorIds,
+                    sort = requestSort,
                     limit = 15,
-                    cursor = nextCursor
+                    cursor = requestCursor
                 )
             ) {
                 is ApiResult.Success -> {
+                    if (requestSequence != feedRequestSequence) return@launch
+
                     val newPosts = feedResult.data.posts
                     nextCursor = feedResult.data.nextCursor
                     hasReachedEnd = nextCursor == null
 
-                    remotePosts = if (resetPagination) newPosts else remotePosts + newPosts
+                    remotePosts = if (resetPagination) {
+                        newPosts
+                    } else {
+                        (remotePosts + newPosts).distinctBy(Post::id)
+                    }
                     postUploadCoordinator.removeSyncedUploads(newPosts.map { it.id }.toSet())
                     applyDisplayPosts()
                 }
                 is ApiResult.Failure -> {
+                    if (requestSequence != feedRequestSequence) return@launch
                     if (errorMessage == null) errorMessage = feedResult.message
                 }
             }
@@ -201,8 +225,15 @@ class FeedBrowseViewModel(
                     entry.remotePost ?: entry.draft.toPost(user)
                 }
         }
-        val uploadPostIds = uploadPosts.map(Post::id).toSet()
-        posts = uploadPosts + remotePosts.filterNot { it.id in uploadPostIds }
+        val visibleUploadPosts = uploadPosts.filter { post ->
+            selectedFriendIds.isEmpty() || post.author.id in selectedFriendIds
+        }
+        val uploadPostIds = visibleUploadPosts.map(Post::id).toSet()
+        val combinedPosts = visibleUploadPosts + remotePosts.filterNot { it.id in uploadPostIds }
+        posts = when (selectedSort) {
+            "oldest" -> combinedPosts.sortedBy(Post::timestamp)
+            else -> combinedPosts.sortedByDescending(Post::timestamp)
+        }
     }
 
     private fun OptimisticPostDraft.toPost(author: User): Post {
@@ -217,5 +248,12 @@ class FeedBrowseViewModel(
             uploadStatus = uploadStatus,
             uploadError = uploadError
         )
+    }
+
+    private fun String.toFeedSort(): String {
+        return when (this) {
+            "oldest" -> "oldest"
+            else -> "newest"
+        }
     }
 }
