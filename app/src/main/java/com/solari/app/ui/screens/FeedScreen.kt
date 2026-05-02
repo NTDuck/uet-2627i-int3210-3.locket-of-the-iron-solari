@@ -12,6 +12,7 @@ import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VectorConverter
@@ -163,12 +164,24 @@ fun FeedScreen(
     }
     val currentUser = viewModel.currentUser
     var lastHandledInitialPostId by remember { mutableStateOf<String?>(null) }
-    val initialPostPage = remember(posts) {
+    val initialPostPage = remember(posts.size) {
         if (initialPostId != null) {
-            posts.indexOfFirst { it.id == initialPostId }.takeIf { it >= 0 } ?: 0
+            val index = posts.indexOfFirst { it.id == initialPostId }
+            if (index >= 0) index else 0
         } else 0
     }
     val pagerState = rememberPagerState(initialPage = initialPostPage) { posts.size }
+    var isInitialScrollDone by remember { mutableStateOf(initialPostId == null) }
+
+    LaunchedEffect(initialPostId, posts.size) {
+        if (initialPostId != null && !isInitialScrollDone) {
+            val index = posts.indexOfFirst { it.id == initialPostId }
+            if (index >= 0) {
+                pagerState.scrollToPage(index)
+                isInitialScrollDone = true
+            }
+        }
+    }
 
     LaunchedEffect(authorFilterIds, sortMode, initialPostId) {
         viewModel.updateFilters(authorFilterIds, sortMode, initialPostId)
@@ -278,6 +291,10 @@ fun FeedScreen(
             delay(1000)
             feedbackPillVisible = false
         }
+    }
+
+    BackHandler(enabled = activeInputOverlay != null) {
+        dismissInputOverlay()
     }
 
     Box(
@@ -917,24 +934,30 @@ private fun FeedPost(
                         }
 
                         if (!post.caption.isEmpty()) {
-                            Text(
-                                text = post.caption,
-                                color = SolariTheme.colors.onBackground,
-                                fontSize = 15.sp,
-                                lineHeight = 20.sp,
-                                fontFamily = PlusJakartaSans,
-                                textAlign = TextAlign.Center,
+                            Box(
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .align(Alignment.BottomCenter)
-                                    .animateEnterExit(
-                                        enter = fadeIn(animationSpec = tween(500)),
-                                        exit = fadeOut(animationSpec = tween(500))
-                                    )
-                                    .padding(bottom = 14.dp)
-                                    .clip(RoundedCornerShape(14.dp))
-                                    .background(SolariTheme.colors.background.copy(alpha = 0.58f))
-                                    .padding(horizontal = 28.dp, vertical = 8.dp)
-                            )
+                                    .padding(bottom = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = post.caption,
+                                    color = SolariTheme.colors.onBackground,
+                                    fontSize = 15.sp,
+                                    lineHeight = 20.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .animateEnterExit(
+                                            enter = fadeIn(animationSpec = tween(500)),
+                                            exit = fadeOut(animationSpec = tween(500))
+                                        )
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(SolariTheme.colors.background.copy(alpha = 0.58f))
+                                        .padding(horizontal = 28.dp, vertical = 8.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -943,127 +966,134 @@ private fun FeedPost(
             androidx.compose.animation.AnimatedVisibility(
                 visible = !isZooming && !isInputOverlayActive,
                 enter = fadeIn(),
-                exit = fadeOut()
+                exit = fadeOut(),
+                modifier = Modifier.weight(1f)
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
                     with(animatedVisibilityScope) {
-                        Spacer(modifier = Modifier.height(36.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Spacer(modifier = Modifier.height(36.dp))
 
-                        Row(
-                            modifier = Modifier
-                                .animateEnterExit(
+                            Row(
+                                modifier = Modifier
+                                    .animateEnterExit(
+                                        enter = fadeIn(animationSpec = tween(500)),
+                                        exit = fadeOut(animationSpec = tween(500))
+                                    )
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onNavigateToBrowse(displayAuthor.id) }
+                                    .padding(vertical = 8.dp, horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                SolariAvatar(
+                                    imageUrl = displayAuthor.profileImageUrl,
+                                    username = displayAuthor.username,
+                                    contentDescription = "Author Avatar",
+                                    modifier = Modifier
+                                        .size(40.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    fontSize = 16.sp
+                                )
+
+                                Spacer(modifier = Modifier.width(12.dp))
+
+                                Column {
+                                    Text(
+                                        text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
+                                        color = SolariTheme.colors.onBackground,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = PlusJakartaSans,
+                                        fontSize = 16.sp,
+                                        lineHeight = 16.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = post.timestamp.toFeedRelativeTimeLabel(),
+                                        color = SolariTheme.colors.onSurfaceVariant,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = PlusJakartaSans,
+                                        fontSize = 11.sp,
+                                        lineHeight = 13.sp
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(32.dp))
+
+                            Box(
+                                modifier = Modifier.animateEnterExit(
                                     enter = fadeIn(animationSpec = tween(500)),
                                     exit = fadeOut(animationSpec = tween(500))
                                 )
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onNavigateToBrowse(displayAuthor.id) }
-                                .padding(vertical = 8.dp, horizontal = 16.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            SolariAvatar(
-                                imageUrl = displayAuthor.profileImageUrl,
-                                username = displayAuthor.username,
-                                contentDescription = "Author Avatar",
-                                modifier = Modifier
-                                    .size(40.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                fontSize = 16.sp
-                            )
+                            ) {
+                                if (isCurrentUserPost) {
+                                    when (post.uploadStatus) {
+                                        PostUploadStatus.None -> {
+                                            FeedActivityPill(
+                                                users = activityUsers.take(3),
+                                                overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
+                                                onClick = onShowActivity
+                                            )
+                                        }
 
-                            Spacer(modifier = Modifier.width(12.dp))
+                                        PostUploadStatus.Uploading,
+                                        PostUploadStatus.Processing -> {
+                                            FeedUploadStatusPill(
+                                                text = "Uploading post",
+                                                isLoading = true,
+                                                isError = false
+                                            )
+                                        }
 
-                            Column {
-                                Text(
-                                    text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
-                                    color = SolariTheme.colors.onBackground,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = PlusJakartaSans,
-                                    fontSize = 16.sp,
-                                    lineHeight = 16.sp
-                                )
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Text(
-                                    text = post.timestamp.toFeedRelativeTimeLabel(),
-                                    color = SolariTheme.colors.onSurfaceVariant,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = PlusJakartaSans,
-                                    fontSize = 11.sp,
-                                    lineHeight = 13.sp
-                                )
-                            }
-                        }
+                                        PostUploadStatus.Failed -> {
+                                            FeedUploadStatusPill(
+                                                text = post.uploadError ?: "Upload failed",
+                                                isLoading = false,
+                                                isError = true
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Column {
+                                        FeedReactionField(
+                                            value = reactionNote,
+                                            onValueChange = onReactionNoteChange,
+                                            onReact = onSendReaction,
+                                            onOpenEmojiPicker = onOpenEmojiPicker,
+                                            isEditable = false,
+                                            onActivate = { onShowInputOverlay(FeedInputOverlayMode.Reaction) }
+                                        )
 
-                        Spacer(modifier = Modifier.height(32.dp))
+                                        Spacer(modifier = Modifier.height(14.dp))
 
-                        Box(
-                            modifier = Modifier.animateEnterExit(
-                                enter = fadeIn(animationSpec = tween(500)),
-                                exit = fadeOut(animationSpec = tween(500))
-                            )
-                        ) {
-                            if (isCurrentUserPost) {
-                                when (post.uploadStatus) {
-                                    PostUploadStatus.None -> {
-                                        FeedActivityPill(
-                                            users = activityUsers.take(3),
-                                            overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
-                                            onClick = onShowActivity
+                                        FeedMessageField(
+                                            value = messageText,
+                                            onValueChange = onMessageTextChange,
+                                            onSend = onSendMessage,
+                                            isEditable = false,
+                                            onActivate = { onShowInputOverlay(FeedInputOverlayMode.Message) }
                                         )
                                     }
-
-                                    PostUploadStatus.Uploading,
-                                    PostUploadStatus.Processing -> {
-                                        FeedUploadStatusPill(
-                                            text = "Uploading post",
-                                            isLoading = true,
-                                            isError = false
-                                        )
-                                    }
-
-                                    PostUploadStatus.Failed -> {
-                                        FeedUploadStatusPill(
-                                            text = post.uploadError ?: "Upload failed",
-                                            isLoading = false,
-                                            isError = true
-                                        )
-                                    }
-                                }
-                            } else {
-                                Column {
-                                    FeedReactionField(
-                                        value = reactionNote,
-                                        onValueChange = onReactionNoteChange,
-                                        onReact = onSendReaction,
-                                        onOpenEmojiPicker = onOpenEmojiPicker,
-                                        isEditable = false,
-                                        onActivate = { onShowInputOverlay(FeedInputOverlayMode.Reaction) }
-                                    )
-
-                                    Spacer(modifier = Modifier.height(14.dp))
-
-                                    FeedMessageField(
-                                        value = messageText,
-                                        onValueChange = onMessageTextChange,
-                                        onSend = onSendMessage,
-                                        isEditable = false,
-                                        onActivate = { onShowInputOverlay(FeedInputOverlayMode.Message) }
-                                    )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(if (isCurrentUserPost) 24.dp else 4.dp))
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            FeedBrowseButton(
+                                modifier = Modifier.animateEnterExit(
+                                    enter = fadeIn(animationSpec = tween(500)),
+                                    exit = fadeOut(animationSpec = tween(500))
+                                ),
+                                onClick = { onNavigateToBrowse(null) }
+                            )
 
-                        FeedBrowseButton(
-                            modifier = Modifier.animateEnterExit(
-                                enter = fadeIn(animationSpec = tween(500)),
-                                exit = fadeOut(animationSpec = tween(500))
-                            ),
-                            onClick = { onNavigateToBrowse(null) }
-                        )
-
-                        Spacer(modifier = Modifier.weight(0.45f))
+                            Spacer(modifier = Modifier.height(24.dp))
+                        }
                     }
                 }
             }

@@ -96,6 +96,10 @@ fun FeedBrowseScreen(
         viewModel.applyInitialAuthorFilter(initialAuthorId)
     }
 
+    androidx.activity.compose.BackHandler {
+        onNavigateToFeed()
+    }
+
     val shouldLoadMore by remember {
         derivedStateOf {
             val layoutInfo = feedListState.layoutInfo
@@ -189,6 +193,7 @@ fun FeedBrowseScreen(
                         selected = currentSortSelection,
                         onToggle = { selection ->
                             viewModel.updateSelectedSort(selection.apiValue ?: "newest")
+                            scrollFeedListToTop()
                         },
                         iconTint = SolariTheme.colors.secondary,
                         modifier = Modifier.size(28.dp),

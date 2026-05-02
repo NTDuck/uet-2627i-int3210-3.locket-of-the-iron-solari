@@ -26,6 +26,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+import androidx.core.graphics.drawable.toBitmap
+
 class SolariWidgetProvider : AppWidgetProvider() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
@@ -43,6 +45,7 @@ class SolariWidgetProvider : AppWidgetProvider() {
     }
 
     private suspend fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
+        Log.d("SolariWidget", "Updating widget $appWidgetId")
         val views = RemoteViews(context.packageName, R.layout.solari_widget_layout)
         
         // Set up click intent first so widget is interactive even while loading
@@ -64,10 +67,13 @@ class SolariWidgetProvider : AppWidgetProvider() {
             val feedResult = withContext(Dispatchers.IO) { feedRepository.getFeed(limit = 20) }
             val latestPost = if (feedResult is ApiResult.Success) {
                 // Find latest post that is NOT from the current user
-                feedResult.data.posts.firstOrNull { it.author.id != myId }
+                val foreignPost = feedResult.data.posts.firstOrNull { it.author.id != myId }
+                // Fallback to latest post including current user if no foreign posts
+                foreignPost ?: feedResult.data.posts.firstOrNull()
             } else null
 
             if (latestPost != null) {
+                Log.d("SolariWidget", "Found latest post: ${latestPost.id} from ${latestPost.author.username}")
                 if (!latestPost.caption.isNullOrEmpty()) {
                     views.setTextViewText(R.id.widget_post_caption, latestPost.caption)
                     views.setViewVisibility(R.id.widget_post_caption, android.view.View.VISIBLE)
@@ -88,9 +94,9 @@ class SolariWidgetProvider : AppWidgetProvider() {
                 
                 val postImageResult = withContext(Dispatchers.IO) { imageLoader.execute(postImageRequest) }
                 postImageResult.drawable?.let {
-                    val bitmap = drawableToBitmap(it)
+                    val bitmap = it.toBitmap(384, 384, Bitmap.Config.ARGB_8888)
                     views.setImageViewBitmap(R.id.widget_post_image, bitmap)
-                }
+                } ?: Log.e("SolariWidget", "Failed to load post image")
 
                 // Load author avatar
                 val avatarRequest = ImageRequest.Builder(context)
@@ -103,10 +109,11 @@ class SolariWidgetProvider : AppWidgetProvider() {
                 
                 val avatarResult = withContext(Dispatchers.IO) { imageLoader.execute(avatarRequest) }
                 avatarResult.drawable?.let {
-                    val bitmap = drawableToBitmap(it)
+                    val bitmap = it.toBitmap(96, 96, Bitmap.Config.ARGB_8888)
                     views.setImageViewBitmap(R.id.widget_author_avatar, bitmap)
-                }
+                } ?: Log.e("SolariWidget", "Failed to load avatar")
             } else {
+                Log.d("SolariWidget", "No posts found")
                 views.setTextViewText(R.id.widget_post_caption, "No new posts")
                 views.setViewVisibility(R.id.widget_post_caption, android.view.View.VISIBLE)
                 views.setImageViewResource(R.id.widget_post_image, android.R.color.black)
@@ -119,15 +126,5 @@ class SolariWidgetProvider : AppWidgetProvider() {
         }
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
-    }
-
-    private fun drawableToBitmap(drawable: android.graphics.drawable.Drawable): Bitmap {
-        val width = if (drawable.intrinsicWidth > 0) drawable.intrinsicWidth else 512
-        val height = if (drawable.intrinsicHeight > 0) drawable.intrinsicHeight else 512
-        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        drawable.setBounds(0, 0, width, height)
-        drawable.draw(canvas)
-        return bitmap
     }
 }

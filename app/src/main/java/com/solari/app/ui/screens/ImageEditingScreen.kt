@@ -1,24 +1,44 @@
 package com.solari.app.ui.screens
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
+import android.graphics.BitmapFactory
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
-import android.graphics.Matrix
-import android.graphics.Paint
+import android.graphics.Matrix as AndroidMatrix
+import android.graphics.Paint as AndroidPaint
+import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Path as NativePath
 import android.graphics.RectF
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -28,9 +48,35 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.RotateRight
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.AutoFixNormal
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,15 +84,25 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.PaintingStyle
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asComposePath
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -56,6 +112,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
+import com.solari.app.R
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
@@ -134,13 +191,13 @@ fun ImageEditingScreen(
     var isLoading by remember { mutableStateOf(true) }
     var applyTrigger by remember { mutableStateOf(false) }
 
-    // States for sub-screens shared between workspace and bottom row
     var cropRotation by remember { mutableStateOf(0f) }
     var cropFlipH by remember { mutableStateOf(1f) }
     var cropFlipV by remember { mutableStateOf(1f) }
 
     var drawColor by remember { mutableStateOf(Color.Red) }
     var drawTool by remember { mutableStateOf(DrawTool.Brush) }
+    var selectedEraserSize by remember { mutableStateOf(30f) }
 
     var textColor by remember { mutableStateOf(Color.Red) }
 
@@ -151,11 +208,17 @@ fun ImageEditingScreen(
         if (initialMedia != null && baseBitmap == null) {
             withContext(Dispatchers.IO) {
                 try {
-                    val inputStream = context.contentResolver.openInputStream(initialMedia.uri)
-                    val bitmap = android.graphics.BitmapFactory.decodeStream(inputStream)
-                    baseBitmap = bitmap
-                    currentBitmap = bitmap
-                    bitmap?.let { viewModel.setInitialBitmap(it) }
+                    val source = android.graphics.ImageDecoder.createSource(context.contentResolver, initialMedia.uri)
+                    val bitmap = android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                        decoder.isMutableRequired = true
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                            decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                        }
+                    }
+                    val softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+                    baseBitmap = softwareBitmap
+                    currentBitmap = softwareBitmap
+                    softwareBitmap?.let { viewModel.setInitialBitmap(it) }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -230,7 +293,9 @@ fun ImageEditingScreen(
                         selectedColor = drawColor,
                         onColorSelected = { drawColor = it },
                         selectedTool = drawTool,
-                        onToolSelected = { drawTool = it }
+                        onToolSelected = { drawTool = it },
+                        selectedEraserSize = selectedEraserSize,
+                        onEraserSizeSelected = { selectedEraserSize = it }
                     )
                     EditMode.Text -> TextBottomRow(
                         selectedColor = textColor,
@@ -294,6 +359,7 @@ fun ImageEditingScreen(
                                     bitmap = bitmap,
                                     selectedColor = drawColor,
                                     selectedTool = drawTool,
+                                    selectedEraserSize = selectedEraserSize,
                                     applyTrigger = applyTrigger,
                                     onApply = { edited ->
                                         currentBitmap = edited
@@ -451,7 +517,7 @@ private fun CropWorkspace(
     var draggingEdge by remember { mutableStateOf(CropEdge.None) }
 
     val transformedBitmap = remember(bitmap, rotation, flipH, flipV) {
-        val matrix = Matrix()
+        val matrix = AndroidMatrix()
         matrix.postRotate(rotation)
         matrix.postScale(flipH, flipV)
         Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
@@ -498,15 +564,11 @@ private fun CropWorkspace(
                 val cTop = top + (drawHeight - size) / 2
                 cropRect = RectF(cLeft, cTop, cLeft + size, cTop + size)
             } else {
-                // Constrain existing cropRect to new imageRect
                 val newLeft = cropRect.left.coerceIn(imageRect.left, imageRect.right - 100f)
                 val newTop = cropRect.top.coerceIn(imageRect.top, imageRect.bottom - 100f)
                 val newRight = cropRect.right.coerceIn(newLeft + 100f, imageRect.right)
                 val newBottom = cropRect.bottom.coerceIn(newTop + 100f, imageRect.bottom)
                 
-                // If the aspect ratio changed significantly (e.g. rotation), we might need to reset or scale
-                // For simplicity, just ensuring it's within bounds. 
-                // To keep it square if it was moved/constrained:
                 val size = min(newRight - newLeft, newBottom - newTop)
                 if (size != cropRect.width() || size != cropRect.height()) {
                     cropRect = RectF(newLeft, newTop, newLeft + size, newTop + size)
@@ -522,8 +584,6 @@ private fun CropWorkspace(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            // Relative animation: animate from the previous state to the current one
-                            // since transformedBitmap already contains the target rotation/flip.
                             rotationZ = animRotation - rotation
                             scaleX = if (flipH != 0f) animFlipH / flipH else 1f
                             scaleY = if (flipV != 0f) animFlipV / flipV else 1f
@@ -558,7 +618,6 @@ private fun CropWorkspace(
                                     CropEdge.Left -> {
                                         val delta = dragAmount.x
                                         newRect.left = (newRect.left + delta).coerceIn(imageRect.left, newRect.right - 100f)
-                                        // To keep it square, adjust top/bottom or just use the delta for both
                                         val newWidth = newRect.width()
                                         newRect.bottom = (newRect.top + newWidth).coerceAtMost(imageRect.bottom)
                                         if (newRect.bottom - newRect.top < newWidth) {
@@ -606,13 +665,13 @@ private fun CropWorkspace(
                                     }
                                     CropEdge.BottomLeft -> {
                                         val delta = if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else -dragAmount.y
-                                        val size = (newRect.width() - delta).coerceIn(100f, min(newRect.right - imageRect.left, imageRect.bottom - newRect.top))
+                                        val size = (newRect.width() - delta).coerceIn(100f, min(newRect.right - imageRect.left, newRect.bottom - imageRect.top))
                                         newRect.left = newRect.right - size
                                         newRect.bottom = newRect.top + size
                                     }
                                     CropEdge.BottomRight -> {
                                         val delta = if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else dragAmount.y
-                                        val size = (newRect.width() + delta).coerceIn(100f, min(imageRect.right - newRect.left, imageRect.bottom - imageRect.top))
+                                        val size = (newRect.width() + delta).coerceIn(100f, min(imageRect.right - newRect.left, newRect.bottom - imageRect.top))
                                         newRect.right = newRect.left + size
                                         newRect.bottom = newRect.top + size
                                     }
@@ -624,37 +683,30 @@ private fun CropWorkspace(
                         )
                     }
                 ) {
-                    // Dim outside crop area
                     drawRect(Color.Black.copy(alpha = 0.5f), size = Size(size.width, cropRect.top))
                     drawRect(Color.Black.copy(alpha = 0.5f), topLeft = Offset(0f, cropRect.bottom), size = Size(size.width, size.height - cropRect.bottom))
                     drawRect(Color.Black.copy(alpha = 0.5f), topLeft = Offset(0f, cropRect.top), size = Size(cropRect.left, cropRect.height()))
                     drawRect(Color.Black.copy(alpha = 0.5f), topLeft = Offset(cropRect.right, cropRect.top), size = Size(size.width - cropRect.right, cropRect.height()))
 
-                    // Crop border
                     drawRect(
                         color = Color.White,
                         topLeft = Offset(cropRect.left, cropRect.top),
                         size = Size(cropRect.width(), cropRect.height()),
-                        style = androidx.compose.ui.graphics.drawscope.Stroke(2.dp.toPx())
+                        style = Stroke(2.dp.toPx())
                     )
                     
-                    // Corner handles
                     val handleSize = 10.dp.toPx()
                     val handleStroke = 3.dp.toPx()
                     
-                    // Top Left
                     drawLine(Color.White, Offset(cropRect.left, cropRect.top), Offset(cropRect.left + handleSize, cropRect.top), handleStroke)
                     drawLine(Color.White, Offset(cropRect.left, cropRect.top), Offset(cropRect.left, cropRect.top + handleSize), handleStroke)
                     
-                    // Top Right
                     drawLine(Color.White, Offset(cropRect.right, cropRect.top), Offset(cropRect.right - handleSize, cropRect.top), handleStroke)
                     drawLine(Color.White, Offset(cropRect.right, cropRect.top), Offset(cropRect.right, cropRect.top + handleSize), handleStroke)
                     
-                    // Bottom Left
                     drawLine(Color.White, Offset(cropRect.left, cropRect.bottom), Offset(cropRect.left + handleSize, cropRect.bottom), handleStroke)
                     drawLine(Color.White, Offset(cropRect.left, cropRect.bottom), Offset(cropRect.left, cropRect.bottom - handleSize), handleStroke)
                     
-                    // Bottom Right
                     drawLine(Color.White, Offset(cropRect.right, cropRect.bottom), Offset(cropRect.right - handleSize, cropRect.bottom), handleStroke)
                     drawLine(Color.White, Offset(cropRect.right, cropRect.bottom), Offset(cropRect.right, cropRect.bottom - handleSize), handleStroke)
                 }
@@ -673,13 +725,18 @@ private fun CropBottomRow(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(vertical = 24.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly,
-        verticalAlignment = Alignment.CenterVertically
     ) {
-        SubScreenActionButton("Rotate", Icons.AutoMirrored.Filled.RotateRight, onClick = onRotate)
-        SubScreenActionButton("H-Flip", Icons.Default.Flip, onClick = onHFlip)
-        SubScreenActionButton("V-Flip", Icons.Default.Flip, onClick = onVFlip)
+        Spacer(modifier = Modifier.height(24.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            SubScreenActionButton("Rotate", Icons.AutoMirrored.Filled.RotateRight, onClick = onRotate)
+            SubScreenActionButton("H-Flip", Icons.Default.Flip, onClick = onHFlip)
+            SubScreenActionButton("V-Flip", Icons.Default.Flip, onClick = onVFlip)
+        }
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
@@ -690,6 +747,7 @@ private fun DrawWorkspace(
     bitmap: Bitmap,
     selectedColor: Color,
     selectedTool: DrawTool,
+    selectedEraserSize: Float,
     applyTrigger: Boolean,
     onApply: (Bitmap) -> Unit
 ) {
@@ -697,7 +755,6 @@ private fun DrawWorkspace(
     var currentPath by remember { mutableStateOf<NativePath?>(null) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
     
-    // To trigger recomposition during drawing
     var drawCounter by remember { mutableIntStateOf(0) }
 
     val imageWidth = bitmap.width.toFloat()
@@ -711,14 +768,14 @@ private fun DrawWorkspace(
     LaunchedEffect(applyTrigger) {
         if (applyTrigger) {
             val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-            val canvas = Canvas(result)
+            val canvas = AndroidCanvas(result)
             val scale = bitmap.width / drawWidth
 
-            val paint = Paint().apply {
+            val paint = AndroidPaint().apply {
                 isAntiAlias = true
-                style = Paint.Style.STROKE
-                strokeJoin = Paint.Join.ROUND
-                strokeCap = Paint.Cap.ROUND
+                style = AndroidPaint.Style.STROKE
+                strokeJoin = AndroidPaint.Join.ROUND
+                strokeCap = AndroidPaint.Cap.ROUND
             }
             
             paths.forEach { drawPath ->
@@ -726,12 +783,11 @@ private fun DrawWorkspace(
                 paint.strokeWidth = drawPath.strokeWidth * scale
                 if (drawPath.isEraser) {
                     paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-                    paint.strokeWidth = drawPath.strokeWidth * scale * 3f // 200% increase (100% base + 200% = 300%)
                 } else {
                     paint.xfermode = null
                 }
                 
-                val matrix = Matrix()
+                val matrix = AndroidMatrix()
                 matrix.postScale(scale, scale)
                 val scaledPath = NativePath(drawPath.path)
                 scaledPath.transform(matrix)
@@ -745,7 +801,7 @@ private fun DrawWorkspace(
         modifier = Modifier
             .fillMaxSize()
             .onGloballyPositioned { canvasSize = it.size.toSize() }
-            .pointerInput(selectedColor, selectedTool, imgLeft, imgTop) {
+            .pointerInput(selectedColor, selectedTool, selectedEraserSize, imgLeft, imgTop) {
                 detectDragGestures(
                     onDragStart = { offset ->
                         val path = NativePath()
@@ -760,7 +816,7 @@ private fun DrawWorkspace(
                     },
                     onDragEnd = {
                         currentPath?.let {
-                            paths.add(DrawPath(it, selectedColor, 10f, selectedTool == DrawTool.Eraser))
+                            paths.add(DrawPath(it, selectedColor, if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f, selectedTool == DrawTool.Eraser))
                         }
                         currentPath = null
                         drawCounter++
@@ -769,17 +825,16 @@ private fun DrawWorkspace(
             }
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawCounter // Observe drawCounter for recomposition
+            drawCounter
             
             drawIntoCanvas { canvas ->
                 canvas.nativeCanvas.drawBitmap(bitmap, null, RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight), null)
                 
-                // Use a layer for CLEAR blend mode to work
-                canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), androidx.compose.ui.graphics.Paint())
+                canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), Paint())
 
                 canvas.translate(imgLeft, imgTop)
 
-                val paint = androidx.compose.ui.graphics.Paint().apply {
+                val paint = Paint().apply {
                     strokeWidth = 10f
                     style = PaintingStyle.Stroke
                     strokeJoin = StrokeJoin.Round
@@ -789,14 +844,14 @@ private fun DrawWorkspace(
                 paths.forEach { drawPath ->
                     paint.color = drawPath.color
                     paint.blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
-                    paint.strokeWidth = if (drawPath.isEraser) 30f else 10f // 200% increase for eraser
+                    paint.strokeWidth = drawPath.strokeWidth
                     canvas.drawPath(drawPath.path.asComposePath(), paint)
                 }
                 
                 currentPath?.let { path ->
                     paint.color = selectedColor
                     paint.blendMode = if (selectedTool == DrawTool.Eraser) BlendMode.Clear else BlendMode.SrcOver
-                    paint.strokeWidth = if (selectedTool == DrawTool.Eraser) 30f else 10f
+                    paint.strokeWidth = if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f
                     canvas.drawPath(path.asComposePath(), paint)
                 }
                 
@@ -811,17 +866,54 @@ private fun DrawBottomRow(
     selectedColor: Color,
     onColorSelected: (Color) -> Unit,
     selectedTool: DrawTool,
-    onToolSelected: (DrawTool) -> Unit
+    onToolSelected: (DrawTool) -> Unit,
+    selectedEraserSize: Float,
+    onEraserSizeSelected: (Float) -> Unit
 ) {
+    val eraserSizes = listOf(
+        "Small" to 15f,
+        "Medium" to 30f,
+        "Large" to 60f
+    )
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(vertical = 16.dp)
     ) {
+        Spacer(modifier = Modifier.height(16.dp))
+        if (selectedTool == DrawTool.Eraser) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                eraserSizes.forEach { (label, size) ->
+                    val isSelected = selectedEraserSize == size
+                    Surface(
+                        onClick = { onEraserSizeSelected(size) },
+                        modifier = Modifier.clip(RoundedCornerShape(20.dp)),
+                        color = if (isSelected) SolariTheme.colors.primary.copy(alpha = 0.2f) else Color.Transparent,
+                        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, SolariTheme.colors.primary) else null
+                    ) {
+                        Box(modifier = Modifier.padding(12.dp, 6.dp, 12.dp, 6.dp)) {
+                            Text(
+                                text = label,
+                                color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = PlusJakartaSans
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp),
+            contentPadding = PaddingValues(16.dp, 0.dp, 16.dp, 0.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(PresetColors) { color ->
@@ -838,6 +930,7 @@ private fun DrawBottomRow(
             Spacer(modifier = Modifier.width(24.dp))
             ToolButton("Eraser", Icons.Default.AutoFixNormal, isSelected = selectedTool == DrawTool.Eraser) { onToolSelected(DrawTool.Eraser) }
         }
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
@@ -860,9 +953,8 @@ private fun TextWorkspace(
         overlay?.let { o ->
             if (o.text != "..." && o.text.isNotEmpty()) {
                 val result = currentWorkingBitmap.copy(Bitmap.Config.ARGB_8888, true)
-                val canvas = Canvas(result)
+                val canvas = AndroidCanvas(result)
                 
-                // Calculate the scale and offset of the image within canvasSize
                 val imageWidth = currentWorkingBitmap.width.toFloat()
                 val imageHeight = currentWorkingBitmap.height.toFloat()
                 val containerWidth = canvasSize.width
@@ -874,19 +966,17 @@ private fun TextWorkspace(
                 val left = (containerWidth - drawWidth) / 2
                 val top = (containerHeight - drawHeight) / 2
                 
-                // Map Compose coordinates to Bitmap coordinates
                 val bitmapX = (o.position.x - left) / scale
                 val bitmapY = (o.position.y - top) / scale
                 
-                val paint = Paint().apply {
+                val paint = AndroidPaint().apply {
                     color = o.color.toArgb()
                     textSize = with(density) { 24.sp.toPx() } * o.scale / scale
-                    textAlign = Paint.Align.CENTER
+                    textAlign = AndroidPaint.Align.CENTER
                     isAntiAlias = true
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                 }
                 
-                // Adjust Y for vertical centering (drawText uses baseline)
                 val fontMetrics = paint.fontMetrics
                 val verticalOffset = (fontMetrics.ascent + fontMetrics.descent) / 2f
                 val finalY = bitmapY - verticalOffset
@@ -910,7 +1000,6 @@ private fun TextWorkspace(
         }
     }
     
-    // Update overlay color when selectedColor changes
     LaunchedEffect(selectedColor) {
         overlay?.color = selectedColor
     }
@@ -924,8 +1013,6 @@ private fun TextWorkspace(
                     if (overlay == null) {
                         overlay = TextOverlay(position = offset, color = selectedColor)
                     } else {
-                        // Check if click is outside the box
-                        // For simplicity, we assume clicking anywhere else applies it
                         if (overlay?.text != "..." && overlay?.text?.isNotEmpty() == true) {
                             bakeText()
                         } else {
@@ -969,7 +1056,6 @@ private fun TextWorkspace(
                     .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                     .padding(8.dp)
             ) {
-                // Trash button (top left)
                 IconButton(
                     onClick = { overlay = null },
                     modifier = Modifier
@@ -979,7 +1065,6 @@ private fun TextWorkspace(
                     Icon(Icons.Default.Delete, null, tint = Color.White, modifier = Modifier.size(16.dp))
                 }
 
-                // Rotate button (top right)
                 IconButton(
                     onClick = { },
                     modifier = Modifier
@@ -1002,12 +1087,9 @@ private fun TextWorkspace(
                     value = o.text,
                     onValueChange = { newVal ->
                         if (o.isPlaceholder && newVal.isNotEmpty() && newVal != "...") {
-                            // Typing something while placeholder is active: replace it
-                            // Note: We check newVal != "..." to allow initial autofocus to not trigger this
                             o.text = newVal.removeSuffix("...")
                             o.isPlaceholder = false
                         } else if (!o.isPlaceholder && newVal.isEmpty()) {
-                            // Deleting everything: restore placeholder
                             o.text = "..."
                             o.isPlaceholder = true
                         } else {
@@ -1015,7 +1097,7 @@ private fun TextWorkspace(
                         }
                     },
                     modifier = Modifier
-                        .padding(horizontal = 32.dp, vertical = 24.dp)
+                        .padding(32.dp, 24.dp, 32.dp, 24.dp)
                         .focusRequester(focusRequester)
                         .onGloballyPositioned {
                              if (o.text == "..." && o.isPlaceholder) {
@@ -1030,14 +1112,13 @@ private fun TextWorkspace(
                         textAlign = TextAlign.Center,
                         fontFamily = PlusJakartaSans
                     ),
-                    cursorBrush = SolidColor(o.color),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(o.color),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = {
                         keyboardController?.hide()
                     })
                 )
 
-                // Resize button (bottom right)
                 IconButton(
                     onClick = { },
                     modifier = Modifier
@@ -1069,21 +1150,19 @@ private fun TextBottomRow(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(vertical = 16.dp)
     ) {
+        Spacer(modifier = Modifier.height(16.dp))
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp),
+            contentPadding = PaddingValues(16.dp, 0.dp, 16.dp, 0.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(PresetColors) { color ->
                 ColorButton(color, isSelected = selectedColor == color) { onColorSelected(color) }
             }
         }
-        // Requirement: "The sub-screen row should be the same as Draw's sub-screen."
-        // Draw's sub-screen has Tools too. But Text doesn't need Brush/Eraser.
-        // I'll add a spacer to match the height if needed, but the layout is already centered.
-        Spacer(modifier = Modifier.height(56.dp)) // To match Draw's height
+        Spacer(modifier = Modifier.height(56.dp))
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
@@ -1096,8 +1175,8 @@ private fun AdjustWorkspace(
 ) {
     val adjustedBitmap = remember(bitmap, values) {
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = Canvas(result)
-        val paint = Paint()
+        val canvas = AndroidCanvas(result)
+        val paint = AndroidPaint()
         
         val cm = ColorMatrix()
         
@@ -1158,11 +1237,11 @@ private fun AdjustBottomRow(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(vertical = 16.dp)
     ) {
+        Spacer(modifier = Modifier.height(16.dp))
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp),
+            contentPadding = PaddingValues(16.dp, 0.dp, 16.dp, 0.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             items(AdjustType.entries) { type ->
@@ -1188,7 +1267,7 @@ private fun AdjustBottomRow(
                 }
             },
             valueRange = -1f..1f,
-            modifier = Modifier.padding(horizontal = 32.dp, vertical = 8.dp),
+            modifier = Modifier.padding(32.dp, 8.dp, 32.dp, 8.dp),
             enabled = activeType != null,
             colors = SliderDefaults.colors(
                 thumbColor = SolariTheme.colors.primary,
@@ -1196,6 +1275,7 @@ private fun AdjustBottomRow(
                 inactiveTrackColor = SolariTheme.colors.surfaceVariant
             )
         )
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
@@ -1205,7 +1285,7 @@ private fun SubScreenTopBar(onCancel: () -> Unit, onApply: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(16.dp, 12.dp, 16.dp, 12.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1248,7 +1328,7 @@ private fun ToolButton(label: String, icon: ImageVector, isSelected: Boolean, on
         border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, SolariTheme.colors.primary) else null
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            modifier = Modifier.padding(16.dp, 8.dp, 16.dp, 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(icon, null, tint = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground, modifier = Modifier.size(20.dp))

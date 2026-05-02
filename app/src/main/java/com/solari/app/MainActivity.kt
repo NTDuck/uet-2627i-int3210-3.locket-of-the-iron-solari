@@ -667,6 +667,8 @@ private fun SolariApp(
         }
         composable(
             route = SolariRoute.Screen.Main.name + "/{page}/{postId}?authorIds={authorIds}&sort={sort}",
+            enterTransition = { fadeIn(tween(500)) },
+            exitTransition = { fadeOut(tween(500)) },
             arguments = listOf(
                 navArgument("authorIds") {
                     type = NavType.StringType
@@ -822,7 +824,9 @@ private fun SolariApp(
                 },
                 onCancel = {
                     capturedMediaForPreview = null
-                    navController.popBackStack()
+                    navController.navigate(SolariRoute.Screen.Main.name + "/0") {
+                        popUpTo(SolariRoute.Screen.Main.name + "/0") { inclusive = true }
+                    }
                 },
                 onNavigateToEdit = {
                     val currentMedia = routeCapturedMedia

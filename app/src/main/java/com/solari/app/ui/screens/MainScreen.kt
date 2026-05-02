@@ -47,10 +47,20 @@ fun MainScreen(
     onConversationFeedbackConsumed: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 4 }
+    val pageHistory = remember { mutableStateListOf(initialPage) }
 
     LaunchedEffect(initialPage) {
         if (pagerState.currentPage != initialPage) {
             pagerState.scrollToPage(initialPage)
+            if (pageHistory.lastOrNull() != initialPage) {
+                pageHistory.add(initialPage)
+            }
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage) {
+        if (pageHistory.lastOrNull() != pagerState.currentPage) {
+            pageHistory.add(pagerState.currentPage)
         }
     }
 
@@ -70,6 +80,10 @@ fun MainScreen(
             onNavigateBackFromFeedPost != null
         ) {
             onNavigateBackFromFeedPost()
+        } else if (pageHistory.size > 1) {
+            pageHistory.removeLast()
+            val previousPage = pageHistory.last()
+            scope.launch { pagerState.animateScrollToPage(previousPage) }
         } else if (pagerState.currentPage != 0) {
             scope.launch { pagerState.animateScrollToPage(0) }
         } else {
