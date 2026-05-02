@@ -1,5 +1,6 @@
 package com.solari.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +35,8 @@ fun ChangeThemeScreen(
     androidx.compose.runtime.LaunchedEffect(settingsViewModel.isDarkMode) {
         viewModel.loadSchemes(settingsViewModel.isDarkMode)
     }
+
+    BackHandler(onBack = onNavigateBack)
 
     Scaffold(
         topBar = {

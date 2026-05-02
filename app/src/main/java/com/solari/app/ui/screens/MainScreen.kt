@@ -26,6 +26,9 @@ fun MainScreen(
     initialFeedPostId: String? = null,
     initialFeedAuthorFilterIds: Set<String> = emptySet(),
     initialFeedSort: String = "default",
+    pageHistory: List<Int> = listOf(initialPage),
+    onPageHistoryChange: (List<Int>) -> Unit = {},
+    onCurrentPageChange: (Int) -> Unit = {},
     profileFeedbackMessage: String? = null,
     conversationFeedbackMessage: String? = null,
     settingsViewModel: SettingsViewModel,
@@ -47,20 +50,20 @@ fun MainScreen(
     onConversationFeedbackConsumed: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 4 }
-    val pageHistory = remember { mutableStateListOf(initialPage) }
 
     LaunchedEffect(initialPage) {
         if (pagerState.currentPage != initialPage) {
             pagerState.scrollToPage(initialPage)
             if (pageHistory.lastOrNull() != initialPage) {
-                pageHistory.add(initialPage)
+                onPageHistoryChange(pageHistory + initialPage)
             }
         }
     }
 
     LaunchedEffect(pagerState.currentPage) {
+        onCurrentPageChange(pagerState.currentPage)
         if (pageHistory.lastOrNull() != pagerState.currentPage) {
-            pageHistory.add(pagerState.currentPage)
+            onPageHistoryChange(pageHistory + pagerState.currentPage)
         }
     }
 
@@ -76,15 +79,16 @@ fun MainScreen(
 
     BackHandler(enabled = true) {
         if (initialFeedPostId != null &&
-            pagerState.currentPage == 1 &&
-            onNavigateBackFromFeedPost != null
+            pagerState.currentPage == 1
         ) {
             onNavigateBackFromFeedPost()
         } else if (pageHistory.size > 1) {
-            pageHistory.removeLast()
-            val previousPage = pageHistory.last()
+            val updatedHistory = pageHistory.dropLast(1)
+            val previousPage = updatedHistory.last()
+            onPageHistoryChange(updatedHistory)
             scope.launch { pagerState.animateScrollToPage(previousPage) }
         } else if (pagerState.currentPage != 0) {
+            onPageHistoryChange(listOf(0))
             scope.launch { pagerState.animateScrollToPage(0) }
         } else {
             // No effect on HomepageBeforePreviewScreen (CameraBefore)

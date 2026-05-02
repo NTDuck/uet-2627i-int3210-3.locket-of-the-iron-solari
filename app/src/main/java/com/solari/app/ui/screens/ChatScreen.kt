@@ -1,5 +1,6 @@
 package com.solari.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -306,7 +307,9 @@ fun ChatScreen(
         listItemIndexes = chatListModel.listItemIndexes
     )
 
-        Scaffold(
+    BackHandler(onBack = onNavigateBack)
+
+    Scaffold(
         containerColor = ChatBackground,
         bottomBar = {
             SolariBottomNavBar(
@@ -1258,7 +1261,7 @@ private fun ChatBubble(
     var hasReplySwipeHapticFired by remember(message.id) { mutableStateOf(false) }
     val bubbleInteractionSource = remember(message.id) { MutableInteractionSource() }
     val hapticFeedback = LocalHapticFeedback.current
-    val replySwipeThresholdPx = with(LocalDensity.current) { 22.5.dp.toPx() }
+    val replySwipeThresholdPx = with(LocalDensity.current) { 90.dp.toPx() }
     val bubbleShape = RoundedCornerShape(12.dp)
     val highlightScale by animateFloatAsState(
         targetValue = if (isHighlighted) 1.1f else 1f,
@@ -1287,7 +1290,7 @@ private fun ChatBubble(
 
     Box(
         modifier = Modifier
-            .offset { IntOffset((dragOffsetPx / 3).roundToInt(), 0) }
+            .offset { IntOffset(dragOffsetPx.roundToInt(), 0) }
             .widthIn(max = if (isFromMe) 292.dp else 248.dp)
             .padding(bottom = if (hasReactions) 8.dp else 0.dp)
             .then(

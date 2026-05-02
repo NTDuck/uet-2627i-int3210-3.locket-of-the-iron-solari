@@ -27,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.layout.Box
@@ -259,6 +260,8 @@ private fun SolariApp(
     var internetFeedbackIsSuccess by remember { mutableStateOf(false) }
     var internetFeedbackIsLoading by remember { mutableStateOf(false) }
     var internetFeedbackEventId by remember { mutableStateOf(0) }
+    var selectedMainPage by rememberSaveable { mutableStateOf(0) }
+    var mainPageHistory by rememberSaveable { mutableStateOf(listOf(0)) }
     var notificationPermissionGranted by remember {
         mutableStateOf(
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
@@ -309,11 +312,44 @@ private fun SolariApp(
     fun acknowledgeSessionInvalidation() {
         capturedMediaForPreview = null
         optimisticPostDraft = null
+        selectedMainPage = 0
+        mainPageHistory = listOf(0)
         navController.navigate(SolariRoute.Screen.Welcome.name) {
             launchSingleTop = true
             popUpTo(0)
         }
         appAuthViewModel.acknowledgeSessionInvalidation()
+    }
+
+    fun recordMainPage(page: Int) {
+        val targetPage = page.coerceIn(0, 3)
+        selectedMainPage = targetPage
+        if (mainPageHistory.lastOrNull() != targetPage) {
+            mainPageHistory = mainPageHistory + targetPage
+        }
+    }
+
+    fun replacePageHistory(history: List<Int>) {
+        val sanitizedHistory = history
+            .map { it.coerceIn(0, 3) }
+            .ifEmpty { listOf(selectedMainPage.coerceIn(0, 3)) }
+        mainPageHistory = sanitizedHistory
+        selectedMainPage = sanitizedHistory.last()
+    }
+
+    fun navigateToMainPage(page: Int, replaceCurrent: Boolean = false) {
+        val targetPage = page.coerceIn(0, 3)
+        val currentDestinationId = navController.currentDestination?.id
+
+        recordMainPage(targetPage)
+        navController.navigate(SolariRoute.Screen.Main.name + "/$targetPage") {
+            launchSingleTop = true
+            if (replaceCurrent && currentDestinationId != null) {
+                popUpTo(currentDestinationId) {
+                    inclusive = true
+                }
+            }
+        }
     }
 
     LaunchedEffect(authState.isAuthenticated, pendingFriendInviteDeepLink?.sequence) {
@@ -504,6 +540,8 @@ private fun SolariApp(
                 onNavigateToSignIn = { navController.navigate(SolariRoute.Screen.SignIn.name) },
                 onGoogleSignInComplete = {
                     appAuthViewModel.onSignedIn()
+                    selectedMainPage = 0
+                    mainPageHistory = listOf(0)
                     navController.navigate(SolariRoute.Screen.Main.name + "/0") {
                         popUpTo(0)
                     }
@@ -525,6 +563,8 @@ private fun SolariApp(
                 onNavigateToSignIn = { navController.navigate(SolariRoute.Screen.SignIn.name) },
                 onSignUpComplete = {
                     appAuthViewModel.onSignedIn()
+                    selectedMainPage = 0
+                    mainPageHistory = listOf(0)
                     navController.navigate(SolariRoute.Screen.Main.name + "/0") {
                         popUpTo(0)
                     }
@@ -547,6 +587,8 @@ private fun SolariApp(
                 onNavigateToForgotPassword = { navController.navigate(SolariRoute.Screen.PasswordRecovery.name) },
                 onSignInComplete = {
                     appAuthViewModel.onSignedIn()
+                    selectedMainPage = 0
+                    mainPageHistory = listOf(0)
                     navController.navigate(SolariRoute.Screen.Main.name + "/0") {
                         popUpTo(0)
                     }
@@ -583,7 +625,7 @@ private fun SolariApp(
             PasswordResetScreen(
                 viewModel = viewModel,
                 showTopBar = showTopBar,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = { navigateToMainPage(3, replaceCurrent = true) },
                 onResetComplete = { 
                     if (showTopBar) {
                         navController.navigateToWelcomeAfterLogout(appAuthViewModel::signOutLocal)
@@ -629,10 +671,12 @@ private fun SolariApp(
                     null
                 }
             }
-        ) { backStackEntry ->
-            val page = backStackEntry.arguments?.getString("page")?.toIntOrNull() ?: 0
+        ) {
             MainScreen(
-                initialPage = page,
+                initialPage = selectedMainPage,
+                pageHistory = mainPageHistory,
+                onPageHistoryChange = ::replacePageHistory,
+                onCurrentPageChange = { selectedMainPage = it.coerceIn(0, 3) },
                 profileFeedbackMessage = profileFeedbackMessage,
                 conversationFeedbackMessage = conversationFeedbackMessage,
                 settingsViewModel = settingsViewModel,
@@ -696,6 +740,9 @@ private fun SolariApp(
                 ?: "default"
             MainScreen(
                 initialPage = page,
+                pageHistory = mainPageHistory,
+                onPageHistoryChange = ::replacePageHistory,
+                onCurrentPageChange = { selectedMainPage = it.coerceIn(0, 3) },
                 initialFeedPostId = postId,
                 initialFeedAuthorFilterIds = feedAuthorFilterIds,
                 initialFeedSort = feedSort,
@@ -818,18 +865,11 @@ private fun SolariApp(
                 onSend = { draft ->
                     optimisticPostDraft = draft
                     capturedMediaForPreview = null
-                    navController.navigate(SolariRoute.Screen.Main.name + "/0") {
-                        launchSingleTop = true
-                        popUpTo(SolariRoute.Screen.CameraAfter.name) {
-                            inclusive = true
-                        }
-                    }
+                    navigateToMainPage(0, replaceCurrent = true)
                 },
                 onCancel = {
                     capturedMediaForPreview = null
-                    navController.navigate(SolariRoute.Screen.Main.name + "/0") {
-                        popUpTo(SolariRoute.Screen.Main.name + "/0") { inclusive = true }
-                    }
+                    navigateToMainPage(0, replaceCurrent = true)
                 },
                 onNavigateToEdit = {
                     val currentMedia = routeCapturedMedia
@@ -844,9 +884,9 @@ private fun SolariApp(
                     }
                     navController.navigate(SolariRoute.Screen.ImageEditing.name)
                 },
-                onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
-                onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
-                onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") }
+                onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },
+                onNavigateToChat = { navigateToMainPage(2, replaceCurrent = true) },
+                onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) }
             )
         }
         composable(
@@ -867,11 +907,12 @@ private fun SolariApp(
                 sharedTransitionScope = this@SharedTransitionLayout,
                 animatedVisibilityScope = this@composable,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
-                onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
-                onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
-                onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") },
+                onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },
+                onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
+                onNavigateToChat = { navigateToMainPage(2, replaceCurrent = true) },
+                onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) },
                 onNavigateToPost = { postId, authorIds, sort ->
+                    recordMainPage(1)
                     navController.navigateToFeedPost(postId, authorIds, sort)
                 }
             )
@@ -896,10 +937,7 @@ private fun SolariApp(
                 initialPartner = selectedConversation?.otherUser,
                 viewModel = viewModel,
                 onNavigateBack = {
-                    navController.navigate(SolariRoute.Screen.Main.name + "/2") {
-                        popUpTo(SolariRoute.Screen.Main.name + "/2") { inclusive = true }
-                        launchSingleTop = true
-                    }
+                    navigateToMainPage(2, replaceCurrent = true)
                 },
                 onNavigateToSettings = { settingsChatId, partner ->
                     navController.currentBackStackEntry
@@ -907,9 +945,9 @@ private fun SolariApp(
                         ?.set(ChatSettingsPartnerKey, partner)
                     navController.navigate(SolariRoute.Screen.ChatSettings.name + "/$settingsChatId")
                 },
-                onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
-                onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
-                onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") }
+                onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
+                onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },
+                onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) }
             )
         }
         composable(SolariRoute.Screen.ChatSettings.name + "/{chatId}") { backStackEntry ->
@@ -925,14 +963,16 @@ private fun SolariApp(
                 onNavigateBack = { navController.popBackStack() },
                 onClearHistoryComplete = { message ->
                     conversationFeedbackMessage = message
+                    recordMainPage(2)
                     navController.navigate(SolariRoute.Screen.Main.name + "/2") {
+                        launchSingleTop = true
                         popUpTo(SolariRoute.Screen.Chat.name + "/$chatId") { inclusive = true }
                     }
                 },
-                onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
-                onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
-                onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
-                onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") }
+                onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
+                onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },
+                onNavigateToChat = { navigateToMainPage(2, replaceCurrent = true) },
+                onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) }
             )
         }
         composable(SolariRoute.Screen.ChangeTheme.name) {
@@ -940,7 +980,7 @@ private fun SolariApp(
             ChangeThemeScreen(
                 viewModel = viewModel,
                 settingsViewModel = settingsViewModel,
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navigateToMainPage(3, replaceCurrent = true) }
             )
         }
         composable(
@@ -977,11 +1017,14 @@ private fun SolariApp(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
                 onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
-                onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
-                onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
-                onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
-                onNavigateToConversation = { conversation -> navController.navigateToChat(conversation) },
-                onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") }
+                onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
+                onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },
+                onNavigateToChat = { navigateToMainPage(2, replaceCurrent = true) },
+                onNavigateToConversation = { conversation ->
+                    recordMainPage(2)
+                    navController.navigateToChat(conversation)
+                },
+                onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) }
             )
         }
         composable(SolariRoute.Screen.BlockedAccounts.name) {
@@ -989,10 +1032,10 @@ private fun SolariApp(
             BlockedAccountsScreen(
                 viewModel = viewModel,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
-                onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
-                onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
-                onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") }
+                onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
+                onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },
+                onNavigateToChat = { navigateToMainPage(2, replaceCurrent = true) },
+                onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) }
             )
         }
         }

@@ -1,5 +1,6 @@
 package com.solari.app.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -72,6 +73,8 @@ fun BlockedAccountsScreen(
     var pendingUnblock by remember { mutableStateOf<BlockedUser?>(null) }
     var isUserRefreshing by remember { mutableStateOf(false) }
     val blockedAccounts = viewModel.blockedUsers
+
+    BackHandler(onBack = onNavigateBack)
 
     LaunchedEffect(viewModel.isLoading) {
         if (!viewModel.isLoading) {
