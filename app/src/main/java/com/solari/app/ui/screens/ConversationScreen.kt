@@ -30,7 +30,10 @@ import com.solari.app.ui.models.FriendRequestDirection
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariFeedbackPill
-import com.solari.app.ui.components.SortDropdownButton
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
+import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
@@ -52,7 +55,7 @@ fun ConversationScreen(
     onNavigateToFeed: () -> Unit,
     onNavigateToProfile: () -> Unit
 ) {
-    var sortSelection by remember { mutableStateOf(SortSelection.Default) }
+    var sortSelection by remember { mutableStateOf(SortSelection.Newest) }
     var isUserRefreshing by remember { mutableStateOf(false) }
     var requestPendingCancel by remember { mutableStateOf<FriendRequest?>(null) }
     var feedbackPillVisible by remember { mutableStateOf(false) }
@@ -157,7 +160,7 @@ fun ConversationScreen(
                             Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                                 Surface(
                                     onClick = onNavigateToManageFriends,
-                                    color = Color(0xFF2C2D30),
+                                    color = SolariTheme.colors.surfaceVariant,
                                     shape = RoundedCornerShape(8.dp)
                                 ) {
                                     Row(
@@ -173,7 +176,7 @@ fun ConversationScreen(
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
                                             text = "Manage friends",
-                                            color = Color.White,
+                                            color = SolariTheme.colors.onBackground,
                                             fontSize = 14.sp,
                                             fontFamily = PlusJakartaSans,
                                             fontWeight = FontWeight.Medium
@@ -217,7 +220,8 @@ fun ConversationScreen(
                                     request = request,
                                     onAccept = { viewModel.acceptFriendRequest(request.id) },
                                     onDecline = { viewModel.declineFriendRequest(request.id) },
-                                    onCancel = { requestPendingCancel = request }
+                                    onCancel = { requestPendingCancel = request },
+                                    modifier = Modifier.animateItem()
                                 )
                             }
 
@@ -263,12 +267,10 @@ fun ConversationScreen(
                                     fontFamily = PlusJakartaSans,
                                     color = SolariTheme.colors.tertiary
                                 )
-                                SortDropdownButton(
+                                FilterToggleButton(
                                     selected = sortSelection,
-                                    onSelected = { sortSelection = it },
+                                    onToggle = { sortSelection = it },
                                     iconTint = SolariTheme.colors.tertiary,
-                                    menuContainerColor = SolariTheme.colors.surface,
-                                    menuContentColor = Color.White,
                                     modifier = Modifier.size(28.dp),
                                     iconSize = 17
                                 )
@@ -293,13 +295,14 @@ fun ConversationScreen(
                                 }
                             }
                         } else {
-                            items(sortedConversations) { conversation ->
+                            items(sortedConversations, key = { it.id }) { conversation ->
                                 ConversationItem(
                                     conversation = conversation,
                                     onClick = {
                                         viewModel.markConversationAsRead(conversation.id)
                                         onNavigateToChat(conversation)
-                                    }
+                                    },
+                                    modifier = Modifier.animateItem()
                                 )
                             }
                         }
@@ -351,7 +354,8 @@ private fun FriendRequestTogglePill(
     onClick: () -> Unit
 ) {
     Surface(
-        color = Color(0xFF2C2D30),
+        color = SolariTheme.colors.surfaceVariant,
+
         shape = RoundedCornerShape(16.dp),
         modifier = Modifier.scaledClickable(
             pressedScale = 1.1f,
@@ -390,14 +394,15 @@ fun FriendRequestItem(
     request: FriendRequest,
     onAccept: () -> Unit,
     onDecline: () -> Unit,
-    onCancel: () -> Unit
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val isOutgoing = request.direction == FriendRequestDirection.Outgoing
 
     Surface(
         color = SolariTheme.colors.surface,
         shape = RoundedCornerShape(10.dp),
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier.padding(13.dp),
@@ -419,7 +424,8 @@ fun FriendRequestItem(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = request.user.displayName,
-                    color = Color.White, 
+                    color = SolariTheme.colors.onBackground,
+ 
                     fontWeight = FontWeight.Bold, 
                     fontSize = 13.6.sp,
                     fontFamily = PlusJakartaSans
@@ -436,7 +442,7 @@ fun FriendRequestItem(
                 Surface(
                     onClick = onCancel,
                     shape = RoundedCornerShape(16.dp),
-                    color = Color(0xFF2C2D30)
+                    color = SolariTheme.colors.surfaceVariant
                 ) {
                     Text(
                         text = "Unsend",
@@ -453,7 +459,7 @@ fun FriendRequestItem(
                         .size(32.dp)
                         .scaledClickable(pressedScale = 1.1f, onClick = onDecline),
                     shape = RoundedCornerShape(10.dp),
-                    color = Color(0xFF2C2D30)
+                    color = SolariTheme.colors.surfaceVariant
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
@@ -478,7 +484,7 @@ fun FriendRequestItem(
                         Icon(
                             Icons.Default.Check,
                             contentDescription = "Accept",
-                            tint = Color.Black,
+                            tint = SolariTheme.colors.onPrimary,
                             modifier = Modifier.size(19.dp)
                         )
                     }
@@ -493,8 +499,8 @@ private fun ConversationFeedbackPill(
     message: String,
     isSuccess: Boolean
 ) {
-    val backgroundColor = if (isSuccess) Color(0xFF163624) else Color(0xFF3C1E22)
-    val iconTint = if (isSuccess) Color(0xFF77E0A1) else Color(0xFFFF8A80)
+    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.2f)
+    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.error
 
     Surface(
         color = backgroundColor,
@@ -517,7 +523,8 @@ private fun ConversationFeedbackPill(
 
             Text(
                 text = message,
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
+
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
@@ -529,7 +536,11 @@ private fun ConversationFeedbackPill(
 }
 
 @Composable
-fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
+fun ConversationItem(
+    conversation: Conversation,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val itemShape = RoundedCornerShape(10.dp)
     val displayName = if (conversation.isReadOnly) "Someone" else conversation.otherUser.displayName
     val avatarUsername = if (conversation.isReadOnly) "someone" else conversation.otherUser.username
@@ -559,7 +570,7 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
     Surface(
         color = SolariTheme.colors.surfaceVariant,
         shape = itemShape,
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .scaledClickable(pressedScale = 0.95f, onClick = onClick)
             .clip(itemShape)
@@ -605,14 +616,15 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
                     ) {
                         Text(
                             text = displayName,
-                            color = Color.White, 
+                            color = SolariTheme.colors.onBackground,
+ 
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             fontFamily = PlusJakartaSans
                         )
                         Text(
                             text = conversation.timestamp.toRelativeTimeLabel(),
-                            color = if (conversation.isUnread) SolariTheme.colors.secondary else Color.Gray, 
+                            color = if (conversation.isUnread) SolariTheme.colors.secondary else SolariTheme.colors.onSurfaceVariant, 
                             fontSize = 11.sp,
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Medium
@@ -620,7 +632,7 @@ fun ConversationItem(conversation: Conversation, onClick: () -> Unit) {
                     }
                     Text(
                         text = lastMessagePreview,
-                        color = if (conversation.isUnread) Color.White else Color.Gray,
+                        color = if (conversation.isUnread) SolariTheme.colors.onBackground else SolariTheme.colors.onSurfaceVariant,
                         fontSize = 13.sp,
                         maxLines = 1,
                         fontFamily = PlusJakartaSans,

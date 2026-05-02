@@ -81,17 +81,16 @@ fun ChatSettingsScreen(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Chat Settings",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onBackground
-                )
-            }
+                        tint = SolariTheme.colors.primary
+                        )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                        text = "Chat Settings",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = SolariTheme.colors.onBackground
+                        )            }
         }
     ) { innerPadding ->
         Box(
@@ -117,7 +116,7 @@ fun ChatSettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
+                    .background(SolariTheme.colors.background)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp)
             ) {
@@ -139,12 +138,12 @@ fun ChatSettingsScreen(
                         text = displayName,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = SolariTheme.colors.onBackground
                     )
                     Text(
                         text = "@$displayUsername",
                         fontSize = 14.sp,
-                        color = Color.Gray
+                        color = SolariTheme.colors.onSurfaceVariant
                     )
                 }
 
@@ -155,7 +154,7 @@ fun ChatSettingsScreen(
                         text = "PREFERENCES",
                         fontSize = 12.sp * 1.4f,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.secondary,
+                        color = SolariTheme.colors.secondary,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
 
@@ -168,8 +167,8 @@ fun ChatSettingsScreen(
                                 onCheckedChange = { viewModel.toggleMute(chatId) },
                                 enabled = !viewModel.isLoading && viewModel.isMuted != null,
                                 colors = SwitchDefaults.colors(
-                                    checkedThumbColor = Color.White,
-                                    checkedTrackColor = MaterialTheme.colorScheme.primary
+                                    checkedThumbColor = SolariTheme.colors.onPrimary,
+                                    checkedTrackColor = SolariTheme.colors.primary
                                 )
                             )
                         }
@@ -182,7 +181,7 @@ fun ChatSettingsScreen(
                     text = "ACTIONS",
                     fontSize = 12.sp * 1.4f,
                     fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.secondary,
+                    color = SolariTheme.colors.secondary,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
 
@@ -191,7 +190,7 @@ fun ChatSettingsScreen(
                     title = "Clear Chat History",
                     onClick = { showClearHistoryConfirm = true },
                     trailing = {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
+                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant)
                     }
                 )
 
@@ -201,10 +200,10 @@ fun ChatSettingsScreen(
                     SettingsRow(
                         icon = Icons.Default.Block,
                         title = "Block User",
-                        titleColor = Color(0xFFE57373),
+                        titleColor = SolariTheme.colors.error,
                         onClick = { showBlockConfirm = true },
                         trailing = {
-                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = Color.Gray)
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant)
                         }
                     )
                 }

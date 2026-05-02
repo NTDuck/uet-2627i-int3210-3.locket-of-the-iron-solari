@@ -171,8 +171,8 @@ fun HomepageBeforeCapturingScreen(
 
     var lensFacing by remember { mutableIntStateOf(CameraSelector.LENS_FACING_BACK) }
     var captureMode by remember { mutableStateOf(CaptureMode.Photo) }
-    var isFlashEnabled by remember { mutableStateOf(false) }
-    var timerValue by remember { mutableIntStateOf(0) }
+    val isFlashEnabled = viewModel.isFlashEnabled
+    val timerValue = viewModel.timerValue
     var isTimerRunning by remember { mutableStateOf(false) }
     var countdownValue by remember { mutableIntStateOf(0) }
     var isCameraPermissionGranted by remember {
@@ -531,8 +531,8 @@ fun HomepageBeforeCapturingScreen(
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .clip(RoundedCornerShape(CapturePreviewCornerRadius))
-                .background(Color.Black)
-                .border(1.dp, Color.DarkGray, RoundedCornerShape(CapturePreviewCornerRadius))
+                .background(SolariTheme.colors.background)
+                .border(1.dp, Color.Transparent, RoundedCornerShape(CapturePreviewCornerRadius))
                 .pointerInput(boundCamera) {
                     awaitEachGesture {
                         val firstDown = awaitFirstDown(requireUnconsumed = false)
@@ -580,7 +580,7 @@ fun HomepageBeforeCapturingScreen(
             } else {
                 Text(
                     text = "Camera permission is required.",
-                    color = Color.White,
+                    color = SolariTheme.colors.onBackground,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium
                 )
@@ -602,7 +602,7 @@ fun HomepageBeforeCapturingScreen(
             if (isTimerRunning) {
                 Text(
                     text = countdownValue.toString(),
-                    color = Color.White,
+                    color = SolariTheme.colors.onBackground,
                     fontSize = 72.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -628,7 +628,7 @@ fun HomepageBeforeCapturingScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                RoundControlButton(onClick = { isFlashEnabled = !isFlashEnabled }) {
+                RoundControlButton(onClick = viewModel::toggleFlash) {
                     Icon(
                         imageVector = if (isFlashEnabled) Icons.Default.FlashOn else Icons.Default.FlashOff,
                         contentDescription = "Flash",
@@ -647,15 +647,7 @@ fun HomepageBeforeCapturingScreen(
                     }
                 )
 
-                RoundControlButton(
-                    onClick = {
-                        timerValue = when (timerValue) {
-                            0 -> 3
-                            3 -> 10
-                            else -> 0
-                        }
-                    }
-                ) {
+                RoundControlButton(onClick = viewModel::rotateTimer) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.Timer,
@@ -853,8 +845,9 @@ private fun RoundControlButton(
 
 @Composable
 private fun GridOverlay() {
+    val colors = SolariTheme.colors
     Canvas(modifier = Modifier.fillMaxSize()) {
-        val lineColor = Color.White.copy(alpha = 0.18f)
+        val lineColor = colors.onBackground.copy(alpha = 0.18f)
         val strokeWidth = 1.dp.toPx()
         val firstX = size.width / 3f
         val secondX = size.width * 2f / 3f

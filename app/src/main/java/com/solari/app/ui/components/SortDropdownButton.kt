@@ -45,6 +45,44 @@ import androidx.compose.ui.unit.sp
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.util.scaledClickable
 
+@Composable
+fun FilterToggleButton(
+    selected: SortSelection,
+    onToggle: (SortSelection) -> Unit,
+    iconTint: Color,
+    modifier: Modifier = Modifier,
+    iconSize: Int = 17
+) {
+    val rotation by animateFloatAsState(
+        targetValue = if (selected == SortSelection.Oldest) 180f else 0f,
+        animationSpec = tween(400),
+        label = "FilterToggleRotation"
+    )
+
+    Box(
+        modifier = modifier
+            .size(28.dp)
+            .graphicsLayer {
+                rotationX = rotation
+            }
+            .scaledClickable(pressedScale = 1.2f) {
+                val next = when (selected) {
+                    SortSelection.Oldest -> SortSelection.Newest
+                    else -> SortSelection.Oldest
+                }
+                onToggle(next)
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Default.FilterList,
+            contentDescription = "Toggle Sort",
+            tint = iconTint,
+            modifier = Modifier.size(iconSize.dp)
+        )
+    }
+}
+
 enum class SortSelection(val label: String, val apiValue: String?) {
     Default(label = "Default", apiValue = null),
     Newest(label = "Newest", apiValue = "newest"),

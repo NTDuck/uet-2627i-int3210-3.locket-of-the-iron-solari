@@ -50,14 +50,14 @@ import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.BlockedAccountsViewModel
 import java.util.concurrent.TimeUnit
 
-private val BlockedBackground = Color(0xFF111316)
-private val BlockedSurface = Color(0xFF1B1C21)
-private val BlockedChip = Color(0xFF34363B)
-private val BlockedPrimary = Color(0xFFFF8426)
-private val BlockedPrimaryContent = Color(0xFF5F2900)
-private val BlockedText = Color(0xFFE3E2E6)
-private val BlockedMuted = Color(0xFFD7C0B2)
-private val BlockedSubtle = Color(0xFF9699A1)
+private val BlockedBackground @Composable get() = SolariTheme.colors.background
+private val BlockedSurface @Composable get() = SolariTheme.colors.surface
+private val BlockedChip @Composable get() = SolariTheme.colors.surfaceVariant
+private val BlockedPrimary @Composable get() = SolariTheme.colors.primary
+private val BlockedPrimaryContent @Composable get() = SolariTheme.colors.onPrimary
+private val BlockedText @Composable get() = SolariTheme.colors.onBackground
+private val BlockedMuted @Composable get() = SolariTheme.colors.onSurface
+private val BlockedSubtle @Composable get() = SolariTheme.colors.onSurfaceVariant
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

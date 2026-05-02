@@ -31,6 +31,10 @@ fun ChangeThemeScreen(
     settingsViewModel: SettingsViewModel,
     onNavigateBack: () -> Unit
 ) {
+    androidx.compose.runtime.LaunchedEffect(settingsViewModel.isDarkMode) {
+        viewModel.loadSchemes(settingsViewModel.isDarkMode)
+    }
+
     Scaffold(
         topBar = {
             Row(
@@ -141,12 +145,12 @@ fun ThemeItem(variant: SolariThemeVariant, isSelected: Boolean, onClick: () -> U
             ) {
                 val previewColors = listOf(themeColors.primary, themeColors.secondary, themeColors.tertiary, themeColors.background, themeColors.surface)
                 previewColors.forEach { color ->
-                    Box(
-                        modifier = Modifier
-                            .size(16.dp)
-                            .background(color, RoundedCornerShape(2.dp))
-                            .border(0.5.dp, Color.Gray.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
-                    )
+                        Box(
+                            modifier = Modifier
+                                .size(16.dp)
+                                .background(color, RoundedCornerShape(2.dp))
+                                .border(0.5.dp, SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(2.dp))
+                        )
                 }
             }
         }

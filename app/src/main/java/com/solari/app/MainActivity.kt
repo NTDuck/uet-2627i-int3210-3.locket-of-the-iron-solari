@@ -82,17 +82,16 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (intent?.action == "com.solari.app.ACTION_EXIT") {
+            finishAffinity()
+            return
+        }
         pendingFriendInviteDeepLink = intent.extractFriendInviteDeepLink()
         preferHighestRefreshRate()
         enableEdgeToEdge()
         setContent {
             val appContainer = (application as SolariApplication).appContainer
-            val settingsViewModel: SettingsViewModel = viewModel()
-            val isSystemDark = isSystemInDarkTheme()
-            
-            LaunchedEffect(Unit) {
-                settingsViewModel.isDarkMode = isSystemDark
-            }
+            val settingsViewModel: SettingsViewModel = viewModel(factory = appContainer.viewModelFactory)
             
             SolariTheme(
                 variant = settingsViewModel.activeThemeVariant
@@ -114,6 +113,10 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.action == "com.solari.app.ACTION_EXIT") {
+            finishAffinity()
+            return
+        }
         pendingFriendInviteDeepLink = intent.extractFriendInviteDeepLink()
     }
 
@@ -226,6 +229,7 @@ private fun String?.toFeedAuthorFilterIds(): Set<String> {
         .orEmpty()
 }
 
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun SolariApp(
     settingsViewModel: SettingsViewModel,
@@ -451,23 +455,47 @@ private fun SolariApp(
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        NavHost(
-            navController = navController,
-            modifier = Modifier.background(SolariTheme.colors.background),
-            startDestination = startDestination,
-            enterTransition = {
-                slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
-            },
-            exitTransition = {
-                slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
-            },
-            popEnterTransition = {
-                slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
-            },
-            popExitTransition = {
-                slideOutHorizontally(targetOffsetX = { 1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
-            }
-        ) {
+        SharedTransitionLayout {
+            NavHost(
+                navController = navController,
+                modifier = Modifier.background(SolariTheme.colors.background),
+                startDestination = startDestination,
+                enterTransition = {
+                    if (initialState.destination.route?.contains("FeedBrowse") == true &&
+                        targetState.destination.route?.contains("Main") == true) {
+                        fadeIn(tween(500, delayMillis = 400))
+                    } else {
+                        slideInHorizontally(initialOffsetX = { 1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
+                    }
+                },
+                exitTransition = {
+                    if (initialState.destination.route?.contains("Main") == true &&
+                        targetState.destination.route?.contains("FeedBrowse") == true) {
+                        fadeOut(tween(500))
+                    } else {
+                        slideOutHorizontally(targetOffsetX = { -1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                    }
+                },
+                popEnterTransition = {
+                    if (initialState.destination.route?.contains("FeedBrowse") == true &&
+                        targetState.destination.route?.contains("Main") == true) {
+                        fadeIn(tween(500, delayMillis = 400))
+                    } else if (initialState.destination.route?.contains("Main") == true &&
+                        targetState.destination.route?.contains("FeedBrowse") == true) {
+                        fadeIn(tween(500, delayMillis = 400))
+                    } else {
+                        slideInHorizontally(initialOffsetX = { -1000 }, animationSpec = tween(300)) + fadeIn(animationSpec = tween(300))
+                    }
+                },
+                popExitTransition = {
+                    if (initialState.destination.route?.contains("Main") == true &&
+                        targetState.destination.route?.contains("FeedBrowse") == true) {
+                        fadeOut(tween(500))
+                    } else {
+                        slideOutHorizontally(targetOffsetX = { 1000 }, animationSpec = tween(300)) + fadeOut(animationSpec = tween(300))
+                    }
+                }
+            ) {
         composable(SolariRoute.Screen.Welcome.name) {
             val viewModel: WelcomeViewModel = viewModel(factory = appContainer.viewModelFactory)
             WelcomeScreen(
@@ -609,6 +637,8 @@ private fun SolariApp(
                 conversationFeedbackMessage = conversationFeedbackMessage,
                 settingsViewModel = settingsViewModel,
                 viewModelFactory = appContainer.viewModelFactory,
+                sharedTransitionScope = this@SharedTransitionLayout,
+                animatedVisibilityScope = this@composable,
                 onNavigateToChat = { conversation -> navController.navigateToChat(conversation) },
                 onNavigateToManageFriends = { navController.navigate(SolariRoute.Screen.FriendManagement.name) },
                 onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
@@ -640,6 +670,8 @@ private fun SolariApp(
         }
         composable(
             route = SolariRoute.Screen.Main.name + "/{page}/{postId}?authorIds={authorIds}&sort={sort}",
+            enterTransition = { fadeIn(tween(500)) },
+            exitTransition = { fadeOut(tween(500)) },
             arguments = listOf(
                 navArgument("authorIds") {
                     type = NavType.StringType
@@ -671,6 +703,8 @@ private fun SolariApp(
                 conversationFeedbackMessage = conversationFeedbackMessage,
                 settingsViewModel = settingsViewModel,
                 viewModelFactory = appContainer.viewModelFactory,
+                sharedTransitionScope = this@SharedTransitionLayout,
+                animatedVisibilityScope = this@composable,
                 onNavigateToChat = { conversation -> navController.navigateToChat(conversation) },
                 onNavigateToManageFriends = { navController.navigate(SolariRoute.Screen.FriendManagement.name) },
                 onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
@@ -699,6 +733,53 @@ private fun SolariApp(
                 },
                 onProfileFeedbackConsumed = { profileFeedbackMessage = null },
                 onConversationFeedbackConsumed = { conversationFeedbackMessage = null }
+            )
+        }
+        composable(
+            SolariRoute.Screen.ImageEditing.name,
+            enterTransition = { slideInVertically(initialOffsetY = { it }, animationSpec = tween(500)) },
+            exitTransition = { slideOutVertically(targetOffsetY = { it }, animationSpec = tween(500)) }
+        ) {
+            val viewModel: ImageEditingViewModel = viewModel(factory = appContainer.viewModelFactory)
+            val capturedMediaUri = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>(CapturedMediaUriKey)
+            val capturedMediaType = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>(CapturedMediaTypeKey)
+                ?: "image/jpeg"
+            val capturedMediaIsVideo = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<Boolean>(CapturedMediaIsVideoKey)
+                ?: false
+            val capturedMediaDuration = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<Long>(CapturedMediaDurationKey)
+            
+            val initialMedia = capturedMediaForPreview ?: capturedMediaUri?.let { uriString ->
+                CapturedMedia(
+                    uri = Uri.parse(uriString),
+                    contentType = capturedMediaType,
+                    isVideo = capturedMediaIsVideo,
+                    durationMs = capturedMediaDuration
+                )
+            }
+
+            ImageEditingScreen(
+                viewModel = viewModel,
+                initialMedia = initialMedia,
+                onNavigateBack = { editedMedia ->
+                    if (editedMedia != null) {
+                        capturedMediaForPreview = editedMedia
+                        navController.previousBackStackEntry?.savedStateHandle?.apply {
+                            set(CapturedMediaUriKey, editedMedia.uri.toString())
+                            set(CapturedMediaTypeKey, editedMedia.contentType)
+                            set(CapturedMediaIsVideoKey, editedMedia.isVideo)
+                            set(CapturedMediaDurationKey, editedMedia.durationMs)
+                        }
+                    }
+                    navController.popBackStack()
+                }
             )
         }
         composable(SolariRoute.Screen.CameraAfter.name) {
@@ -746,7 +827,22 @@ private fun SolariApp(
                 },
                 onCancel = {
                     capturedMediaForPreview = null
-                    navController.popBackStack()
+                    navController.navigate(SolariRoute.Screen.Main.name + "/0") {
+                        popUpTo(SolariRoute.Screen.Main.name + "/0") { inclusive = true }
+                    }
+                },
+                onNavigateToEdit = {
+                    val currentMedia = routeCapturedMedia
+                    if (currentMedia != null) {
+                        capturedMediaForPreview = currentMedia
+                        navController.currentBackStackEntry?.savedStateHandle?.apply {
+                            set(CapturedMediaUriKey, currentMedia.uri.toString())
+                            set(CapturedMediaTypeKey, currentMedia.contentType)
+                            set(CapturedMediaIsVideoKey, currentMedia.isVideo)
+                            set(CapturedMediaDurationKey, currentMedia.durationMs)
+                        }
+                    }
+                    navController.navigate(SolariRoute.Screen.ImageEditing.name)
                 },
                 onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
                 onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
@@ -768,7 +864,10 @@ private fun SolariApp(
             FeedBrowseScreen(
                 viewModel = viewModel,
                 initialAuthorId = initialAuthorId,
+                sharedTransitionScope = this@SharedTransitionLayout,
+                animatedVisibilityScope = this@composable,
                 onNavigateBack = { navController.popBackStack() },
+                onNavigateToFeed = { navController.navigate(SolariRoute.Screen.Main.name + "/1") },
                 onNavigateToCamera = { navController.navigate(SolariRoute.Screen.Main.name + "/0") },
                 onNavigateToChat = { navController.navigate(SolariRoute.Screen.Main.name + "/2") },
                 onNavigateToProfile = { navController.navigate(SolariRoute.Screen.Main.name + "/3") },
@@ -796,7 +895,12 @@ private fun SolariApp(
                 chatId = chatId,
                 initialPartner = selectedConversation?.otherUser,
                 viewModel = viewModel,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = {
+                    navController.navigate(SolariRoute.Screen.Main.name + "/2") {
+                        popUpTo(SolariRoute.Screen.Main.name + "/2") { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToSettings = { settingsChatId, partner ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
@@ -1008,4 +1112,5 @@ private fun SolariApp(
             }
         )
     }
+}
 }

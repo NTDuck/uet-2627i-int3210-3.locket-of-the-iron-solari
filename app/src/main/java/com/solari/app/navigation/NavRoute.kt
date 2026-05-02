@@ -20,6 +20,7 @@ object SolariRoute {
         Profile,
         FriendManagement,
         BlockedAccounts,
-        ChangeTheme
+        ChangeTheme,
+        ImageEditing
     }
 }

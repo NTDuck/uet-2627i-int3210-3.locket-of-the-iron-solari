@@ -29,9 +29,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
+import androidx.compose.animation.core.tween
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.ui.components.FilterToggleButton
+import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
@@ -41,12 +44,15 @@ import kotlinx.coroutines.launch
 
 private const val FeedBrowseScrollTopButtonThresholdIndex = 24
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 fun FeedBrowseScreen(
     viewModel: FeedBrowseViewModel,
     initialAuthorId: String? = null,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onNavigateBack: () -> Unit,
+    onNavigateToFeed: () -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToProfile: () -> Unit,
@@ -90,6 +96,10 @@ fun FeedBrowseScreen(
         viewModel.applyInitialAuthorFilter(initialAuthorId)
     }
 
+    androidx.activity.compose.BackHandler {
+        onNavigateToFeed()
+    }
+
     val shouldLoadMore by remember {
         derivedStateOf {
             val layoutInfo = feedListState.layoutInfo
@@ -129,6 +139,17 @@ fun FeedBrowseScreen(
             }
     }
 
+    val currentSortSelection = when (selectedSort) {
+        "oldest" -> SortSelection.Oldest
+        else -> SortSelection.Newest
+    }
+
+    LaunchedEffect(selectedSort, selectedFriendIds) {
+        if (posts.isNotEmpty()) {
+            scrollFeedListToTop()
+        }
+    }
+
     Scaffold(
         containerColor = SolariTheme.colors.background,
         bottomBar = {
@@ -137,7 +158,7 @@ fun FeedBrowseScreen(
                 onNavigate = { routeName ->
                     when (routeName) {
                         SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
-                        SolariRoute.Screen.Feed.name -> onNavigateBack()
+                        SolariRoute.Screen.Feed.name -> onNavigateToFeed()
                         SolariRoute.Screen.Conversations.name -> onNavigateToChat()
                         SolariRoute.Screen.Profile.name -> onNavigateToProfile()
                     }
@@ -161,38 +182,30 @@ fun FeedBrowseScreen(
                     .fillMaxSize()
                     .padding(top = 24.dp, start = 24.dp, end = 24.dp)
             ) {
-                Text(
-                    text = "SORT",
-                    fontSize = 12.sp * 1.4f,
-                    fontWeight = FontWeight.Bold,
-                    color = SolariTheme.colors.secondary,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
-
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SortChip("default", isSelected = selectedSort == "default") {
-                        viewModel.updateSelectedSort("default")
-                        scrollFeedListToTop()
-                    }
-                    SortChip("newest", isSelected = selectedSort == "newest") {
-                        viewModel.updateSelectedSort("newest")
-                        scrollFeedListToTop()
-                    }
-                    SortChip("oldest", isSelected = selectedSort == "oldest") {
-                        viewModel.updateSelectedSort("oldest")
-                        scrollFeedListToTop()
-                    }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "POSTS",
+                        fontSize = 12.sp * 1.4f,
+                        fontWeight = FontWeight.Bold,
+                        color = SolariTheme.colors.secondary
+                    )
+                    FilterToggleButton(
+                        selected = currentSortSelection,
+                        onToggle = { selection ->
+                            viewModel.updateSelectedSort(selection.apiValue ?: "newest")
+                            scrollFeedListToTop()
+                        },
+                        iconTint = SolariTheme.colors.secondary,
+                        modifier = Modifier.size(28.dp),
+                        iconSize = 18
+                    )
                 }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = "FILTER BY FRIENDS",
-                    fontSize = 12.sp * 1.4f,
-                    fontWeight = FontWeight.Bold,
-                    color = SolariTheme.colors.secondary,
-                    modifier = Modifier.padding(bottom = 12.dp)
-                )
 
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -221,7 +234,7 @@ fun FeedBrowseScreen(
                                 Icon(
                                     Icons.Default.Public,
                                     contentDescription = "All",
-                                    tint = if (isAllSelected) SolariTheme.colors.primary else Color.Gray
+                                    tint = if (isAllSelected) SolariTheme.colors.primary else SolariTheme.colors.onSurfaceVariant
                                 )
                             }
                             Text(
@@ -312,9 +325,10 @@ fun FeedBrowseScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
-                        items(posts, key = { it.id }) { post ->
+                        items(filteredSortedPosts, key = { it.id }) { post ->
                             Box(
                                 modifier = Modifier
+                                    .animateItem()
                                     .aspectRatio(1f)
                                     .scaledClickable(pressedScale = 0.9f) {
                                         if (post.uploadStatus == PostUploadStatus.None) {
@@ -325,15 +339,23 @@ fun FeedBrowseScreen(
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(SolariTheme.colors.surface)
                             ) {
-                                AsyncImage(
-                                    model = ImageRequest.Builder(LocalContext.current)
-                                        .data(post.thumbnailUrl.ifBlank { post.imageUrl })
-                                        .crossfade(true)
-                                        .build(),
-                                    contentDescription = "Browse Image",
-                                    modifier = Modifier.fillMaxSize(),
-                                    contentScale = ContentScale.Crop
-                                )
+                                with(sharedTransitionScope) {
+                                    AsyncImage(
+                                        model = ImageRequest.Builder(LocalContext.current)
+                                            .data(post.thumbnailUrl.ifBlank { post.imageUrl })
+                                            .crossfade(true)
+                                            .build(),
+                                        contentDescription = "Browse Image",
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .sharedElement(
+                                                rememberSharedContentState(key = "post_image_${post.id}"),
+                                                animatedVisibilityScope = animatedVisibilityScope,
+                                                boundsTransform = { _, _ -> tween(durationMillis = 500) }
+                                            ),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                }
 
                                 when (post.uploadStatus) {
                                     PostUploadStatus.Uploading,
@@ -341,12 +363,12 @@ fun FeedBrowseScreen(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .background(Color.Black.copy(alpha = 0.18f)),
+                                                .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             CircularProgressIndicator(
-                                                color = Color.White,
-                                                trackColor = Color.White.copy(alpha = 0.18f),
+                                                color = SolariTheme.colors.onBackground,
+                                                trackColor = SolariTheme.colors.onBackground.copy(alpha = 0.18f),
                                                 modifier = Modifier.size(24.dp),
                                                 strokeWidth = 2.dp
                                             )
@@ -357,12 +379,12 @@ fun FeedBrowseScreen(
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxSize()
-                                                .background(Color.Black.copy(alpha = 0.36f)),
+                                                .background(SolariTheme.colors.onSurface.copy(alpha = 0.36f)),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = "Failed",
-                                                color = Color.White,
+                                                color = SolariTheme.colors.onBackground,
                                                 fontSize = 12.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
@@ -433,28 +455,6 @@ private fun FeedBrowseScrollTopButton(
                 color = SolariTheme.colors.onSurface,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Bold
-            )
-        }
-    }
-}
-
-@Composable
-fun SortChip(text: String, isSelected: Boolean, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(24.dp),
-        color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.surface,
-        modifier = Modifier.height(40.dp)
-    ) {
-        Box(
-            modifier = Modifier.padding(horizontal = 24.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = text,
-                color = if (isSelected) SolariTheme.colors.onPrimary else SolariTheme.colors.onSurface,
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
             )
         }
     }

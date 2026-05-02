@@ -1,5 +1,7 @@
 package com.solari.app.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.lifecycle.ViewModelProvider
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +19,7 @@ import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.viewmodels.*
 import kotlinx.coroutines.launch
-
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 fun MainScreen(
     initialPage: Int = 0,
@@ -27,14 +29,16 @@ fun MainScreen(
     profileFeedbackMessage: String? = null,
     conversationFeedbackMessage: String? = null,
     settingsViewModel: SettingsViewModel,
-    viewModelFactory: SolariViewModelFactory,
+    viewModelFactory: ViewModelProvider.Factory,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope? = null,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope? = null,
     onNavigateToChat: (Conversation) -> Unit,
     onNavigateToManageFriends: () -> Unit,
     onNavigateToBlockedAccounts: () -> Unit,
     onNavigateToChangePassword: () -> Unit,
     onNavigateToChangeTheme: () -> Unit,
     onNavigateToFeedBrowse: (String?) -> Unit,
-    onNavigateBackFromFeedPost: (() -> Unit)? = null,
+    onNavigateBackFromFeedPost: () -> Unit = {},
     optimisticPostDraft: OptimisticPostDraft? = null,
     onOptimisticPostDraftConsumed: (String) -> Unit = {},
     onCapture: (CapturedMedia) -> Unit,
@@ -43,6 +47,23 @@ fun MainScreen(
     onConversationFeedbackConsumed: () -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 4 }
+    val pageHistory = remember { mutableStateListOf(initialPage) }
+
+    LaunchedEffect(initialPage) {
+        if (pagerState.currentPage != initialPage) {
+            pagerState.scrollToPage(initialPage)
+            if (pageHistory.lastOrNull() != initialPage) {
+                pageHistory.add(initialPage)
+            }
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage) {
+        if (pageHistory.lastOrNull() != pagerState.currentPage) {
+            pageHistory.add(pagerState.currentPage)
+        }
+    }
+
     val scope = rememberCoroutineScope()
     var isFeedActivityPanelVisible by remember { mutableStateOf(false) }
 
@@ -59,6 +80,10 @@ fun MainScreen(
             onNavigateBackFromFeedPost != null
         ) {
             onNavigateBackFromFeedPost()
+        } else if (pageHistory.size > 1) {
+            pageHistory.removeLast()
+            val previousPage = pageHistory.last()
+            scope.launch { pagerState.animateScrollToPage(previousPage) }
         } else if (pagerState.currentPage != 0) {
             scope.launch { pagerState.animateScrollToPage(0) }
         } else {
@@ -66,19 +91,26 @@ fun MainScreen(
         }
     }
 
+    val viewModelStoreOwner = androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner.current
+
     Scaffold(
         bottomBar = {
             SolariBottomNavBar(
                 selectedRoute = routes[pagerState.currentPage].name,
                 onNavigate = { routeName ->
-                    if (
-                        routeName == SolariRoute.Screen.Feed.name &&
-                        pagerState.currentPage == 1
-                    ) {
-                        onNavigateToFeedBrowse(null)
-                    } else {
-                        val index = routes.indexOfFirst { it.name == routeName }
-                        if (index != -1) {
+                    val index = routes.indexOfFirst { it.name == routeName }
+                    if (index != -1) {
+                        if (index == 1 && viewModelStoreOwner != null) {
+                            val feedViewModel: FeedViewModel = ViewModelProvider(viewModelStoreOwner, viewModelFactory)[FeedViewModel::class.java]
+                            feedViewModel.resetFilters()
+                        }
+                        
+                        if (
+                            routeName == SolariRoute.Screen.Feed.name &&
+                            pagerState.currentPage == 1
+                        ) {
+                            onNavigateToFeedBrowse(null)
+                        } else {
                             scope.launch {
                                 pagerState.animateScrollToPage(index)
                             }
@@ -112,19 +144,23 @@ fun MainScreen(
                         viewModel.addOptimisticPost(draft)
                         onOptimisticPostDraftConsumed(draft.id)
                     }
-                    FeedScreen(
-                        viewModel = viewModel,
-                        initialPostId = initialFeedPostId,
-                        authorFilterIds = initialFeedAuthorFilterIds,
-                        sortMode = initialFeedSort,
-                        onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
-                        onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
-                        onNavigateToChat = { scope.launch { pagerState.animateScrollToPage(2) } },
-                        onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } },
-                        onNavigateToBrowse = onNavigateToFeedBrowse,
-                        isFeedVisible = pagerState.currentPage == 1,
-                        onActivityPanelVisibilityChanged = { isFeedActivityPanelVisible = it }
-                    )
+                    if (sharedTransitionScope != null && animatedVisibilityScope != null) {
+                        FeedScreen(
+                            viewModel = viewModel,
+                            initialPostId = initialFeedPostId,
+                            authorFilterIds = initialFeedAuthorFilterIds,
+                            sortMode = initialFeedSort,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
+                            onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
+                            onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
+                            onNavigateToConversations = { scope.launch { pagerState.animateScrollToPage(2) } },
+                            onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } },
+                            onNavigateToBrowse = onNavigateToFeedBrowse,
+                            isFeedVisible = pagerState.currentPage == 1,
+                            onActivityPanelVisibilityChanged = { isFeedActivityPanelVisible = it }
+                        )
+                    }
                 }
                 2 -> {
                     val viewModel: ConversationViewModel = viewModel(factory = viewModelFactory)

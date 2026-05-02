@@ -21,6 +21,7 @@ import com.solari.app.data.local.SolariDatabase
 import com.solari.app.data.network.ApiExecutor
 import com.solari.app.data.preferences.PushNotificationStore
 import com.solari.app.data.preferences.RecentEmojiStore
+import com.solari.app.data.preferences.UserPreferencesStore
 import com.solari.app.data.remote.conversation.ConversationApi
 import com.solari.app.data.remote.auth.AuthApi
 import com.solari.app.data.remote.feed.FeedApi
@@ -60,6 +61,7 @@ class AppContainer(
     private val pushNotificationStore = PushNotificationStore(applicationContext)
     private val authSessionInvalidationNotifier = AuthSessionInvalidationNotifier()
     private val apiExecutor = ApiExecutor(json)
+    private val userPreferencesStore = UserPreferencesStore(applicationContext)
 
     private val refreshOkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -105,7 +107,7 @@ class AppContainer(
     private val friendApi: FriendApi = retrofit.create(FriendApi::class.java)
     private val conversationApi: ConversationApi = retrofit.create(ConversationApi::class.java)
 
-    private val userRepository: UserRepository = DefaultUserRepository(
+    val userRepository: UserRepository = DefaultUserRepository(
         userApi = userApi,
         apiExecutor = apiExecutor
     )
@@ -120,17 +122,17 @@ class AppContainer(
         pushNotificationStore = pushNotificationStore
     )
 
-    private val feedRepository: FeedRepository = DefaultFeedRepository(
+    val feedRepository: FeedRepository = DefaultFeedRepository(
         feedApi = feedApi,
         apiExecutor = apiExecutor
     )
 
-    private val friendRepository: FriendRepository = DefaultFriendRepository(
+    val friendRepository: FriendRepository = DefaultFriendRepository(
         friendApi = friendApi,
         apiExecutor = apiExecutor
     )
 
-    private val conversationRepository: ConversationRepository = DefaultConversationRepository(
+    val conversationRepository: ConversationRepository = DefaultConversationRepository(
         conversationApi = conversationApi,
         apiExecutor = apiExecutor
     )
@@ -166,6 +168,7 @@ class AppContainer(
         conversationRepository = conversationRepository,
         recentEmojiStore = recentEmojiStore,
         postUploadCoordinator = postUploadCoordinator,
-        webSocketManager = webSocketManager
+        webSocketManager = webSocketManager,
+        userPreferencesStore = userPreferencesStore
     )
 }

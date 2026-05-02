@@ -22,6 +22,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.solari.app.ui.theme.PlusJakartaSans
+import com.solari.app.ui.theme.SolariTheme
 
 @Composable
 fun SolariFeedbackPill(
@@ -30,8 +31,8 @@ fun SolariFeedbackPill(
     modifier: Modifier = Modifier,
     isLoading: Boolean = false
 ) {
-    val backgroundColor = if (isSuccess) Color(0xFF163624) else Color(0xFF3C1E22)
-    val iconTint = if (isSuccess) Color(0xFF77E0A1) else Color(0xFFFF8A80)
+    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.2f)
+    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.error
 
     Surface(
         color = backgroundColor,
@@ -63,7 +64,7 @@ fun SolariFeedbackPill(
 
             Text(
                 text = message,
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 13.sp,

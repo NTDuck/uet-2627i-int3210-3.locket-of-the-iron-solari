@@ -165,7 +165,7 @@ fun SignInScreen(
                     modifier = Modifier
                         .fillMaxWidth(0.7f)
                         .padding(bottom = 48.dp),
-                    contentColor = Color(0xFF5F2900),
+                    contentColor = SolariTheme.colors.onPrimary,
                     fontSize = 18.sp,
                 )
 
@@ -184,8 +184,8 @@ fun SignInScreen(
                 SolariButton(
                     text = "Create Account",
                     onClick = onNavigateToSignUp,
-                    containerColor = Color(0xFF343538),
-                    contentColor = Color(0xFFE3E2E6),
+                    containerColor = SolariTheme.colors.surfaceVariant,
+                    contentColor = SolariTheme.colors.onBackground,
                     modifier = Modifier.fillMaxWidth(0.7f),
                     fontSize = 16.sp,
                 )
@@ -195,7 +195,7 @@ fun SignInScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.42f))
+                        .background(SolariTheme.colors.background.copy(alpha = 0.42f))
                         .clickable(enabled = false) {},
                     contentAlignment = Alignment.Center
                 ) {

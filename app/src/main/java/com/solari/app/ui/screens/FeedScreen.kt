@@ -12,18 +12,24 @@ import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -56,7 +62,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -65,16 +70,18 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
 import com.solari.app.R
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariAvatar
+import com.solari.app.ui.components.SolariBottomNavBar
+import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostActivityEntry
 import com.solari.app.ui.models.PostUploadStatus
@@ -112,16 +119,18 @@ private data class FeedActivityUserGroup(
     val activities: List<PostActivityEntry>
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 fun FeedScreen(
     viewModel: FeedViewModel,
     initialPostId: String? = null,
     authorFilterIds: Set<String> = emptySet(),
     sortMode: String = "default",
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onNavigateBack: () -> Unit,
     onNavigateToCamera: () -> Unit,
-    onNavigateToChat: () -> Unit,
+    onNavigateToConversations: () -> Unit,
     onNavigateToProfile: () -> Unit,
     onNavigateToBrowse: (String?) -> Unit,
     isFeedVisible: Boolean = true,
@@ -154,10 +163,50 @@ fun FeedScreen(
         }
     }
     val currentUser = viewModel.currentUser
-    val initialPostPage = remember(initialPostId, posts) {
-        posts.indexOfFirst { it.id == initialPostId }.takeIf { it >= 0 } ?: 0
+    var lastHandledInitialPostId by remember { mutableStateOf<String?>(null) }
+    val initialPostPage = remember(posts.size) {
+        if (initialPostId != null) {
+            val index = posts.indexOfFirst { it.id == initialPostId }
+            if (index >= 0) index else 0
+        } else 0
     }
     val pagerState = rememberPagerState(initialPage = initialPostPage) { posts.size }
+    var isInitialScrollDone by remember { mutableStateOf(initialPostId == null) }
+
+    LaunchedEffect(initialPostId, posts.size) {
+        if (initialPostId != null && !isInitialScrollDone) {
+            val index = posts.indexOfFirst { it.id == initialPostId }
+            if (index >= 0) {
+                pagerState.scrollToPage(index)
+                isInitialScrollDone = true
+            }
+        }
+    }
+
+    LaunchedEffect(authorFilterIds, sortMode, initialPostId) {
+        viewModel.updateFilters(authorFilterIds, sortMode, initialPostId)
+    }
+
+    LaunchedEffect(pagerState.currentPage, posts.size) {
+        if (posts.size > 0 && pagerState.currentPage >= posts.size - 3) {
+            viewModel.loadNextPage()
+        }
+    }
+
+    var activeInputOverlay by remember { mutableStateOf<FeedInputOverlayMode?>(null) }
+    var messageText by remember { mutableStateOf("") }
+    var reactionNote by remember { mutableStateOf("") }
+    var showEmojiPicker by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    fun dismissInputOverlay() {
+        activeInputOverlay = null
+        showEmojiPicker = false
+        isInputOverlayVisible = false
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+    }
 
     fun showFeedback(message: String) {
         feedbackPillMessage = message
@@ -175,6 +224,24 @@ fun FeedScreen(
         }
     }
 
+    fun sendReactionOptimistically(emoji: String) {
+        val post = posts.getOrNull(pagerState.currentPage) ?: return
+        val note = reactionNote.trim().takeIf { it.isNotEmpty() }
+        reactionNote = ""
+        dismissInputOverlay()
+        viewModel.sendPostReaction(post, emoji, note) {}
+    }
+
+    fun sendMessageOptimistically() {
+        val post = posts.getOrNull(pagerState.currentPage) ?: return
+        val content = messageText.trim()
+        if (content.isEmpty()) return
+
+        messageText = ""
+        dismissInputOverlay()
+        viewModel.sendPostReply(post, content) {}
+    }
+
     val storagePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -186,10 +253,11 @@ fun FeedScreen(
     }
 
     LaunchedEffect(initialPostId, posts) {
-        if (initialPostId == null || posts.isEmpty()) return@LaunchedEffect
+        if (initialPostId == null || posts.isEmpty() || initialPostId == lastHandledInitialPostId) return@LaunchedEffect
 
         val requestedPostPage = posts.indexOfFirst { it.id == initialPostId }
-        if (requestedPostPage >= 0 && pagerState.currentPage != requestedPostPage) {
+        if (requestedPostPage >= 0) {
+            lastHandledInitialPostId = initialPostId
             pagerState.scrollToPage(requestedPostPage)
         }
     }
@@ -201,14 +269,6 @@ fun FeedScreen(
     LaunchedEffect(viewModel.isLoading) {
         if (!viewModel.isLoading) {
             isUserRefreshing = false
-        }
-    }
-
-    LaunchedEffect(isFeedVisible) {
-        if (!isFeedVisible) {
-            feedbackPillVisible = false
-            feedbackPillMessage = ""
-            viewModel.clearMessages()
         }
     }
 
@@ -233,24 +293,8 @@ fun FeedScreen(
         }
     }
 
-    LaunchedEffect(pagerState.currentPage, posts, currentUser?.id) {
-        val post = posts.getOrNull(pagerState.currentPage) ?: return@LaunchedEffect
-        if (post.uploadStatus != PostUploadStatus.None) return@LaunchedEffect
-        val currentUserId = currentUser?.id ?: return@LaunchedEffect
-        if (post.author.id == currentUserId) {
-            viewModel.loadPostActivity(post.id)
-        } else {
-            viewModel.registerPostView(post)
-        }
-    }
-
-    DisposableEffect(Unit) {
-        onDispose {
-            feedbackPillVisible = false
-            feedbackPillMessage = ""
-            viewModel.clearMessages()
-            onActivityPanelVisibilityChanged(false)
-        }
+    BackHandler(enabled = activeInputOverlay != null) {
+        dismissInputOverlay()
     }
 
     Box(
@@ -299,6 +343,8 @@ fun FeedScreen(
                 FeedPost(
                     post = posts[page],
                     isActive = page == pagerState.currentPage,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                     onLongPress = { showMenuForPost = posts[page] },
                     onMoreClick = { showMenuForPost = posts[page] },
                     activityEntries = viewModel.postActivities[posts[page].id].orEmpty(),
@@ -317,7 +363,17 @@ fun FeedScreen(
                     onInputOverlayVisibilityChanged = { isVisible ->
                         isInputOverlayVisible = isVisible
                     },
-                    currentUser = currentUser
+                    isInputOverlayActive = isInputOverlayVisible,
+                    currentUser = currentUser,
+                    activeInputOverlay = activeInputOverlay,
+                    onShowInputOverlay = { activeInputOverlay = it },
+                    reactionNote = reactionNote,
+                    onReactionNoteChange = { reactionNote = it },
+                    messageText = messageText,
+                    onMessageTextChange = { messageText = it },
+                    onOpenEmojiPicker = { showEmojiPicker = true },
+                    onSendReaction = ::sendReactionOptimistically,
+                    onSendMessage = ::sendMessageOptimistically
                 )
             }
         }
@@ -378,7 +434,7 @@ fun FeedScreen(
                         if (canDeletePost) {
                             FeedPostActionButton(
                                 text = "Delete",
-                                textColor = Color(0xFFE57373),
+                                textColor = SolariTheme.colors.error,
                                 shape = RoundedCornerShape(
                                     topStart = 0.dp,
                                     topEnd = 0.dp,
@@ -426,8 +482,70 @@ fun FeedScreen(
         ) {
             FeedFeedbackPill(message = feedbackPillMessage)
         }
+
+        activeInputOverlay?.let { overlayMode ->
+            val density = LocalDensity.current
+            val keyboardBottomPadding = with(density) { WindowInsets.ime.getBottom(density).toDp() }
+            val focusRequester = remember { FocusRequester() }
+
+            LaunchedEffect(overlayMode) {
+                focusRequester.requestFocus()
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(10f)
+                    .background(Color.Black.copy(alpha = 0.45f))
+                    .pointerInput(Unit) {
+                        detectTapGestures { dismissInputOverlay() }
+                    }
+                    .padding(bottom = keyboardBottomPadding)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp, vertical = 12.dp)
+                ) {
+                    when (overlayMode) {
+                        FeedInputOverlayMode.Reaction -> {
+                                FeedReactionField(
+                                    value = reactionNote,
+                                    onValueChange = { reactionNote = it.take(20) },
+                                    onReact = ::sendReactionOptimistically,
+                                    onOpenEmojiPicker = { showEmojiPicker = true },
+                                    isEditable = true,
+                                    focusRequester = focusRequester,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+
+                            FeedInputOverlayMode.Message -> {
+                                FeedMessageField(
+                                    value = messageText,
+                                    onValueChange = { messageText = it },
+                                    onSend = ::sendMessageOptimistically,
+                                    isEditable = true,
+                                    focusRequester = focusRequester,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (showEmojiPicker) {
+                EmojiPickerPopup(
+                    onClosed = { showEmojiPicker = false },
+                    selectedEmoji = null,
+                    recentEmojis = emptyList(),
+                    onReact = ::sendReactionOptimistically
+                )
+            }
+        }
     }
-}
 
 private suspend fun saveFeedPostMediaToPictures(
     context: Context,
@@ -581,7 +699,7 @@ private fun String.toSafeFeedFileNamePart(): String {
 @Composable
 private fun FeedFeedbackPill(message: String) {
     Surface(
-        color = Color(0xFF163624),
+        color = SolariTheme.colors.onSuccess,
         shape = RoundedCornerShape(20.dp),
         shadowElevation = 10.dp
     ) {
@@ -592,7 +710,7 @@ private fun FeedFeedbackPill(message: String) {
             Icon(
                 imageVector = Icons.Default.Check,
                 contentDescription = null,
-                tint = Color(0xFF77E0A1),
+                tint = SolariTheme.colors.success,
                 modifier = Modifier.size(22.dp)
             )
 
@@ -600,7 +718,8 @@ private fun FeedFeedbackPill(message: String) {
 
             Text(
                 text = message,
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
+
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
@@ -637,11 +756,13 @@ private fun FeedPostActionButton(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun FeedPost(
     post: Post,
     isActive: Boolean,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onLongPress: () -> Unit,
     onMoreClick: () -> Unit,
     activityEntries: List<PostActivityEntry>,
@@ -650,14 +771,18 @@ private fun FeedPost(
     onSendPostReply: (String, () -> Unit) -> Unit,
     onNavigateToBrowse: (String?) -> Unit,
     onInputOverlayVisibilityChanged: (Boolean) -> Unit,
-    currentUser: User?
+    isInputOverlayActive: Boolean,
+    currentUser: User?,
+    activeInputOverlay: FeedInputOverlayMode?,
+    onShowInputOverlay: (FeedInputOverlayMode) -> Unit,
+    reactionNote: String,
+    onReactionNoteChange: (String) -> Unit,
+    messageText: String,
+    onMessageTextChange: (String) -> Unit,
+    onOpenEmojiPicker: () -> Unit,
+    onSendReaction: (String) -> Unit,
+    onSendMessage: () -> Unit
 ) {
-    val focusManager = LocalFocusManager.current
-    val keyboardController = LocalSoftwareKeyboardController.current
-    var messageText by remember { mutableStateOf("") }
-    var reactionNote by remember { mutableStateOf("") }
-    var showEmojiPicker by remember { mutableStateOf(false) }
-    var activeInputOverlay by remember { mutableStateOf<FeedInputOverlayMode?>(null) }
     val currentUserId = currentUser?.id
     val isCurrentUserPost = post.author.id == currentUserId
     val displayAuthor = currentUser?.takeIf { post.author.id == it.id } ?: post.author
@@ -668,34 +793,16 @@ private fun FeedPost(
             .filter { it.id != currentUserId }
     }
 
-    fun dismissInputOverlay() {
-        activeInputOverlay = null
-        showEmojiPicker = false
-        onInputOverlayVisibilityChanged(false)
-        focusManager.clearFocus(force = true)
-        keyboardController?.hide()
-    }
+    var isZooming by remember { mutableStateOf(false) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
+    val coroutineScope = rememberCoroutineScope()
+    val zoomScale = remember { Animatable(1f) }
+    val zoomRotation = remember { Animatable(0f) }
+    val zoomOffset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
 
-    fun showInputOverlay(mode: FeedInputOverlayMode) {
-        activeInputOverlay = mode
-        onInputOverlayVisibilityChanged(true)
-    }
-
-    fun sendReactionOptimistically(emoji: String) {
-        val note = reactionNote.trim().takeIf { it.isNotEmpty() }
-        reactionNote = ""
-        dismissInputOverlay()
-        onSendPostReaction(emoji, note) {}
-    }
-
-    fun sendMessageOptimistically() {
-        val content = messageText.trim()
-        if (content.isEmpty()) return
-
-        messageText = ""
-        dismissInputOverlay()
-        onSendPostReply(content) {}
-    }
+    val density = LocalDensity.current
+    val keyboardHeight = WindowInsets.ime.getBottom(density)
+    val keyboardHeightDp = with(density) { keyboardHeight.toDp() }
 
     Box(
         modifier = Modifier
@@ -705,17 +812,65 @@ private fun FeedPost(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = 12.dp)
+                .padding(bottom = if (isInputOverlayActive) keyboardHeightDp else 0.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(modifier = Modifier.weight(0.55f))
+            Spacer(modifier = Modifier.height(48.dp))
 
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(14.dp))
+                    .zIndex(if (isZooming) 10f else 0f)
+                    .onGloballyPositioned { size = it.size }
+                    .pointerInput(Unit) {
+                        detectTransformGestures { centroid, pan, zoom, rotate ->
+                            coroutineScope.launch {
+                                val oldScale = zoomScale.value
+                                val newScale = (oldScale * zoom).coerceIn(1f, 5f)
+                                
+                                if (newScale > 1f || oldScale > 1f) {
+                                    val scaleFactor = newScale / oldScale
+                                    
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    val newOffset = zoomOffset.value * scaleFactor + (centroid - center) * (1 - scaleFactor)
+                                    
+                                    zoomScale.snapTo(newScale)
+                                    zoomRotation.snapTo(zoomRotation.value + rotate)
+                                    zoomOffset.snapTo(newOffset)
+                                    isZooming = true
+                                }
+                            }
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            do {
+                                val event = awaitPointerEvent()
+                            } while (event.changes.any { it.pressed })
+                            
+                            coroutineScope.launch {
+                                isZooming = false
+                                launch { zoomScale.animateTo(1f, tween(300)) }
+                                launch { zoomRotation.animateTo(0f, tween(300)) }
+                                launch { zoomOffset.animateTo(Offset.Zero, tween(300)) }
+                            }
+                        }
+                    }
+                    .graphicsLayer {
+                        scaleX = zoomScale.value
+                        scaleY = zoomScale.value
+                        rotationZ = zoomRotation.value
+                        translationX = zoomOffset.value.x
+                        translationY = zoomOffset.value.y
+                        clip = true
+                        shape = RoundedCornerShape(14.dp)
+                    }
                     .combinedClickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
                         onClick = {},
                         onLongClick = onLongPress
                     )
@@ -724,203 +879,222 @@ private fun FeedPost(
                     FeedVideoPlayer(
                         url = post.imageUrl,
                         mediaType = post.mediaType,
+                        postId = post.id,
                         isActive = isActive,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
                         onLongPress = onLongPress,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
                     FeedImage(
                         url = post.imageUrl,
+                        postId = post.id,
+                        sharedTransitionScope = sharedTransitionScope,
+                        animatedVisibilityScope = animatedVisibilityScope,
                         modifier = Modifier.fillMaxSize()
                     )
                 }
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.18f))
-                )
-
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(10.dp)
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(Color.Black.copy(alpha = 0.36f))
-                        .clickable(onClick = onMoreClick),
-                    contentAlignment = Alignment.Center
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !isZooming && !isInputOverlayActive,
+                    enter = fadeIn(),
+                    exit = fadeOut()
                 ) {
-                    Icon(
-                        Icons.Default.MoreVert,
-                        contentDescription = "More",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
+                    with(animatedVisibilityScope) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .animateEnterExit(
+                                    enter = fadeIn(animationSpec = tween(500)),
+                                    exit = fadeOut(animationSpec = tween(500))
+                                )
+                                .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f))
+                        )
 
-                if (!post.caption.isEmpty()) {
-                    Text(
-                        text = post.caption,
-                        color = Color.White,
-                        fontSize = 15.sp,
-                        lineHeight = 20.sp,
-                        fontFamily = PlusJakartaSans,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = 14.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(Color.Black.copy(alpha = 0.58f))
-                            .padding(horizontal = 28.dp, vertical = 8.dp)
-                    )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .animateEnterExit(
+                                    enter = fadeIn(animationSpec = tween(500)),
+                                    exit = fadeOut(animationSpec = tween(500))
+                                )
+                                .padding(10.dp)
+                                .size(36.dp)
+                                .clip(RoundedCornerShape(18.dp))
+                                .background(SolariTheme.colors.background.copy(alpha = 0.36f))
+                                .clickable(onClick = onMoreClick),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.MoreVert,
+                                contentDescription = "More",
+                                tint = SolariTheme.colors.onBackground,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+
+                        if (!post.caption.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .align(Alignment.BottomCenter)
+                                    .padding(bottom = 14.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = post.caption,
+                                    color = SolariTheme.colors.onBackground,
+                                    fontSize = 15.sp,
+                                    lineHeight = 20.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier
+                                        .animateEnterExit(
+                                            enter = fadeIn(animationSpec = tween(500)),
+                                            exit = fadeOut(animationSpec = tween(500))
+                                        )
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .background(SolariTheme.colors.background.copy(alpha = 0.58f))
+                                        .padding(horizontal = 28.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(36.dp))
-
-            Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .clickable { onNavigateToBrowse(displayAuthor.id) }
-                    .padding(vertical = 8.dp, horizontal = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !isZooming && !isInputOverlayActive,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.weight(1f)
             ) {
-                SolariAvatar(
-                    imageUrl = displayAuthor.profileImageUrl,
-                    username = displayAuthor.username,
-                    contentDescription = "Author Avatar",
-                    modifier = Modifier
-                        .size(40.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    fontSize = 16.sp
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    with(animatedVisibilityScope) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Spacer(modifier = Modifier.height(36.dp))
 
-                Spacer(modifier = Modifier.width(12.dp))
+                            Row(
+                                modifier = Modifier
+                                    .animateEnterExit(
+                                        enter = fadeIn(animationSpec = tween(500)),
+                                        exit = fadeOut(animationSpec = tween(500))
+                                    )
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable { onNavigateToBrowse(displayAuthor.id) }
+                                    .padding(vertical = 8.dp, horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                SolariAvatar(
+                                    imageUrl = displayAuthor.profileImageUrl,
+                                    username = displayAuthor.username,
+                                    contentDescription = "Author Avatar",
+                                    modifier = Modifier
+                                        .size(40.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    fontSize = 16.sp
+                                )
 
-                Column {
-                    Text(
-                        text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = PlusJakartaSans,
-                        fontSize = 16.sp,
-                        lineHeight = 16.sp
-                    )
-                    Spacer(modifier = Modifier.height(3.dp))
-                    Text(
-                        text = post.timestamp.toFeedRelativeTimeLabel(),
-                        color = Color(0xFFD7C0B2),
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = PlusJakartaSans,
-                        fontSize = 11.sp,
-                        lineHeight = 13.sp
-                    )
-                }
-            }
+                                Spacer(modifier = Modifier.width(12.dp))
 
-            Spacer(modifier = Modifier.height(32.dp))
+                                Column {
+                                    Text(
+                                        text = if (isCurrentUserPost) "You" else displayAuthor.displayName,
+                                        color = SolariTheme.colors.onBackground,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = PlusJakartaSans,
+                                        fontSize = 16.sp,
+                                        lineHeight = 16.sp
+                                    )
+                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Text(
+                                        text = post.timestamp.toFeedRelativeTimeLabel(),
+                                        color = SolariTheme.colors.onSurfaceVariant,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = PlusJakartaSans,
+                                        fontSize = 11.sp,
+                                        lineHeight = 13.sp
+                                    )
+                                }
+                            }
 
-            if (isCurrentUserPost) {
-                when (post.uploadStatus) {
-                    PostUploadStatus.None -> {
-                        FeedActivityPill(
-                            users = activityUsers.take(3),
-                            overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
-                            onClick = onShowActivity
-                        )
-                    }
+                            Spacer(modifier = Modifier.height(32.dp))
 
-                    PostUploadStatus.Uploading,
-                    PostUploadStatus.Processing -> {
-                        FeedUploadStatusPill(
-                            text = "Uploading post",
-                            isLoading = true,
-                            isError = false
-                        )
-                    }
+                            Box(
+                                modifier = Modifier.animateEnterExit(
+                                    enter = fadeIn(animationSpec = tween(500)),
+                                    exit = fadeOut(animationSpec = tween(500))
+                                )
+                            ) {
+                                if (isCurrentUserPost) {
+                                    when (post.uploadStatus) {
+                                        PostUploadStatus.None -> {
+                                            FeedActivityPill(
+                                                users = activityUsers.take(3),
+                                                overflowCount = (activityUsers.size - 3).coerceAtLeast(0),
+                                                onClick = onShowActivity
+                                            )
+                                        }
 
-                    PostUploadStatus.Failed -> {
-                        FeedUploadStatusPill(
-                            text = post.uploadError ?: "Upload failed",
-                            isLoading = false,
-                            isError = true
-                        )
-                    }
-                }
-            } else {
-                FeedReactionField(
-                    value = reactionNote,
-                    onValueChange = { reactionNote = it.take(20) },
-                    onReact = ::sendReactionOptimistically,
-                    onOpenEmojiPicker = { showEmojiPicker = true },
-                    isEditable = false,
-                    onActivate = { showInputOverlay(FeedInputOverlayMode.Reaction) }
-                )
+                                        PostUploadStatus.Uploading,
+                                        PostUploadStatus.Processing -> {
+                                            FeedUploadStatusPill(
+                                                text = "Uploading post",
+                                                isLoading = true,
+                                                isError = false
+                                            )
+                                        }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                                        PostUploadStatus.Failed -> {
+                                            FeedUploadStatusPill(
+                                                text = post.uploadError ?: "Upload failed",
+                                                isLoading = false,
+                                                isError = true
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Column {
+                                        FeedReactionField(
+                                            value = reactionNote,
+                                            onValueChange = onReactionNoteChange,
+                                            onReact = onSendReaction,
+                                            onOpenEmojiPicker = onOpenEmojiPicker,
+                                            isEditable = false,
+                                            onActivate = { onShowInputOverlay(FeedInputOverlayMode.Reaction) }
+                                        )
 
-                FeedMessageField(
-                    value = messageText,
-                    onValueChange = { messageText = it },
-                    onSend = {},
-                    isEditable = false,
-                    onActivate = { showInputOverlay(FeedInputOverlayMode.Message) }
-                )
-            }
+                                        Spacer(modifier = Modifier.height(14.dp))
 
-            Spacer(modifier = Modifier.height(24.dp))
+                                        FeedMessageField(
+                                            value = messageText,
+                                            onValueChange = onMessageTextChange,
+                                            onSend = onSendMessage,
+                                            isEditable = false,
+                                            onActivate = { onShowInputOverlay(FeedInputOverlayMode.Message) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
 
-            FeedBrowseButton(onClick = { onNavigateToBrowse(null) })
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            FeedBrowseButton(
+                                modifier = Modifier.animateEnterExit(
+                                    enter = fadeIn(animationSpec = tween(500)),
+                                    exit = fadeOut(animationSpec = tween(500))
+                                ),
+                                onClick = { onNavigateToBrowse(null) }
+                            )
 
-            Spacer(modifier = Modifier.weight(0.45f))
-        }
-
-        if (showEmojiPicker && activeInputOverlay == null) {
-            EmojiPickerPopup(
-                onClosed = { showEmojiPicker = false },
-                selectedEmoji = null,
-                recentEmojis = emptyList(),
-                onReact = ::sendReactionOptimistically
-            )
-        }
-
-        activeInputOverlay?.let { overlayMode ->
-            Dialog(
-                onDismissRequest = ::dismissInputOverlay,
-                properties = DialogProperties(
-                    usePlatformDefaultWidth = false,
-                    decorFitsSystemWindows = false
-                )
-            ) {
-                val view = LocalView.current
-                LaunchedEffect(view) {
-                    val window = (view.parent as? DialogWindowProvider)?.window
-                    window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
-                }
-
-                Box(modifier = Modifier.fillMaxSize()) {
-                    FeedInputKeyboardOverlay(
-                        mode = overlayMode,
-                        reactionValue = reactionNote,
-                        onReactionValueChange = { reactionNote = it.take(20) },
-                        messageValue = messageText,
-                        onMessageValueChange = { messageText = it },
-                        isEmojiPickerOpen = showEmojiPicker,
-                        onDismiss = ::dismissInputOverlay,
-                        onReact = ::sendReactionOptimistically,
-                        onOpenEmojiPicker = { showEmojiPicker = true },
-                        onSendMessage = ::sendMessageOptimistically
-                    )
-
-                    if (showEmojiPicker) {
-                        EmojiPickerPopup(
-                            onClosed = { showEmojiPicker = false },
-                            selectedEmoji = null,
-                            recentEmojis = emptyList(),
-                            onReact = ::sendReactionOptimistically
-                        )
+                            Spacer(modifier = Modifier.height(24.dp))
+                        }
                     }
                 }
             }
@@ -938,14 +1112,14 @@ private fun FeedUploadStatusPill(
         modifier = Modifier
             .height(64.dp)
             .clip(RoundedCornerShape(36.dp))
-            .background(if (isError) Color(0xFF4A2428) else Color(0xFF34363B))
+            .background(if (isError) SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.2f) else SolariTheme.colors.surfaceVariant)
             .padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         if (isLoading) {
             CircularProgressIndicator(
-                color = Color(0xFFE3E2E6),
+                color = SolariTheme.colors.onBackground,
                 trackColor = Color.Transparent,
                 modifier = Modifier.size(22.dp),
                 strokeWidth = 2.5.dp
@@ -956,7 +1130,7 @@ private fun FeedUploadStatusPill(
 
         Text(
             text = text,
-            color = if (isError) Color(0xFFFFB4AB) else Color(0xFFE3E2E6),
+            color = if (isError) SolariTheme.colors.error else SolariTheme.colors.onBackground,
             fontSize = 18.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold,
@@ -986,14 +1160,14 @@ private fun FeedActivityPill(
             .height(64.dp)
             .scaledClickable(pressedScale = 1.05f, onClick = onClick)
             .clip(RoundedCornerShape(36.dp))
-            .background(Color(0xFF34363B))
+            .background(SolariTheme.colors.surfaceVariant)
             .padding(horizontal = 20.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         Text(
             text = "Activity",
-            color = Color(0xFFE3E2E6),
+            color = SolariTheme.colors.onBackground,
             fontSize = 18.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold
@@ -1028,12 +1202,12 @@ private fun FeedActivityPill(
                         .offset(x = (visibleUsers.size * 23).dp)
                         .size(36.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF5A5C62)),
+                        .background(SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.4f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = "+$overflowCount",
-                        color = Color(0xFFD0D0D4),
+                        color = SolariTheme.colors.onBackground,
                         fontSize = 16.sp,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold
@@ -1091,7 +1265,7 @@ private fun FeedActivitySheet(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f))
+                    .background(SolariTheme.colors.background.copy(alpha = 0.5f))
                     .clickable(
                         interactionSource = dismissInteractionSource,
                         indication = null,
@@ -1445,26 +1619,42 @@ private fun FeedActivityTrailing(activity: PostActivityEntry) {
     }
 }
 
+@OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun FeedImage(
     url: String,
+    postId: String,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     modifier: Modifier = Modifier
 ) {
     var isLoading by remember(url) { mutableStateOf(true) }
 
-    Box(modifier = modifier) {
-        AsyncImage(
-            model = ImageRequest.Builder(LocalContext.current)
-                .data(url)
-                .crossfade(true)
-                .build(),
-            contentDescription = "Post Image",
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Crop,
-            onLoading = { isLoading = true },
-            onSuccess = { isLoading = false },
-            onError = { isLoading = false }
-        )
+    Box(
+        modifier = modifier
+    ) {
+        with(sharedTransitionScope) {
+            AsyncImage(
+                model = ImageRequest.Builder(LocalContext.current)
+                    .data(url)
+                    .crossfade(true)
+                    .build(),
+                contentDescription = "Post Image",
+                modifier = Modifier
+                    .fillMaxSize()
+                    .sharedElement(
+                        rememberSharedContentState(key = "post_image_$postId"),
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        boundsTransform = { _, _ -> 
+                            tween(durationMillis = 500, easing = FastOutSlowInEasing)
+                        }
+                    ),
+                contentScale = ContentScale.Crop,
+                onLoading = { isLoading = true },
+                onSuccess = { isLoading = false },
+                onError = { isLoading = false }
+            )
+        }
 
         if (isLoading) {
             FeedMediaLoadingIndicator()
@@ -1473,18 +1663,22 @@ private fun FeedImage(
 }
 
 @androidx.annotation.OptIn(UnstableApi::class)
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun FeedVideoPlayer(
     url: String,
     mediaType: String,
+    postId: String,
     isActive: Boolean,
+    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
+    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
     onLongPress: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
     var isLoading by remember(url) { mutableStateOf(true) }
     var isUserPaused by remember(url) { mutableStateOf(false) }
+
     val player = remember(url, mediaType) {
         ExoPlayer.Builder(context)
             .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
@@ -1544,27 +1738,39 @@ private fun FeedVideoPlayer(
         }
     }
 
-    Box(modifier = modifier) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { viewContext ->
-                PlayerView(viewContext).apply {
-                    useController = false
-                    controllerAutoShow = false
-                    hideController()
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                    this.player = player
+    Box(
+        modifier = modifier
+    ) {
+        with(sharedTransitionScope) {
+            AndroidView(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .sharedElement(
+                        rememberSharedContentState(key = "post_image_$postId"),
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        boundsTransform = { _, _ -> 
+                            tween(durationMillis = 500, easing = FastOutSlowInEasing)
+                        }
+                    ),
+                factory = { viewContext ->
+                    PlayerView(viewContext).apply {
+                        useController = false
+                        controllerAutoShow = false
+                        hideController()
+                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                        this.player = player
+                    }
+                },
+                update = { playerView ->
+                    playerView.useController = false
+                    playerView.controllerAutoShow = false
+                    playerView.hideController()
+                    if (playerView.player !== player) {
+                        playerView.player = player
+                    }
                 }
-            },
-            update = { playerView ->
-                playerView.useController = false
-                playerView.controllerAutoShow = false
-                playerView.hideController()
-                if (playerView.player !== player) {
-                    playerView.player = player
-                }
-            }
-        )
+            )
+        }
 
         Box(
             modifier = Modifier
@@ -1588,7 +1794,7 @@ private fun FeedMediaLoadingIndicator() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.26f)),
+            .background(SolariTheme.colors.background.copy(alpha = 0.26f)),
         contentAlignment = Alignment.Center
     ) {
         CircularProgressIndicator(
@@ -1637,132 +1843,6 @@ private fun Long.toFeedRelativeTimeLabel(nowMillis: Long = System.currentTimeMil
 }
 
 @Composable
-private fun FeedInputKeyboardOverlay(
-    mode: FeedInputOverlayMode,
-    reactionValue: String,
-    onReactionValueChange: (String) -> Unit,
-    messageValue: String,
-    onMessageValueChange: (String) -> Unit,
-    isEmojiPickerOpen: Boolean,
-    onDismiss: () -> Unit,
-    onReact: (String) -> Unit,
-    onOpenEmojiPicker: () -> Unit,
-    onSendMessage: () -> Unit
-) {
-    val focusRequester = remember { FocusRequester() }
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val density = LocalDensity.current
-    val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
-    val bottomInset = with(density) {
-        WindowInsets.ime.getBottom(this)
-            .coerceAtLeast(WindowInsets.navigationBars.getBottom(this))
-            .toDp()
-    }
-    var hasSeenKeyboard by remember(mode) { mutableStateOf(false) }
-    var isBarVisible by remember(mode) { mutableStateOf(false) }
-
-    LaunchedEffect(mode) {
-        isBarVisible = true
-        withFrameNanos { }
-        withFrameNanos { }
-        runCatching {
-            focusRequester.requestFocus()
-        }
-        keyboardController?.show()
-    }
-
-    LaunchedEffect(isEmojiPickerOpen) {
-        if (isEmojiPickerOpen) {
-            hasSeenKeyboard = false 
-        } else {
-            runCatching { focusRequester.requestFocus() }
-            keyboardController?.show()
-        }
-    }
-
-    LaunchedEffect(isKeyboardVisible) {
-        if (isKeyboardVisible) {
-            hasSeenKeyboard = true
-        } else if (hasSeenKeyboard && !isEmojiPickerOpen) {
-            onDismiss()
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .zIndex(4f)
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        event.changes.forEach { it.consume() }
-                    }
-                }
-            }
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.56f))
-                .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = onDismiss
-                )
-        )
-
-        AnimatedVisibility(
-            visible = isBarVisible,
-            modifier = Modifier
-                .align(Alignment.BottomCenter),
-            enter = fadeIn(animationSpec = tween(durationMillis = 120)) +
-                    slideInVertically(
-                        animationSpec = tween(durationMillis = 180),
-                        initialOffsetY = { it / 2 }
-                    ),
-            exit = fadeOut(animationSpec = tween(durationMillis = 0))
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        start = 32.dp, 
-                        end = 32.dp, 
-                        top = 12.dp, 
-                        bottom = bottomInset + 16.dp
-                    )
-            ) {
-                when (mode) {
-                    FeedInputOverlayMode.Reaction -> {
-                        FeedReactionField(
-                            value = reactionValue,
-                            onValueChange = onReactionValueChange,
-                            onReact = onReact,
-                            onOpenEmojiPicker = onOpenEmojiPicker,
-                            isEditable = true,
-                            focusRequester = focusRequester,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-
-                    FeedInputOverlayMode.Message -> {
-                        FeedMessageField(
-                            value = messageValue,
-                            onValueChange = onMessageValueChange,
-                            onSend = onSendMessage,
-                            isEditable = true,
-                            focusRequester = focusRequester,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun FeedReactionField(
     value: String,
     onValueChange: (String) -> Unit,
@@ -1787,7 +1867,7 @@ private fun FeedReactionField(
                 }
             )
             .clip(RoundedCornerShape(9.dp))
-            .background(Color(0xFF1B1C21))
+            .background(SolariTheme.colors.surface)
             .padding(start = 26.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1802,18 +1882,18 @@ private fun FeedReactionField(
             enabled = isEditable,
             modifier = textFieldModifier,
             textStyle = TextStyle(
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
                 fontSize = 14.sp,
                 fontFamily = PlusJakartaSans
             ),
-            cursorBrush = SolidColor(Color.White),
+            cursorBrush = SolidColor(SolariTheme.colors.onBackground),
             singleLine = true,
             decorationBox = { innerTextField ->
                 Box(contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty()) {
                         Text(
                             text = "Send reaction...",
-                            color = Color(0xFF9699A1),
+                            color = SolariTheme.colors.onSurfaceVariant,
                             fontSize = 14.sp,
                             fontFamily = PlusJakartaSans
                         )
@@ -1849,7 +1929,7 @@ private fun FeedReactionField(
             Icon(
                 imageVector = Icons.Default.Add,
                 contentDescription = "More reactions",
-                tint = Color(0xFFD7C0B2),
+                tint = SolariTheme.colors.onSurfaceVariant,
                 modifier = Modifier.size(22.dp)
             )
         }
@@ -1880,7 +1960,7 @@ private fun FeedMessageField(
                 }
             )
             .clip(barShape)
-            .background(Color(0xFF1B1C21))
+            .background(SolariTheme.colors.surface)
             .padding(start = 26.dp, end = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -1894,18 +1974,18 @@ private fun FeedMessageField(
             enabled = isEditable,
             modifier = textFieldModifier,
             textStyle = TextStyle(
-                color = Color.White,
+                color = SolariTheme.colors.onBackground,
                 fontSize = 14.sp,
                 fontFamily = PlusJakartaSans
             ),
-            cursorBrush = SolidColor(Color.White),
+            cursorBrush = SolidColor(SolariTheme.colors.onBackground),
             singleLine = true,
             decorationBox = { innerTextField ->
                 Box(contentAlignment = Alignment.CenterStart) {
                     if (value.isEmpty()) {
                         Text(
                             text = "Send message...",
-                            color = Color(0xFF9699A1),
+                            color = SolariTheme.colors.onSurfaceVariant,
                             fontSize = 14.sp,
                             fontFamily = PlusJakartaSans
                         )
@@ -1918,7 +1998,7 @@ private fun FeedMessageField(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.Send,
             contentDescription = "Send message",
-            tint = Color(0xFFD7C0B2),
+            tint = SolariTheme.colors.onSurfaceVariant,
             modifier = Modifier
                 .size(28.dp)
                 .then(
@@ -1939,21 +2019,24 @@ private fun FeedMessageField(
 }
 
 @Composable
-private fun FeedBrowseButton(onClick: () -> Unit) {
+private fun FeedBrowseButton(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth(0.6f)
             .height(48.dp)
             .scaledClickable(pressedScale = 1.05f, onClick = onClick)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color(0xFF080B0E))
+            .clip(RoundedCornerShape(50))
+            .background(SolariTheme.colors.primary)
             .padding(horizontal = 26.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
         Text(
             text = "View all photos",
-            color = Color(0xFFD7C0B2),
+            color = SolariTheme.colors.onSurfaceVariant,
             fontSize = 16.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold

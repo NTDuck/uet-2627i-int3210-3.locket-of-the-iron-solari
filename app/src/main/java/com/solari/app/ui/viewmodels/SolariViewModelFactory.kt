@@ -8,6 +8,7 @@ import com.solari.app.data.feed.FeedRepository
 import com.solari.app.data.feed.PostUploadCoordinator
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.preferences.RecentEmojiStore
+import com.solari.app.data.preferences.UserPreferencesStore
 import com.solari.app.data.user.UserRepository
 import com.solari.app.data.websocket.WebSocketManager
 
@@ -19,10 +20,15 @@ class SolariViewModelFactory(
     private val conversationRepository: ConversationRepository,
     private val recentEmojiStore: RecentEmojiStore,
     private val postUploadCoordinator: PostUploadCoordinator,
-    private val webSocketManager: WebSocketManager
+    private val webSocketManager: WebSocketManager,
+    private val userPreferencesStore: UserPreferencesStore
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         val viewModel = when {
+            modelClass.isAssignableFrom(SettingsViewModel::class.java) -> {
+                SettingsViewModel(userPreferencesStore)
+            }
+            
             modelClass.isAssignableFrom(AppAuthViewModel::class.java) -> {
                 AppAuthViewModel(authRepository)
             }
@@ -112,7 +118,7 @@ class SolariViewModelFactory(
             }
 
             modelClass.isAssignableFrom(HomepageBeforeCapturingViewModel::class.java) -> {
-                HomepageBeforeCapturingViewModel(userRepository)
+                HomepageBeforeCapturingViewModel(userRepository, userPreferencesStore)
             }
 
             modelClass.isAssignableFrom(HomepageAfterCapturingViewModel::class.java) -> {
@@ -136,6 +142,10 @@ class SolariViewModelFactory(
 
             modelClass.isAssignableFrom(CompletePasswordResetViewModel::class.java) -> {
                 CompletePasswordResetViewModel(authRepository)
+            }
+
+            modelClass.isAssignableFrom(ImageEditingViewModel::class.java) -> {
+                ImageEditingViewModel()
             }
 
             else -> throw IllegalArgumentException(

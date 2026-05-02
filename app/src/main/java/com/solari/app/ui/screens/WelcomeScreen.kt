@@ -116,7 +116,7 @@ fun WelcomeScreen(
                     fontSize = 18.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Medium,
-                    color = Color.Gray,
+                    color = SolariTheme.colors.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(bottom = 80.dp)
                 )
@@ -127,7 +127,7 @@ fun WelcomeScreen(
                     buttonHeight = 67.dp,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
-                    contentColor = Color(0xFF5E2800),
+                    contentColor = SolariTheme.colors.onPrimary,
                     modifier = Modifier
                         .fillMaxWidth(0.8f)
                         .padding(bottom = 16.dp)
@@ -137,8 +137,8 @@ fun WelcomeScreen(
                     text = "Sign in with Google",
                     onClick = ::submitGoogleSignIn,
                     enabled = !uiState.isGoogleSignInLoading,
-                    containerColor = Color(0xFF343538),
-                    contentColor = Color.White,
+                    containerColor = SolariTheme.colors.surfaceVariant,
+                    contentColor = SolariTheme.colors.onBackground,
                     buttonHeight = 67.dp,
                     fontSize = 18.sp,
                     icon = {
@@ -204,7 +204,7 @@ fun WelcomeScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.42f))
+                        .background(SolariTheme.colors.background.copy(alpha = 0.42f))
                         .clickable(enabled = false) {},
                     contentAlignment = Alignment.Center
                 ) {
