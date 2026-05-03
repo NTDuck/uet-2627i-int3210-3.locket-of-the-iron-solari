@@ -20,6 +20,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 
 class DefaultFeedRepository(
@@ -28,6 +32,9 @@ class DefaultFeedRepository(
     private val uploadClient: OkHttpClient = OkHttpClient()
 ) : FeedRepository {
     private val uploadLogTag = "SolariUpload"
+    private val _deletedPostIds = MutableStateFlow<Set<String>>(emptySet())
+
+    override val deletedPostIds: StateFlow<Set<String>> = _deletedPostIds.asStateFlow()
 
     override suspend fun getFeed(
         authorIds: Set<String>,
@@ -65,7 +72,10 @@ class DefaultFeedRepository(
     override suspend fun deletePost(postId: String): ApiResult<Unit> {
         return when (val result = apiExecutor.execute { feedApi.deletePost(postId) }) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(Unit)
+            is ApiResult.Success -> {
+                _deletedPostIds.update { it + postId }
+                ApiResult.Success(Unit)
+            }
         }
     }
 

@@ -1,9 +1,13 @@
 package com.solari.app
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.solari.app.data.di.AppContainer
 
-class SolariApplication : Application() {
+class SolariApplication : Application(), ImageLoaderFactory {
     lateinit var appContainer: AppContainer
         private set
 
@@ -11,6 +15,24 @@ class SolariApplication : Application() {
         super.onCreate()
         appContainer = AppContainer(applicationContext)
         createNotificationChannels()
+    }
+
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.3) // 30% of available memory for images
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(250L * 1024 * 1024) // 250 MB
+                    .build()
+            }
+            .crossfade(false)
+            .respectCacheHeaders(false) // ignore cache headers for feed images
+            .build()
     }
 
     private fun createNotificationChannels() {

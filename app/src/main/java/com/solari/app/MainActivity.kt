@@ -57,6 +57,7 @@ import com.solari.app.ui.components.SolariFeedbackPill
 import com.solari.app.ui.screens.*
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.models.CapturedMedia
+import com.solari.app.ui.models.CapturedMediaSource
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.viewmodels.*
@@ -74,6 +75,7 @@ private const val CapturedMediaUriKey = "captured_media_uri"
 private const val CapturedMediaTypeKey = "captured_media_type"
 private const val CapturedMediaIsVideoKey = "captured_media_is_video"
 private const val CapturedMediaDurationKey = "captured_media_duration"
+private const val CapturedMediaSourceKey = "captured_media_source"
 private const val SolariWebHost = "solari.adnope.io.vn"
 
 private data class FriendInviteDeepLink(
@@ -712,6 +714,7 @@ private fun SolariApp(
                         set(CapturedMediaTypeKey, media.contentType)
                         set(CapturedMediaIsVideoKey, media.isVideo)
                         set(CapturedMediaDurationKey, media.durationMs)
+                        set(CapturedMediaSourceKey, media.source.name)
                     }
                     navController.navigate(SolariRoute.Screen.CameraAfter.name)
                 },
@@ -811,6 +814,7 @@ private fun SolariApp(
                         set(CapturedMediaTypeKey, media.contentType)
                         set(CapturedMediaIsVideoKey, media.isVideo)
                         set(CapturedMediaDurationKey, media.durationMs)
+                        set(CapturedMediaSourceKey, media.source.name)
                     }
                     navController.navigate(SolariRoute.Screen.CameraAfter.name)
                 },
@@ -841,13 +845,19 @@ private fun SolariApp(
             val capturedMediaDuration = navController.previousBackStackEntry
                 ?.savedStateHandle
                 ?.get<Long>(CapturedMediaDurationKey)
+            val capturedMediaSource = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>(CapturedMediaSourceKey)
+                ?.let { runCatching { CapturedMediaSource.valueOf(it) }.getOrNull() }
+                ?: CapturedMediaSource.Camera
             
             val initialMedia = capturedMediaForPreview ?: capturedMediaUri?.let { uriString ->
                 CapturedMedia(
                     uri = Uri.parse(uriString),
                     contentType = capturedMediaType,
                     isVideo = capturedMediaIsVideo,
-                    durationMs = capturedMediaDuration
+                    durationMs = capturedMediaDuration,
+                    source = capturedMediaSource
                 )
             }
 
@@ -862,6 +872,7 @@ private fun SolariApp(
                             set(CapturedMediaTypeKey, editedMedia.contentType)
                             set(CapturedMediaIsVideoKey, editedMedia.isVideo)
                             set(CapturedMediaDurationKey, editedMedia.durationMs)
+                            set(CapturedMediaSourceKey, editedMedia.source.name)
                         }
                     }
                     navController.popBackStack()
@@ -884,12 +895,18 @@ private fun SolariApp(
             val capturedMediaDuration = navController.previousBackStackEntry
                 ?.savedStateHandle
                 ?.get<Long>(CapturedMediaDurationKey)
+            val capturedMediaSource = navController.previousBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>(CapturedMediaSourceKey)
+                ?.let { runCatching { CapturedMediaSource.valueOf(it) }.getOrNull() }
+                ?: CapturedMediaSource.Camera
             val routeCapturedMedia = capturedMediaForPreview ?: capturedMediaUri?.let { uriString ->
                 CapturedMedia(
                     uri = Uri.parse(uriString),
                     contentType = capturedMediaType,
                     isVideo = capturedMediaIsVideo,
-                    durationMs = capturedMediaDuration
+                    durationMs = capturedMediaDuration,
+                    source = capturedMediaSource
                 )
             }
             LaunchedEffect(
@@ -919,6 +936,7 @@ private fun SolariApp(
                             set(CapturedMediaTypeKey, currentMedia.contentType)
                             set(CapturedMediaIsVideoKey, currentMedia.isVideo)
                             set(CapturedMediaDurationKey, currentMedia.durationMs)
+                            set(CapturedMediaSourceKey, currentMedia.source.name)
                         }
                     }
                     navController.navigate(SolariRoute.Screen.ImageEditing.name)

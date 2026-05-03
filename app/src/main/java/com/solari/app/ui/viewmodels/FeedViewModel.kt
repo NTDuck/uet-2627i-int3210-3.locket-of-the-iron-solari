@@ -63,6 +63,9 @@ class FeedViewModel(
     var hasReachedEnd by mutableStateOf(false)
         private set
 
+    var deletedPostIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
     private var nextCursor: String? = null
     private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
     private var remotePosts: List<Post> = emptyList()
@@ -72,6 +75,16 @@ class FeedViewModel(
         viewModelScope.launch {
             postUploadCoordinator.uploads.collectLatest { uploads ->
                 uploadEntries = uploads
+                applyDisplayPosts()
+            }
+        }
+
+        viewModelScope.launch {
+            feedRepository.deletedPostIds.collectLatest { deletedIds ->
+                deletedPostIds = deletedIds
+                remotePosts = remotePosts.filterNot { it.id in deletedIds }
+                postActivities = postActivities.filterKeys { it !in deletedIds }
+                loadingPostActivityIds = loadingPostActivityIds - deletedIds
                 applyDisplayPosts()
             }
         }
@@ -155,9 +168,10 @@ class FeedViewModel(
                     val livePostIds = newPosts.map { it.id }.toSet()
                     postUploadCoordinator.removeSyncedUploads(livePostIds)
                     applyDisplayPosts()
-                    
-                    val displayedPostIds = posts.map(Post::id).toSet()
-                    postActivities = postActivities.filterKeys { it in displayedPostIds }
+
+                    if (postActivities.size > 100) {
+                        postActivities = postActivities.toList().takeLast(100).toMap()
+                    }
                 }
                 is ApiResult.Failure -> if (errorMessage == null) errorMessage = feedResult.message
             }
@@ -170,6 +184,7 @@ class FeedViewModel(
         viewModelScope.launch {
             when (val result = feedRepository.deletePost(postId)) {
                 is ApiResult.Success -> {
+                    postUploadCoordinator.removePost(postId)
                     remotePosts = remotePosts.filter { it.id != postId }
                     applyDisplayPosts()
                     postActivities = postActivities - postId
@@ -310,8 +325,9 @@ class FeedViewModel(
                     entry.remotePost ?: entry.draft.toPost(user)
                 }
         }
-        val uploadPostIds = uploadPosts.map(Post::id).toSet()
-        val allPosts = uploadPosts + remotePosts.filterNot { it.id in uploadPostIds }
+        val visibleUploadPosts = uploadPosts.filterNot { it.id in deletedPostIds }
+        val uploadPostIds = visibleUploadPosts.map(Post::id).toSet()
+        val allPosts = visibleUploadPosts + remotePosts.filterNot { it.id in uploadPostIds || it.id in deletedPostIds }
 
         val filteredPosts = if (authorFilterIds.isEmpty()) {
             allPosts

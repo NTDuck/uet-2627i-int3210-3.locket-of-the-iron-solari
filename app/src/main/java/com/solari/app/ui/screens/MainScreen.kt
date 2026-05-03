@@ -120,7 +120,14 @@ fun MainScreen(
                             onNavigateToFeedBrowse(null)
                         } else {
                             scope.launch {
-                                pagerState.animateScrollToPage(index)
+                                // Skip animation when jumping over intermediate pages
+                                // to avoid briefly showing screens in between.
+                                val distance = kotlin.math.abs(index - pagerState.currentPage)
+                                if (distance > 1) {
+                                    pagerState.scrollToPage(index)
+                                } else {
+                                    pagerState.animateScrollToPage(index)
+                                }
                             }
                         }
                     }

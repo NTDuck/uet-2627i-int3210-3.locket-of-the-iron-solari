@@ -356,7 +356,7 @@ fun FriendManagementScreen(
                 ) {
                     Text(
                         text = "View blocked accounts",
-                        color = SolariTheme.colors.onSurface,
+                        color = SolariTheme.colors.secondary,
                         fontSize = 13.sp,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold
@@ -509,8 +509,8 @@ private fun FriendManagementFeedbackPill(
     message: String,
     isSuccess: Boolean
 ) {
-    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.2f)
-    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.error
+    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.error
+    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.onError
 
     Surface(
         color = backgroundColor,
@@ -780,7 +780,7 @@ private fun FriendListItem(
                             add(
                                 FriendActionMenuEntry(
                                     text = "Block",
-                                    color = SolariTheme.colors.onSurface,
+                                    color = SolariTheme.colors.error,
                                     enabled = true,
                                     onClick = { onBlock(friend) }
                                 )

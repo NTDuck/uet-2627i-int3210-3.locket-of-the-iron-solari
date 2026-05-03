@@ -13,14 +13,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -93,6 +87,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -141,7 +136,7 @@ import kotlin.math.roundToInt
 private val ChatBackground @Composable get() = SolariTheme.colors.background
 private val ChatHeader @Composable get() = SolariTheme.colors.surface
 private val ChatIncomingBubble @Composable get() = SolariTheme.colors.surfaceVariant
-private val ChatOutgoingBubble @Composable get() = SolariTheme.colors.secondary
+private val ChatOutgoingBubble @Composable get() = lerp(ChatIncomingBubble, Color.White, 0.10f)
 private val ChatInput @Composable get() = SolariTheme.colors.surfaceVariant
 private val ChatPrimary @Composable get() = SolariTheme.colors.primary
 private val ChatText @Composable get() = SolariTheme.colors.onBackground
@@ -572,8 +567,7 @@ private fun rememberJumpToMessage(
                         return@launch
                     }
 
-                    val topHalfOffset = -(messageListState.layoutInfo.viewportSize.height / 4)
-                    messageListState.animateScrollToItem(targetIndex, scrollOffset = topHalfOffset)
+                    messageListState.scrollToItem(targetIndex)
                 }
                 true
             } else {
@@ -776,8 +770,7 @@ private fun BindChatMessageListEffects(
         if (targetIndex != null) {
             state.olderMessageRestoreAnchor = null
             state.highlightedMessageId = targetMessageId
-            val topHalfOffset = -(messageListState.layoutInfo.viewportSize.height / 4)
-            messageListState.animateScrollToItem(targetIndex, scrollOffset = topHalfOffset)
+            messageListState.scrollToItem(targetIndex)
             state.pendingJumpToMessageId = null
             return@LaunchedEffect
         }

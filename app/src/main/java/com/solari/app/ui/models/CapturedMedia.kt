@@ -2,11 +2,17 @@ package com.solari.app.ui.models
 
 import android.net.Uri
 
+enum class CapturedMediaSource {
+    Camera,
+    Gallery
+}
+
 data class CapturedMedia(
     val uri: Uri,
     val contentType: String,
     val isVideo: Boolean,
-    val durationMs: Long? = null
+    val durationMs: Long? = null,
+    val source: CapturedMediaSource = CapturedMediaSource.Camera
 )
 
 data class OptimisticPostDraft(

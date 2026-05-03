@@ -94,6 +94,17 @@ class PostUploadCoordinator(
         }
     }
 
+    fun removePost(postId: String) {
+        _uploads.update { uploads ->
+            uploads.filterNot { entry ->
+                entry.localId == postId ||
+                        entry.serverPostId == postId ||
+                        entry.draft.id == postId ||
+                        entry.remotePost?.id == postId
+            }
+        }
+    }
+
     private suspend fun uploadPost(
         localId: String,
         media: CapturedMedia,

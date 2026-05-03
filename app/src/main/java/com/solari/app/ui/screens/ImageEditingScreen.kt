@@ -754,6 +754,7 @@ private fun DrawWorkspace(
     val paths = remember { mutableStateListOf<DrawPath>() }
     var currentPath by remember { mutableStateOf<NativePath?>(null) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
+    var eraserCursorPosition by remember { mutableStateOf<Offset?>(null) }
     
     var drawCounter by remember { mutableIntStateOf(0) }
 
@@ -807,11 +808,13 @@ private fun DrawWorkspace(
                         val path = NativePath()
                         path.moveTo(offset.x - imgLeft, offset.y - imgTop)
                         currentPath = path
+                        eraserCursorPosition = if (selectedTool == DrawTool.Eraser) offset else null
                         drawCounter++
                     },
                     onDrag = { change, _ ->
                         change.consume()
                         currentPath?.lineTo(change.position.x - imgLeft, change.position.y - imgTop)
+                        eraserCursorPosition = if (selectedTool == DrawTool.Eraser) change.position else null
                         drawCounter++
                     },
                     onDragEnd = {
@@ -819,6 +822,12 @@ private fun DrawWorkspace(
                             paths.add(DrawPath(it, selectedColor, if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f, selectedTool == DrawTool.Eraser))
                         }
                         currentPath = null
+                        eraserCursorPosition = null
+                        drawCounter++
+                    },
+                    onDragCancel = {
+                        currentPath = null
+                        eraserCursorPosition = null
                         drawCounter++
                     }
                 )
@@ -857,6 +866,23 @@ private fun DrawWorkspace(
                 
                 canvas.restore()
             }
+
+            eraserCursorPosition
+                ?.takeIf { selectedTool == DrawTool.Eraser }
+                ?.let { cursorPosition ->
+                    val radius = selectedEraserSize / 2f
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.18f),
+                        radius = radius,
+                        center = cursorPosition
+                    )
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.72f),
+                        radius = radius,
+                        center = cursorPosition,
+                        style = Stroke(width = 1.5.dp.toPx())
+                    )
+                }
         }
     }
 }
@@ -871,9 +897,9 @@ private fun DrawBottomRow(
     onEraserSizeSelected: (Float) -> Unit
 ) {
     val eraserSizes = listOf(
-        "Small" to 15f,
-        "Medium" to 30f,
-        "Large" to 60f
+        "Small" to 30f,
+        "Medium" to 60f,
+        "Large" to 120f
     )
 
     Column(
@@ -891,9 +917,10 @@ private fun DrawBottomRow(
             ) {
                 eraserSizes.forEach { (label, size) ->
                     val isSelected = selectedEraserSize == size
+                    val pillShape = RoundedCornerShape(20.dp)
                     Surface(
                         onClick = { onEraserSizeSelected(size) },
-                        modifier = Modifier.clip(RoundedCornerShape(20.dp)),
+                        shape = pillShape,
                         color = if (isSelected) SolariTheme.colors.primary.copy(alpha = 0.2f) else Color.Transparent,
                         border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, SolariTheme.colors.primary) else null
                     ) {

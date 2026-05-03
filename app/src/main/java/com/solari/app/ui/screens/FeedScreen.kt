@@ -59,6 +59,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -80,6 +81,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import coil.compose.AsyncImage
+import coil.request.CachePolicy
 import com.solari.app.R
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariAvatar
@@ -91,6 +93,8 @@ import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.PersistentMediaCache
+import com.solari.app.ui.util.PersistentMediaCacheKind
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.FeedViewModel
 import androidx.media3.common.C
@@ -107,6 +111,8 @@ import java.io.File
 import java.net.URL
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -122,6 +128,8 @@ private val FeedSharedMediaCornerRadius = 8.dp
 private val FeedPostMediaCornerRadius = 14.dp
 private val FeedInputOverlayKeyboardGap = 14.dp
 private val FeedInputOverlayBottomBarCompensation = 104.dp
+private const val FeedNeighborPrefetchDistance = 2
+private const val FeedNeighborPrefetchParallelism = 4
 
 private data class FeedActivityUserGroup(
     val user: User,
@@ -165,6 +173,7 @@ fun FeedScreen(
     }
     var hasOpeningMediaSharedTransitionStarted by remember(initialPostId) { mutableStateOf(false) }
     val sourcePosts = viewModel.posts
+    val deletedPostIds = viewModel.deletedPostIds
     val isSourceListSyncedToRequestedFilters = viewModel.authorFilterIds == authorFilterIds &&
             viewModel.sortMode == sortMode &&
             !viewModel.isLoading
@@ -173,19 +182,23 @@ fun FeedScreen(
         initialPostId,
         initialPost,
         initialPosts,
+        deletedPostIds,
         authorFilterIds,
         sortMode,
         isSourceListSyncedToRequestedFilters
     ) {
-        val refreshedPostsById = sourcePosts.associateBy(Post::id)
+        val refreshedPostsById = sourcePosts
+            .filterNot { it.id in deletedPostIds }
+            .associateBy(Post::id)
 
         if (!initialPosts.isNullOrEmpty()) {
-            val initialPostIds = initialPosts.map(Post::id).toSet()
-            val syncedInitialPosts = initialPosts.map { post ->
+            val visibleInitialPosts = initialPosts.filterNot { it.id in deletedPostIds }
+            val initialPostIds = visibleInitialPosts.map(Post::id).toSet()
+            val syncedInitialPosts = visibleInitialPosts.map { post ->
                 refreshedPostsById[post.id] ?: post
             }
             val additionalPosts = if (isSourceListSyncedToRequestedFilters) {
-                sourcePosts.filterNot { it.id in initialPostIds }
+                sourcePosts.filterNot { it.id in initialPostIds || it.id in deletedPostIds }
             } else {
                 emptyList()
             }
@@ -193,10 +206,10 @@ fun FeedScreen(
         } else {
             val selectedPost = initialPostId
                 ?.let { targetPostId -> refreshedPostsById[targetPostId] }
-                ?: initialPost
+                ?: initialPost?.takeIf { it.id !in deletedPostIds }
             val remainingPosts = selectedPost
-                ?.let { selected -> sourcePosts.filterNot { it.id == selected.id } }
-                ?: sourcePosts
+                ?.let { selected -> sourcePosts.filterNot { it.id == selected.id || it.id in deletedPostIds } }
+                ?: sourcePosts.filterNot { it.id in deletedPostIds }
             val filteredPosts = if (authorFilterIds.isEmpty()) {
                 remainingPosts
             } else {
@@ -260,6 +273,62 @@ fun FeedScreen(
         }
     }
 
+    val imageLoader = remember(context) { coil.Coil.imageLoader(context) }
+
+    LaunchedEffect(pagerState.currentPage, posts) {
+        val currentPage = pagerState.currentPage
+        if (posts.isEmpty() || currentPage !in posts.indices) return@LaunchedEffect
+
+        val prefetchPosts = ((currentPage - FeedNeighborPrefetchDistance)..(currentPage + FeedNeighborPrefetchDistance))
+            .filter { page -> page in posts.indices && page != currentPage }
+            .map { posts[it] }
+
+        val imagePrefetchUrls = prefetchPosts
+            .filter { !it.isVideoMedia() }
+            .flatMap { it.feedMediaPrefetchUrls() }
+            .distinct()
+
+        val videoPrefetchUrls = prefetchPosts
+            .filter { it.isVideoMedia() }
+            .flatMap { it.feedMediaPrefetchUrls() }
+            .distinct()
+
+        imagePrefetchUrls.forEach { url ->
+            imageLoader.enqueue(
+                ImageRequest.Builder(context)
+                    .data(url)
+                    .build()
+            )
+        }
+
+        videoPrefetchUrls.chunked(FeedNeighborPrefetchParallelism).forEach { urlChunk ->
+            urlChunk.map { url ->
+                async {
+                    PersistentMediaCache.resolve(
+                        context = context,
+                        url = url,
+                        kind = PersistentMediaCacheKind.FeedMedia
+                    )
+                }
+            }.awaitAll()
+        }
+    }
+
+    LaunchedEffect(pagerState.currentPage, posts, currentUser?.id) {
+        val currentPage = pagerState.currentPage
+        if (posts.isEmpty() || currentPage !in posts.indices) return@LaunchedEffect
+
+        val currentUserId = currentUser?.id ?: return@LaunchedEffect
+        // Load activity for current and adjacent posts if they belong to the current user
+        val prefetchRange = (currentPage - 1)..(currentPage + 1)
+        prefetchRange.filter { it in posts.indices }.forEach { index ->
+            val post = posts[index]
+            if (post.author.id == currentUserId) {
+                viewModel.loadPostActivity(post.id)
+            }
+        }
+    }
+
     var activeInputOverlay by remember { mutableStateOf<FeedInputOverlayMode?>(null) }
     var messageText by remember { mutableStateOf("") }
     var reactionNote by remember { mutableStateOf("") }
@@ -269,6 +338,7 @@ fun FeedScreen(
     val feedScreenDensity = LocalDensity.current
     val imeInsets = WindowInsets.ime
     var hasInputOverlayKeyboardOpened by remember { mutableStateOf(false) }
+    var lastInputOverlayKeyboardBottom by remember { mutableStateOf(0) }
     // When true, the overlay was dismissed via keyboard-close (back gesture);
     // skip the exit animation so the input bar disappears instantly.
     var isOverlayDismissedByKeyboard by remember { mutableStateOf(false) }
@@ -318,6 +388,7 @@ fun FeedScreen(
 
     LaunchedEffect(activeInputOverlay) {
         hasInputOverlayKeyboardOpened = false
+        lastInputOverlayKeyboardBottom = 0
     }
 
     LaunchedEffect(activeInputOverlay, feedScreenDensity) {
@@ -326,7 +397,15 @@ fun FeedScreen(
         snapshotFlow { imeInsets.getBottom(feedScreenDensity) }
             .collect { keyboardBottom ->
                 when {
-                    keyboardBottom > 0 -> hasInputOverlayKeyboardOpened = true
+                    hasInputOverlayKeyboardOpened &&
+                            lastInputOverlayKeyboardBottom > 0 &&
+                            keyboardBottom < lastInputOverlayKeyboardBottom -> {
+                        dismissInputOverlay(fromKeyboard = true)
+                    }
+                    keyboardBottom > 0 -> {
+                        hasInputOverlayKeyboardOpened = true
+                        lastInputOverlayKeyboardBottom = keyboardBottom
+                    }
                     hasInputOverlayKeyboardOpened -> dismissInputOverlay(fromKeyboard = true)
                 }
             }
@@ -448,7 +527,11 @@ fun FeedScreen(
                     isInputOverlayActive = isInputOverlayVisible,
                     currentUser = currentUser,
                     activeInputOverlay = activeInputOverlay,
-                    onShowInputOverlay = { activeInputOverlay = it },
+                    onShowInputOverlay = {
+                        isOverlayDismissedByKeyboard = false
+                        isInputOverlayVisible = true
+                        activeInputOverlay = it
+                    },
                     reactionNote = reactionNote,
                     onReactionNoteChange = { reactionNote = it },
                     messageText = messageText,
@@ -587,8 +670,15 @@ fun FeedScreen(
                 0.dp
             }
             val focusRequester = remember { FocusRequester() }
+            var isDimVisible by remember(overlayMode) { mutableStateOf(false) }
+            val dimAlpha by animateFloatAsState(
+                targetValue = if (isDimVisible) 0.45f else 0f,
+                animationSpec = tween(durationMillis = 200),
+                label = "feedInputOverlayDim"
+            )
 
             LaunchedEffect(overlayMode) {
+                isDimVisible = true
                 focusRequester.requestFocus()
             }
 
@@ -596,7 +686,7 @@ fun FeedScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .zIndex(10f)
-                    .background(Color.Black.copy(alpha = 0.45f))
+                    .background(Color.Black.copy(alpha = dimAlpha))
                     .pointerInput(Unit) {
                         detectTapGestures { dismissInputOverlay() }
                     }
@@ -903,10 +993,6 @@ private fun FeedPost(
     val zoomOffset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
     var isPostChromeVisible by remember(post.id) { mutableStateOf(false) }
 
-    val density = LocalDensity.current
-    val keyboardHeight = WindowInsets.ime.getBottom(density)
-    val keyboardHeightDp = with(density) { keyboardHeight.toDp() }
-
     LaunchedEffect(post.id) {
         isPostChromeVisible = true
     }
@@ -919,8 +1005,7 @@ private fun FeedPost(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 12.dp)
-                .padding(bottom = if (isInputOverlayActive) keyboardHeightDp else 0.dp),
+                .padding(horizontal = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.height(48.dp))
@@ -1051,14 +1136,14 @@ private fun FeedPost(
                 }
 
                 androidx.compose.animation.AnimatedVisibility(
-                    visible = isPostChromeVisible && !isZooming && !isInputOverlayActive,
+                    visible = isPostChromeVisible && !isZooming,
                     enter = fadeIn(animationSpec = tween(durationMillis = 180)),
-                    exit = fadeOut()
+                    exit = fadeOut(),
+                    modifier = Modifier.align(Alignment.TopEnd)
                 ) {
                     with(animatedVisibilityScope) {
                         Box(
                             modifier = Modifier
-                                .align(Alignment.TopEnd)
                                 .animateEnterExit(
                                     enter = fadeIn(animationSpec = tween(500)),
                                     exit = fadeOut(animationSpec = tween(500))
@@ -1080,31 +1165,38 @@ private fun FeedPost(
 
                     }
                 }
-            }
 
-            // Caption below media
-            if (post.caption.isNotEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = post.caption,
-                        color = SolariTheme.colors.onBackground,
-                        fontSize = 10.sp,
-                        lineHeight = 16.sp,
-                        fontFamily = PlusJakartaSans,
-                        textAlign = TextAlign.Center,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                if (post.caption.isNotEmpty()) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isPostChromeVisible && !isZooming,
+                        enter = fadeIn(animationSpec = tween(durationMillis = 180)),
+                        exit = fadeOut(),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                    ) {
+                        Text(
+                            text = post.caption,
+                            color = SolariTheme.colors.onBackground,
+                            fontSize = 14.sp,
+                            lineHeight = 16.sp,
+                            fontFamily = PlusJakartaSans,
+                            textAlign = TextAlign.Center,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(SolariTheme.colors.background.copy(alpha = 0.36f))
+                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
                 }
             }
 
             androidx.compose.animation.AnimatedVisibility(
-                visible = isPostChromeVisible && !isZooming && !isInputOverlayActive,
+                visible = isPostChromeVisible && !isZooming,
                 enter = fadeIn(animationSpec = tween(durationMillis = 180)),
                 exit = fadeOut(),
                 modifier = Modifier.weight(1f)
@@ -1331,7 +1423,8 @@ private fun FeedActivityPill(
                         .offset(x = (index * 23).dp)
                         .size(36.dp),
                     shape = CircleShape,
-                    fontSize = 14.sp
+                    fontSize = 14.sp,
+                    backgroundColor = lerp(SolariTheme.colors.surfaceVariant, Color.White, 0.1f)
                 )
             }
 
@@ -1765,16 +1858,11 @@ private fun FeedImage(
     modifier: Modifier = Modifier
 ) {
     var isLoading by remember(url) { mutableStateOf(true) }
-    val fullImageAlpha by animateFloatAsState(
-        targetValue = if (isLoading && placeholderUrl != null) 0f else 1f,
-        animationSpec = tween(durationMillis = 120),
-        label = "feedFullImageAlpha"
-    )
 
     Box(
         modifier = modifier
     ) {
-        if (placeholderUrl != null) {
+        if (placeholderUrl != null && isLoading) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
                     .data(placeholderUrl)
@@ -1790,9 +1878,7 @@ private fun FeedImage(
                 .data(url)
                 .build(),
             contentDescription = "Post Image",
-            modifier = Modifier
-                .fillMaxSize()
-                .alpha(fullImageAlpha),
+            modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Crop,
             onLoading = { isLoading = true },
             onSuccess = { isLoading = false },
@@ -1817,6 +1903,12 @@ private fun FeedVideoPlayer(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val cachedVideoUri = rememberFeedCachedMediaUri(url)
+    val cachedPlaceholderUri = if (placeholderUrl != null) {
+        rememberFeedCachedMediaUri(placeholderUrl)
+    } else {
+        null
+    }
     var isLoading by remember(url) { mutableStateOf(true) }
     var isUserPaused by remember(url) { mutableStateOf(false) }
     val videoAlpha by animateFloatAsState(
@@ -1825,7 +1917,10 @@ private fun FeedVideoPlayer(
         label = "feedVideoAlpha"
     )
 
-    val player = remember(url, mediaType) {
+    val player = remember(cachedVideoUri, mediaType) {
+        if (cachedVideoUri == null) {
+            return@remember null
+        }
         ExoPlayer.Builder(context)
             .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
             .build()
@@ -1834,7 +1929,7 @@ private fun FeedVideoPlayer(
                 volume = 0f
                 setMediaItem(
                     MediaItem.Builder()
-                        .setUri(Uri.parse(url))
+                        .setUri(cachedVideoUri)
                         .setMimeType(mediaType.toMedia3VideoMimeType())
                         .build()
                 )
@@ -1849,11 +1944,15 @@ private fun FeedVideoPlayer(
     }
 
     LaunchedEffect(player, isActive, isUserPaused) {
+        if (player == null) return@LaunchedEffect
         player.volume = 0f
         player.playWhenReady = isActive && !isUserPaused
     }
 
     DisposableEffect(player) {
+        if (player == null) {
+            onDispose {}
+        } else {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 isLoading = playbackState == Player.STATE_BUFFERING ||
@@ -1876,11 +1975,12 @@ private fun FeedVideoPlayer(
         onDispose {
             player.removeListener(listener)
         }
+        }
     }
 
     DisposableEffect(player) {
         onDispose {
-            player.release()
+            player?.release()
         }
     }
 
@@ -1890,7 +1990,8 @@ private fun FeedVideoPlayer(
         if (placeholderUrl != null) {
             AsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(placeholderUrl)
+                    .data(cachedPlaceholderUri)
+                    .diskCachePolicy(CachePolicy.DISABLED)
                     .build(),
                 contentDescription = null,
                 modifier = Modifier.fillMaxSize(),
@@ -1915,7 +2016,7 @@ private fun FeedVideoPlayer(
                 playerView.useController = false
                 playerView.controllerAutoShow = false
                 playerView.hideController()
-                if (playerView.player !== player) {
+                if (player != null && playerView.player !== player) {
                     playerView.player = player
                 }
             }
@@ -1932,7 +2033,7 @@ private fun FeedVideoPlayer(
                 )
         )
 
-        if (isLoading && placeholderUrl == null) {
+        if ((isLoading || cachedVideoUri == null) && placeholderUrl == null) {
             FeedMediaLoadingIndicator()
         }
     }
@@ -1962,6 +2063,44 @@ private fun Post.isVideoMedia(): Boolean {
             normalizedUrl.endsWith(".mov") ||
             normalizedUrl.endsWith(".m4v") ||
             normalizedUrl.endsWith(".webm")
+}
+
+private fun Post.feedMediaPrefetchUrls(): List<String> {
+    return buildList {
+        imageUrl.takeIf(String::isNotBlank)?.let(::add)
+        thumbnailUrl
+            .takeIf { it.isNotBlank() && it != imageUrl }
+            ?.let(::add)
+    }
+}
+
+@Composable
+private fun rememberFeedCachedMediaUri(url: String): Uri? {
+    val context = LocalContext.current
+    var mediaUri by remember(url) {
+        mutableStateOf(
+            PersistentMediaCache.peekMemory(
+                url = url,
+                kind = PersistentMediaCacheKind.FeedMedia
+            )
+        )
+    }
+
+    LaunchedEffect(url) {
+        mediaUri = if (url.isBlank()) {
+            null
+        } else {
+            PersistentMediaCache.resolve(
+                context = context,
+                url = url,
+                kind = PersistentMediaCacheKind.FeedMedia
+            ).getOrElse {
+                Uri.parse(url)
+            }
+        }
+    }
+
+    return mediaUri
 }
 
 private fun String.toMedia3VideoMimeType(): String {
@@ -2147,7 +2286,7 @@ private fun FeedMessageField(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.Send,
             contentDescription = "Send message",
-            tint = SolariTheme.colors.onSurfaceVariant,
+            tint = SolariTheme.colors.primary,
             modifier = Modifier
                 .size(28.dp)
                 .then(

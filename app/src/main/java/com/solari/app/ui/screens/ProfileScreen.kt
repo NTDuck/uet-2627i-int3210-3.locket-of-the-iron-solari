@@ -86,8 +86,10 @@ fun ProfileScreen(
     var pillIsSuccess by remember { mutableStateOf(false) }
     var topPillVisible by remember { mutableStateOf(false) }
     var topPillMessage by remember { mutableStateOf("") }
+    var topPillIsSuccess by remember { mutableStateOf(false) }
     var topPillEventId by remember { mutableStateOf(0) }
     var suppressNextBottomError by remember { mutableStateOf(false) }
+    var routeNextProfileEditFeedbackToTop by remember { mutableStateOf(false) }
 
     var editingField by remember { mutableStateOf<String?>(null) } // "displayName", "email"
     var tempValue by remember { mutableStateOf("") }
@@ -145,11 +147,16 @@ fun ProfileScreen(
             )
         }
     }
-    fun showTopError(message: String) {
-        suppressNextBottomError = true
+    fun showTopFeedback(message: String, isSuccess: Boolean) {
         topPillMessage = message
+        topPillIsSuccess = isSuccess
         topPillVisible = true
         topPillEventId += 1
+    }
+
+    fun showTopError(message: String) {
+        suppressNextBottomError = true
+        showTopFeedback(message = message, isSuccess = false)
     }
 
     fun deleteAccountWithGoogleVerification() {
@@ -186,6 +193,13 @@ fun ProfileScreen(
                 suppressNextBottomError = false
                 return@LaunchedEffect
             }
+
+            if (routeNextProfileEditFeedbackToTop) {
+                routeNextProfileEditFeedbackToTop = false
+                showTopFeedback(message = feedbackMessage, isSuccess = isSuccessFeedback)
+                return@LaunchedEffect
+            }
+
             pillMessage = feedbackMessage
             pillIsSuccess = isSuccessFeedback
             pillVisible = true
@@ -378,6 +392,7 @@ fun ProfileScreen(
                             value = tempValue,
                             onValueChange = { tempValue = it },
                             onDone = {
+                                routeNextProfileEditFeedbackToTop = true
                                 viewModel.updateEmail(tempValue)
                                 editingField = null
                                 focusManager.clearFocus()
@@ -410,6 +425,7 @@ fun ProfileScreen(
                             value = tempValue,
                             onValueChange = { tempValue = it },
                             onDone = {
+                                routeNextProfileEditFeedbackToTop = true
                                 viewModel.updateDisplayName(tempValue)
                                 editingField = null
                                 focusManager.clearFocus()
@@ -628,7 +644,7 @@ fun ProfileScreen(
         ) {
             ProfileFeedbackPill(
                 message = topPillMessage,
-                isSuccess = false
+                isSuccess = topPillIsSuccess
             )
         }
     }
@@ -929,8 +945,8 @@ private fun ProfileFeedbackPill(
     message: String,
     isSuccess: Boolean
 ) {
-    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.error.copy(alpha = 0.2f)
-    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.error
+    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.error
+    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.onError
 
     Surface(
         color = backgroundColor,

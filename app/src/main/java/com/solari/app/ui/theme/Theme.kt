@@ -5,7 +5,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 enum class SolariThemeVariant(val displayName: String) {
@@ -333,12 +333,12 @@ data class SolariColors(
     val onPrimary: Color = Color.Black,
     val onSecondary: Color = Color.Black,
     val onTertiary: Color = Color.Black,
-    val onBackground: Color = Color.White,
-    val onSurface: Color = Color.White,
-    val onSurfaceVariant: Color = Color.White,
+    val onBackground: Color = Color(0xFFE7E7E7),
+    val onSurface: Color = Color(0xFFE7E7E7),
+    val onSurfaceVariant: Color = Color(0xFFE7E7E7),
     val navBarColor: Color = Color.Black,
     val error: Color = Color(0xFFE57373),
-    val onError: Color = Color.White,
+    val onError: Color = Color(0xFFE7E7E7),
     val success: Color = Color(0xFF77E0A1),
     val onSuccess: Color = Color(0xFF163624)
 )
@@ -6535,7 +6535,7 @@ val LightThemes = listOf(
     SolariThemeVariant.WINDOWS_NT_LIGHT
 )
 
-val LocalSolariColors = staticCompositionLocalOf { DefaultSolariDark }
+val LocalSolariColors = compositionLocalOf { DefaultSolariDark }
 
 object SolariTheme {
     val colors: SolariColors

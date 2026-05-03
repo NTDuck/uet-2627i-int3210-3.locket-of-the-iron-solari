@@ -1,5 +1,6 @@
 package com.solari.app.ui.screens
 
+import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -21,17 +22,17 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import androidx.compose.animation.core.tween
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
@@ -47,8 +48,7 @@ import kotlinx.coroutines.launch
 
 private const val FeedBrowseScrollTopButtonThresholdIndex = 24
 private const val FeedBrowseGridColumnCount = 3
-private const val FeedSharedMediaTransitionMillis = 200
-private val FeedSharedMediaCornerRadius = 8.dp
+private val FeedBrowseThumbnailCornerRadius = 8.dp
 
 
 @OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
@@ -72,8 +72,6 @@ fun FeedBrowseScreen(
     val selectedSort = viewModel.selectedSort
     val selectedFriendIds = viewModel.selectedFriendIds
     var isUserRefreshing by remember { mutableStateOf(false) }
-    var isOpeningPost by remember { mutableStateOf(false) }
-    var hasOpeningPostTransitionStarted by remember { mutableStateOf(false) }
     val feedListState = rememberLazyGridState(
         initialFirstVisibleItemIndex = viewModel.feedListFirstVisibleItemIndex,
         initialFirstVisibleItemScrollOffset = viewModel.feedListFirstVisibleItemScrollOffset
@@ -88,39 +86,8 @@ fun FeedBrowseScreen(
     }
     
     val filteredSortedPosts = posts
-    // Tracks which post IDs have already been enqueued for preloading to avoid
-    // duplicate Coil requests when the posts list changes.
-    var preloadEnqueuedPostIds by remember(selectedSort, selectedFriendIds) {
-        mutableStateOf<Set<String>>(emptySet())
-    }
 
-    // Preload ALL fetched thumbnails top-to-bottom using Coil's ImageLoader.
-    // No gating or frontier — every fetched post is enqueued immediately.
-    // Coil's internal dispatcher manages concurrency (default ~4 parallel network
-    // requests). Enqueue order preserves top-to-bottom priority.
-    // For visible items, AsyncImage loads directly (and hits cache if preload finished first).
-    // For off-screen items, this ensures they're cached before scrolling into view.
     val context = LocalContext.current
-    val imageLoader = remember(context) { coil.Coil.imageLoader(context) }
-    LaunchedEffect(filteredSortedPosts) {
-        for (post in filteredSortedPosts) {
-            if (post.id in preloadEnqueuedPostIds) continue
-
-            val url = post.thumbnailUrl.ifBlank { post.imageUrl }
-            if (url.isBlank()) {
-                preloadEnqueuedPostIds = preloadEnqueuedPostIds + post.id
-                continue
-            }
-
-            preloadEnqueuedPostIds = preloadEnqueuedPostIds + post.id
-            val request = ImageRequest.Builder(context)
-                .data(url)
-                // Use post ID as memory cache key so both preload and AsyncImage share the same entry
-                .memoryCacheKey("thumb_${post.id}")
-                .build()
-            imageLoader.enqueue(request)
-        }
-    }
 
     LaunchedEffect(initialAuthorId) {
         viewModel.applyInitialAuthorFilter(initialAuthorId)
@@ -188,8 +155,6 @@ fun FeedBrowseScreen(
         "oldest" -> SortSelection.Oldest
         else -> SortSelection.Newest
     }
-    val shouldHideBodyForPostOpen = isOpeningPost
-
     fun navigateToFirstGridPost() {
         val firstPost = filteredSortedPosts.firstOrNull()
         if (firstPost == null) {
@@ -205,17 +170,6 @@ fun FeedBrowseScreen(
             firstVisibleItemScrollOffset = feedListState.firstVisibleItemScrollOffset
         )
         onNavigateToPost(firstPost, filteredSortedPosts, selectedFriendIds, selectedSort, false)
-    }
-
-    LaunchedEffect(isOpeningPost, sharedTransitionScope.isTransitionActive) {
-        if (!isOpeningPost) return@LaunchedEffect
-
-        if (sharedTransitionScope.isTransitionActive) {
-            hasOpeningPostTransitionStarted = true
-        } else if (hasOpeningPostTransitionStarted) {
-            isOpeningPost = false
-            hasOpeningPostTransitionStarted = false
-        }
     }
 
     Scaffold(
@@ -244,7 +198,6 @@ fun FeedBrowseScreen(
                 .fillMaxSize()
                 .background(SolariTheme.colors.background)
                 .padding(innerPadding)
-                .alpha(if (shouldHideBodyForPostOpen) 0f else 1f)
         ) {
             Column(
                 modifier = Modifier
@@ -395,87 +348,79 @@ fun FeedBrowseScreen(
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
                         items(filteredSortedPosts, key = { post -> post.id }) { post ->
-                            with(sharedTransitionScope) {
-                                Box(
-                                    modifier = Modifier
-                                        .animateItem()
-                                        .aspectRatio(1f)
-                                        .scaledClickable(
-                                            pressedScale = 0.9f
-                                        ) {
-                                            if (post.uploadStatus == PostUploadStatus.None) {
-                                                viewModel.registerPostView(post.id)
-                                            }
-                                            isOpeningPost = true
-                                            hasOpeningPostTransitionStarted = false
-                                            viewModel.updateFeedListScroll(
-                                                firstVisibleItemIndex = feedListState.firstVisibleItemIndex,
-                                                firstVisibleItemScrollOffset = feedListState.firstVisibleItemScrollOffset
-                                            )
-                                            onNavigateToPost(post, filteredSortedPosts, selectedFriendIds, selectedSort, true)
+                            val thumbnailUrl = post.thumbnailUrl.ifBlank { post.imageUrl }
+
+                            Box(
+                                modifier = Modifier
+                                    .animateItem()
+                                    .aspectRatio(1f)
+                                    .scaledClickable(
+                                        pressedScale = 0.9f
+                                    ) {
+                                        if (post.uploadStatus == PostUploadStatus.None) {
+                                            viewModel.registerPostView(post.id)
                                         }
-                                        .sharedBounds(
-                                            rememberSharedContentState(key = "post_media_${post.id}"),
-                                            animatedVisibilityScope = animatedVisibilityScope,
-                                            boundsTransform = { _, _ ->
-                                                tween(durationMillis = FeedSharedMediaTransitionMillis)
-                                            },
-                                            resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.RemeasureToBounds,
-                                            clipInOverlayDuringTransition = OverlayClip(
-                                                RoundedCornerShape(FeedSharedMediaCornerRadius)
-                                            )
+                                        viewModel.updateFeedListScroll(
+                                            firstVisibleItemIndex = feedListState.firstVisibleItemIndex,
+                                            firstVisibleItemScrollOffset = feedListState.firstVisibleItemScrollOffset
                                         )
-                                        .clip(RoundedCornerShape(FeedSharedMediaCornerRadius))
-                                        .background(SolariTheme.colors.surface)
-                                ) {
-                                    AsyncImage(
-                                        model = ImageRequest.Builder(LocalContext.current)
-                                            .data(post.thumbnailUrl.ifBlank { post.imageUrl })
-                                            // Shared memory cache key with preloader for instant display
+                                        onNavigateToPost(post, filteredSortedPosts, selectedFriendIds, selectedSort, false)
+                                    }
+                                    .clip(RoundedCornerShape(FeedBrowseThumbnailCornerRadius))
+                                    .background(SolariTheme.colors.surface)
+                            ) {
+                                if (thumbnailUrl.isNotBlank()) {
+                                    val thumbnailRequest = remember(context, post.id, thumbnailUrl) {
+                                        ImageRequest.Builder(context)
+                                            .data(thumbnailUrl)
                                             .memoryCacheKey("thumb_${post.id}")
                                             .crossfade(false)
-                                            .build(),
+                                            .build()
+                                    }
+
+                                    AsyncImage(
+                                        model = thumbnailRequest,
                                         contentDescription = "Browse Image",
                                         modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                     )
+                                }
 
-                                    when (post.uploadStatus) {
-                                        PostUploadStatus.Uploading,
-                                        PostUploadStatus.Processing -> {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                CircularProgressIndicator(
-                                                    color = SolariTheme.colors.onBackground,
-                                                    trackColor = SolariTheme.colors.onBackground.copy(alpha = 0.18f),
-                                                    modifier = Modifier.size(24.dp),
-                                                    strokeWidth = 2.dp
-                                                )
-                                            }
+                                when (post.uploadStatus) {
+                                    PostUploadStatus.Uploading,
+                                    PostUploadStatus.Processing -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(SolariTheme.colors.onSurface.copy(alpha = 0.18f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                color = SolariTheme.colors.onBackground,
+                                                trackColor = SolariTheme.colors.onBackground.copy(alpha = 0.18f),
+                                                modifier = Modifier.size(24.dp),
+                                                strokeWidth = 2.dp
+                                            )
                                         }
-
-                                        PostUploadStatus.Failed -> {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .background(SolariTheme.colors.onSurface.copy(alpha = 0.36f)),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Text(
-                                                    text = "Failed",
-                                                    color = SolariTheme.colors.onBackground,
-                                                    fontSize = 12.sp,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            }
-                                        }
-
-                                        PostUploadStatus.None -> Unit
                                     }
+
+                                    PostUploadStatus.Failed -> {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .background(SolariTheme.colors.onSurface.copy(alpha = 0.36f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "Failed",
+                                                color = SolariTheme.colors.onBackground,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
+                                    PostUploadStatus.None -> Unit
                                 }
                             }
                         }

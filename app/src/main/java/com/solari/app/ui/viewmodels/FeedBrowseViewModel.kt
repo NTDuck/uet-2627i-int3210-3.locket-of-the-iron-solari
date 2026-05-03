@@ -57,6 +57,7 @@ class FeedBrowseViewModel(
     var hasReachedEnd by mutableStateOf(false)
         private set
 
+    private var deletedPostIds by mutableStateOf<Set<String>>(emptySet())
     private var nextCursor: String? = null
     private var feedRequestSequence = 0
 
@@ -69,6 +70,15 @@ class FeedBrowseViewModel(
         viewModelScope.launch {
             postUploadCoordinator.uploads.collectLatest { uploads ->
                 uploadEntries = uploads
+                applyDisplayPosts()
+            }
+        }
+
+        viewModelScope.launch {
+            feedRepository.deletedPostIds.collectLatest { deletedIds ->
+                deletedPostIds = deletedIds
+                remotePosts = remotePosts.filterNot { it.id in deletedIds }
+                registeredViewPostIds = registeredViewPostIds - deletedIds
                 applyDisplayPosts()
             }
         }
@@ -226,10 +236,11 @@ class FeedBrowseViewModel(
                 }
         }
         val visibleUploadPosts = uploadPosts.filter { post ->
-            selectedFriendIds.isEmpty() || post.author.id in selectedFriendIds
+            post.id !in deletedPostIds &&
+                    (selectedFriendIds.isEmpty() || post.author.id in selectedFriendIds)
         }
         val uploadPostIds = visibleUploadPosts.map(Post::id).toSet()
-        val combinedPosts = visibleUploadPosts + remotePosts.filterNot { it.id in uploadPostIds }
+        val combinedPosts = visibleUploadPosts + remotePosts.filterNot { it.id in uploadPostIds || it.id in deletedPostIds }
         posts = when (selectedSort) {
             "oldest" -> combinedPosts.sortedBy(Post::timestamp)
             else -> combinedPosts.sortedByDescending(Post::timestamp)

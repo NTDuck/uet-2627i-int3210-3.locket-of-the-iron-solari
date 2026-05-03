@@ -101,6 +101,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import com.solari.app.ui.models.CapturedMedia
+import com.solari.app.ui.models.CapturedMediaSource
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.createCaptureCacheFile
 import com.solari.app.ui.util.scaledClickable
@@ -221,7 +222,8 @@ fun HomepageBeforeCapturingScreen(
                 CapturedMedia(
                     uri = cachedUri,
                     contentType = mimeType,
-                    isVideo = false
+                    isVideo = false,
+                    source = CapturedMediaSource.Gallery
                 )
             )
         }
@@ -335,14 +337,17 @@ fun HomepageBeforeCapturingScreen(
     }
 
     fun launchTimedCapture(captureAction: () -> Unit) {
-        if (timerValue <= 0) {
+        // Read the latest timer value directly from the ViewModel to ensure
+        // changes take effect immediately, even if the composable hasn't recomposed.
+        val currentTimerValue = viewModel.timerValue
+        if (currentTimerValue <= 0) {
             captureAction()
             return
         }
 
         scope.launch {
             isTimerRunning = true
-            countdownValue = timerValue
+            countdownValue = currentTimerValue
             while (countdownValue > 0) {
                 delay(1_000)
                 countdownValue -= 1

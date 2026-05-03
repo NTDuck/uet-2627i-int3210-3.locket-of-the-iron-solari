@@ -28,9 +28,10 @@ fun SolariAvatar(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(8),
     contentDescription: String? = null,
-    fontSize: TextUnit = 18.sp
+    fontSize: TextUnit = 18.sp,
+    backgroundColor: Color = DefaultAvatarBackground
 ) {
-    if (imageUrl != null) {
+    if (!imageUrl.isNullOrBlank()) {
         AsyncImage(
             model = imageUrl,
             contentDescription = contentDescription,
@@ -41,7 +42,7 @@ fun SolariAvatar(
         Box(
             modifier = modifier
                 .clip(shape)
-                .background(DefaultAvatarBackground),
+                .background(backgroundColor),
             contentAlignment = Alignment.Center
         ) {
             Text(
