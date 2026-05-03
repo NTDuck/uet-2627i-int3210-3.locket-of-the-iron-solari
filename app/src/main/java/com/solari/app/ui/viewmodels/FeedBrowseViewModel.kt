@@ -22,7 +22,8 @@ class FeedBrowseViewModel(
     private val feedRepository: FeedRepository,
     private val friendRepository: FriendRepository,
     private val userRepository: UserRepository,
-    private val postUploadCoordinator: PostUploadCoordinator
+    private val postUploadCoordinator: PostUploadCoordinator,
+    private val userPreferencesStore: com.solari.app.data.preferences.UserPreferencesStore
 ) : ViewModel() {
     var selectedSort by mutableStateOf("newest")
         private set
@@ -186,6 +187,10 @@ class FeedBrowseViewModel(
                     val newPosts = feedResult.data.posts
                     nextCursor = feedResult.data.nextCursor
                     hasReachedEnd = nextCursor == null
+
+                    viewModelScope.launch {
+                        userPreferencesStore.updateLastFeedViewedTimestamp(System.currentTimeMillis())
+                    }
 
                     remotePosts = if (resetPagination) {
                         newPosts

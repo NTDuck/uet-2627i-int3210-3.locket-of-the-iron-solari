@@ -16,6 +16,49 @@
         android:layout_alignParentBottom="true"
         android:src="@drawable/widget_gradient_overlay" />
 
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:padding="12dp">
+
+        <LinearLayout
+            android:id="@+id/widget_streak_pill"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentStart="true"
+            android:background="@drawable/widget_caption_background"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:orientation="horizontal"
+            android:visibility="gone"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/widget_streak_text"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="#FFFFFFFF"
+                android:textSize="12sp"
+                android:textStyle="bold"
+                android:text="🔥 0" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/widget_unseen_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignParentEnd="true"
+            android:background="@drawable/widget_unseen_badge_bg"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:textColor="#FFFFFFFF"
+            android:textSize="12sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:visibility="gone"
+            android:text="0" />
+    </RelativeLayout>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -34,12 +77,12 @@
             android:id="@+id/widget_post_caption"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="4dp"
             android:background="@drawable/widget_caption_background"
-            android:paddingHorizontal="14dp"
-            android:paddingVertical="8dp"
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="7dp"
             android:textColor="#FFFFFFFF"
-            android:textSize="14sp"
+            android:textSize="11sp"
             android:fontFamily="@font/plus_jakarta_sans_medium"
             android:maxLines="2"
             android:ellipsize="end"

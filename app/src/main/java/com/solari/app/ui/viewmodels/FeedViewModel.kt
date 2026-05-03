@@ -25,7 +25,8 @@ class FeedViewModel(
     private val userRepository: UserRepository,
     private val friendRepository: FriendRepository,
     private val conversationRepository: ConversationRepository,
-    private val postUploadCoordinator: PostUploadCoordinator
+    private val postUploadCoordinator: PostUploadCoordinator,
+    private val userPreferencesStore: com.solari.app.data.preferences.UserPreferencesStore
 ) : ViewModel() {
     var posts by mutableStateOf<List<Post>>(emptyList())
         private set
@@ -147,6 +148,9 @@ class FeedViewModel(
                     val newPosts = feedResult.data.posts
                     nextCursor = feedResult.data.nextCursor
                     hasReachedEnd = nextCursor == null
+                    viewModelScope.launch {
+                        userPreferencesStore.updateLastFeedViewedTimestamp(System.currentTimeMillis())
+                    }
 
                     var postsToDisplay = newPosts
                     if (resetPagination && targetPostId != null && newPosts.none { it.id == targetPostId }) {

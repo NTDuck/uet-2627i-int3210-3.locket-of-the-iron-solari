@@ -61,7 +61,7 @@ class AppContainer(
     private val pushNotificationStore = PushNotificationStore(applicationContext)
     private val authSessionInvalidationNotifier = AuthSessionInvalidationNotifier()
     private val apiExecutor = ApiExecutor(json)
-    private val userPreferencesStore = UserPreferencesStore(applicationContext)
+    val userPreferencesStore = UserPreferencesStore(applicationContext)
 
     private val refreshOkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)

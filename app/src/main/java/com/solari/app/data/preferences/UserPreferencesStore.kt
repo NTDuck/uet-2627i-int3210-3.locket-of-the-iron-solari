@@ -20,7 +20,8 @@ private val Context.userPreferencesDataStore: DataStore<Preferences> by preferen
 )
 
 class UserPreferencesStore(context: Context) {
-    private val dataStore = context.applicationContext.userPreferencesDataStore
+    private val applicationContext = context.applicationContext
+    private val dataStore = applicationContext.userPreferencesDataStore
 
     val userPreferencesFlow: Flow<UserPreferences> = dataStore.data
         .catch { error ->
@@ -40,7 +41,8 @@ class UserPreferencesStore(context: Context) {
                     runCatching { SolariThemeVariant.valueOf(it) }.getOrNull()
                 } ?: SolariThemeVariant.DEFAULT_DARK,
                 isFlashEnabled = preferences[IsFlashEnabledKey] ?: false,
-                timerValue = preferences[TimerValueKey] ?: 0
+                timerValue = preferences[TimerValueKey] ?: 0,
+                lastFeedViewedTimestamp = preferences[LastFeedViewedTimestampKey] ?: 0L
             )
         }
 
@@ -73,6 +75,20 @@ class UserPreferencesStore(context: Context) {
         }
     }
 
+    suspend fun updateLastFeedViewedTimestamp(timestamp: Long) {
+        dataStore.edit { preferences ->
+            preferences[LastFeedViewedTimestampKey] = timestamp
+        }
+        // Broadcast widget update so the unseen count resets
+        val intent = android.content.Intent(applicationContext, com.solari.app.widget.SolariWidgetProvider::class.java).apply {
+            action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
+        }
+        val ids = android.appwidget.AppWidgetManager.getInstance(applicationContext)
+            .getAppWidgetIds(android.content.ComponentName(applicationContext, com.solari.app.widget.SolariWidgetProvider::class.java))
+        intent.putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+        applicationContext.sendBroadcast(intent)
+    }
+
     suspend fun updateLightTheme(variant: SolariThemeVariant) {
         dataStore.edit { preferences ->
             preferences[CurrentLightThemeKey] = variant.name
@@ -91,6 +107,7 @@ class UserPreferencesStore(context: Context) {
         val CurrentDarkThemeKey = stringPreferencesKey("current_dark_theme")
         val IsFlashEnabledKey = booleanPreferencesKey("is_flash_enabled")
         val TimerValueKey = intPreferencesKey("timer_value")
+        val LastFeedViewedTimestampKey = androidx.datastore.preferences.core.longPreferencesKey("last_feed_viewed_timestamp")
     }
 }
 
@@ -99,5 +116,6 @@ data class UserPreferences(
     val currentLightTheme: SolariThemeVariant,
     val currentDarkTheme: SolariThemeVariant,
     val isFlashEnabled: Boolean,
-    val timerValue: Int
+    val timerValue: Int,
+    val lastFeedViewedTimestamp: Long
 )

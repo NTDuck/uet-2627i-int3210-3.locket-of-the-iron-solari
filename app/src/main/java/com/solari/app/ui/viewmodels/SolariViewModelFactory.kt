@@ -51,7 +51,8 @@ class SolariViewModelFactory(
                     userRepository = userRepository,
                     friendRepository = friendRepository,
                     conversationRepository = conversationRepository,
-                    postUploadCoordinator = postUploadCoordinator
+                    postUploadCoordinator = postUploadCoordinator,
+                    userPreferencesStore = userPreferencesStore
                 )
             }
 
@@ -60,7 +61,8 @@ class SolariViewModelFactory(
                     feedRepository = feedRepository,
                     friendRepository = friendRepository,
                     userRepository = userRepository,
-                    postUploadCoordinator = postUploadCoordinator
+                    postUploadCoordinator = postUploadCoordinator,
+                    userPreferencesStore = userPreferencesStore
                 )
             }
 
