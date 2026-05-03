@@ -8,8 +8,6 @@ import com.solari.app.data.auth.AuthRepository
 import com.solari.app.data.auth.AuthSessionInvalidationNotifier
 import com.solari.app.data.auth.DefaultAuthRepository
 import com.solari.app.data.auth.TokenRefreshAuthenticator
-import com.solari.app.data.websocket.WebSocketEventParser
-import com.solari.app.data.websocket.WebSocketManager
 import com.solari.app.data.conversation.ConversationRepository
 import com.solari.app.data.conversation.DefaultConversationRepository
 import com.solari.app.data.feed.DefaultFeedRepository
@@ -22,22 +20,24 @@ import com.solari.app.data.network.ApiExecutor
 import com.solari.app.data.preferences.PushNotificationStore
 import com.solari.app.data.preferences.RecentEmojiStore
 import com.solari.app.data.preferences.UserPreferencesStore
-import com.solari.app.data.remote.conversation.ConversationApi
 import com.solari.app.data.remote.auth.AuthApi
+import com.solari.app.data.remote.conversation.ConversationApi
 import com.solari.app.data.remote.feed.FeedApi
 import com.solari.app.data.remote.friend.FriendApi
 import com.solari.app.data.remote.user.UserApi
 import com.solari.app.data.security.TokenCipher
 import com.solari.app.data.user.DefaultUserRepository
 import com.solari.app.data.user.UserRepository
+import com.solari.app.data.websocket.WebSocketEventParser
+import com.solari.app.data.websocket.WebSocketManager
 import com.solari.app.notifications.PushNotificationCoordinator
 import com.solari.app.ui.viewmodels.SolariViewModelFactory
-import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import java.util.concurrent.TimeUnit
 
 class AppContainer(
     context: Context

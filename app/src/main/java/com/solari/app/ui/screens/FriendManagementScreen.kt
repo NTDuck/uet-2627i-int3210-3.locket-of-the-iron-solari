@@ -4,8 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -56,8 +56,8 @@ import androidx.compose.ui.geometry.isSpecified
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -74,10 +74,10 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.solari.app.navigation.SolariRoute
+import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
-import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.User
@@ -189,256 +189,262 @@ fun FriendManagementScreen(
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                     contentPadding = PaddingValues(top = 0.dp, bottom = 22.dp)
                 ) {
-            item {
-                FriendManagementSectionTitle(text = "PERSONAL INVITE")
-                Spacer(modifier = Modifier.height(13.dp))
+                    item {
+                        FriendManagementSectionTitle(text = "PERSONAL INVITE")
+                        Spacer(modifier = Modifier.height(13.dp))
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(SolariTheme.colors.surface)
-                        .padding(13.dp)
-                ) {
-                    Text(
-                        text = inviteLink.ifBlank { "Loading invite link..." },
-                        color = SolariTheme.colors.onBackground,
-                        fontSize = 12.sp,
-                        fontFamily = PlusJakartaSans,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(SolariTheme.colors.surfaceVariant, RoundedCornerShape(2.dp))
-                            .padding(horizontal = 13.dp, vertical = 11.dp)
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(1.6.dp)
-                            .background(SolariTheme.colors.primary)
-                    )
-
-                    Spacer(modifier = Modifier.height(13.dp))
-
-                    SolariTheme.colors.primaryButton(
-                        text = "Share Invite Link",
-                        icon = Icons.Outlined.Share,
-                        enabled = inviteLink.isNotBlank(),
-                        onClick = {
-                            shareInviteLink(context, inviteLink)
-                        }
-                    )
-                }
-            }
-
-            item {
-                FriendManagementSectionTitle(text = "ADD NEW CONNECTION")
-                Spacer(modifier = Modifier.height(13.dp))
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(SolariTheme.colors.surface)
-                        .padding(13.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(32.dp)
-                            .background(SolariTheme.colors.surfaceVariant, RoundedCornerShape(topStart = 2.dp))
-                    ) {
-                        Row(
+                        Column(
                             modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(SolariTheme.colors.surface)
+                                .padding(13.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.PersonAdd,
-                                contentDescription = null,
-                                tint = SolariTheme.colors.onSurface,
-                                modifier = Modifier.size(16.dp)
+                            Text(
+                                text = inviteLink.ifBlank { "Loading invite link..." },
+                                color = SolariTheme.colors.onBackground,
+                                fontSize = 12.sp,
+                                fontFamily = PlusJakartaSans,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        SolariTheme.colors.surfaceVariant,
+                                        RoundedCornerShape(2.dp)
+                                    )
+                                    .padding(horizontal = 13.dp, vertical = 11.dp)
                             )
 
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(1.6.dp)
+                                    .background(SolariTheme.colors.primary)
+                            )
 
-                            BasicTextField(
-                                value = requestText,
-                                onValueChange = { requestText = it },
-                                modifier = Modifier.weight(1f),
-                                textStyle = TextStyle(
-                                    color = SolariTheme.colors.onBackground,
-                                    fontFamily = PlusJakartaSans,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium
-                                ),
-                                cursorBrush = SolidColor(SolariTheme.colors.onBackground),
-                                singleLine = true,
-                                decorationBox = { innerTextField ->
-                                    Box(contentAlignment = Alignment.CenterStart) {
-                                        if (requestText.isEmpty()) {
-                                            Text(
-                                                text = "username/email",
-                                                color = SolariTheme.colors.onSurfaceVariant,
-                                                fontSize = 12.sp,
-                                                fontFamily = PlusJakartaSans,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                        innerTextField()
-                                    }
+                            Spacer(modifier = Modifier.height(13.dp))
+
+                            SolariTheme.colors.primaryButton(
+                                text = "Share Invite Link",
+                                icon = Icons.Outlined.Share,
+                                enabled = inviteLink.isNotBlank(),
+                                onClick = {
+                                    shareInviteLink(context, inviteLink)
                                 }
                             )
                         }
+                    }
 
+                    item {
+                        FriendManagementSectionTitle(text = "ADD NEW CONNECTION")
+                        Spacer(modifier = Modifier.height(13.dp))
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(SolariTheme.colors.surface)
+                                .padding(13.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(32.dp)
+                                    .background(
+                                        SolariTheme.colors.surfaceVariant,
+                                        RoundedCornerShape(topStart = 2.dp)
+                                    )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(horizontal = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.PersonAdd,
+                                        contentDescription = null,
+                                        tint = SolariTheme.colors.onSurface,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.width(10.dp))
+
+                                    BasicTextField(
+                                        value = requestText,
+                                        onValueChange = { requestText = it },
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = TextStyle(
+                                            color = SolariTheme.colors.onBackground,
+                                            fontFamily = PlusJakartaSans,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium
+                                        ),
+                                        cursorBrush = SolidColor(SolariTheme.colors.onBackground),
+                                        singleLine = true,
+                                        decorationBox = { innerTextField ->
+                                            Box(contentAlignment = Alignment.CenterStart) {
+                                                if (requestText.isEmpty()) {
+                                                    Text(
+                                                        text = "username/email",
+                                                        color = SolariTheme.colors.onSurfaceVariant,
+                                                        fontSize = 12.sp,
+                                                        fontFamily = PlusJakartaSans,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                }
+                                                innerTextField()
+                                            }
+                                        }
+                                    )
+                                }
+
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(1.6.dp)
+                                        .background(SolariTheme.colors.onSurface)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(11.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(0.75f)
+                                    .height(36.dp)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(SolariTheme.colors.surfaceVariant)
+                                    .clickable(enabled = !viewModel.isSendingRequest) {
+                                        focusManager.clearFocus(force = true)
+                                        keyboardController?.hide()
+                                        viewModel.sendFriendRequest(requestText) {
+                                            requestText = ""
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (viewModel.isSendingRequest) {
+                                        CircularProgressIndicator(
+                                            color = SolariTheme.colors.onBackground,
+                                            trackColor = SolariTheme.colors.surfaceVariant,
+                                            strokeWidth = 2.dp,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(7.dp))
+                                    }
+                                    Text(
+                                        text = "Send request",
+                                        color = SolariTheme.colors.onBackground,
+                                        fontSize = 12.sp,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
+
+                    }
+
+                    item {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(1.6.dp)
-                                .background(SolariTheme.colors.onSurface)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(11.dp))
-
-                    Box(
-                        modifier = Modifier
-                            .weight(0.75f)
-                            .height(36.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(SolariTheme.colors.surfaceVariant)
-                            .clickable(enabled = !viewModel.isSendingRequest) {
-                                focusManager.clearFocus(force = true)
-                                keyboardController?.hide()
-                                viewModel.sendFriendRequest(requestText) {
-                                    requestText = ""
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (viewModel.isSendingRequest) {
-                                CircularProgressIndicator(
-                                    color = SolariTheme.colors.onBackground,
-                                    trackColor = SolariTheme.colors.surfaceVariant,
-                                    strokeWidth = 2.dp,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(7.dp))
-                            }
+                                .height(46.dp)
+                                .clip(RoundedCornerShape(5.dp))
+                                .background(SolariTheme.colors.surface)
+                                .clickable(onClick = onNavigateToBlockedAccounts)
+                                .padding(horizontal = 16.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
                             Text(
-                                text = "Send request",
-                                color = SolariTheme.colors.onBackground,
-                                fontSize = 12.sp,
+                                text = "View blocked accounts",
+                                color = SolariTheme.colors.secondary,
+                                fontSize = 13.sp,
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                     }
-                }
 
-            }
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            FriendManagementSectionTitle(text = "FRIEND LIST")
+                            FilterToggleButton(
+                                selected = sortSelection,
+                                onToggle = { selection ->
+                                    sortSelection = selection
+                                    viewModel.loadFriends(selection.apiValue)
+                                },
+                                iconTint = SolariTheme.colors.onSurface,
+                                modifier = Modifier.size(28.dp),
+                                iconSize = 17
+                            )
+                        }
+                    }
 
-            item {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(46.dp)
-                        .clip(RoundedCornerShape(5.dp))
-                        .background(SolariTheme.colors.surface)
-                        .clickable(onClick = onNavigateToBlockedAccounts)
-                        .padding(horizontal = 16.dp),
-                    contentAlignment = Alignment.CenterStart
-                ) {
-                    Text(
-                        text = "View blocked accounts",
-                        color = SolariTheme.colors.secondary,
-                        fontSize = 13.sp,
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FriendManagementSectionTitle(text = "FRIEND LIST")
-                    FilterToggleButton(
-                        selected = sortSelection,
-                        onToggle = { selection ->
-                            sortSelection = selection
-                            viewModel.loadFriends(selection.apiValue)
-                        },
-                        iconTint = SolariTheme.colors.onSurface,
-                        modifier = Modifier.size(28.dp),
-                        iconSize = 17
-                    )
-                }
-            }
-
-            if (viewModel.isLoading && friends.isEmpty()) {
-                item {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(96.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        CircularProgressIndicator(
-                            color = SolariTheme.colors.primary,
-                            trackColor = SolariTheme.colors.surface
-                        )
+                    if (viewModel.isLoading && friends.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(96.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    color = SolariTheme.colors.primary,
+                                    trackColor = SolariTheme.colors.surface
+                                )
+                            }
+                        }
+                    } else if (friends.isEmpty()) {
+                        item {
+                            Text(
+                                text = viewModel.errorMessage ?: "No friends yet",
+                                color = SolariTheme.colors.onSurfaceVariant,
+                                fontSize = 13.sp,
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    } else {
+                        items(friends, key = { it.id }) { friend ->
+                            FriendListItem(
+                                friend = friend,
+                                onSetNickname = { nicknameFriend ->
+                                    nicknameDialogState = NicknameDialogState(
+                                        friend = nicknameFriend,
+                                        action = NicknameAction.Set
+                                    )
+                                },
+                                onUpdateNickname = { nicknameFriend ->
+                                    nicknameDialogState = NicknameDialogState(
+                                        friend = nicknameFriend,
+                                        action = NicknameAction.Update
+                                    )
+                                },
+                                onRemoveNickname = viewModel::removeNickname,
+                                onMessage = { friend ->
+                                    viewModel.openConversation(friend, onNavigateToConversation)
+                                },
+                                messagingFriendIds = viewModel.messagingFriendIds,
+                                onUnfriend = { friendPendingUnfriend = it },
+                                onBlock = { friendPendingBlock = it },
+                                modifier = Modifier.animateItem()
+                            )
+                        }
                     }
                 }
-            } else if (friends.isEmpty()) {
-                item {
-                    Text(
-                        text = viewModel.errorMessage ?: "No friends yet",
-                        color = SolariTheme.colors.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        fontFamily = PlusJakartaSans,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            } else {
-                items(friends, key = { it.id }) { friend ->
-                    FriendListItem(
-                        friend = friend,
-                        onSetNickname = { nicknameFriend ->
-                            nicknameDialogState = NicknameDialogState(
-                                friend = nicknameFriend,
-                                action = NicknameAction.Set
-                            )
-                        },
-                        onUpdateNickname = { nicknameFriend ->
-                            nicknameDialogState = NicknameDialogState(
-                                friend = nicknameFriend,
-                                action = NicknameAction.Update
-                            )
-                        },
-                        onRemoveNickname = viewModel::removeNickname,
-                        onMessage = { friend ->
-                            viewModel.openConversation(friend, onNavigateToConversation)
-                        },
-                        messagingFriendIds = viewModel.messagingFriendIds,
-                        onUnfriend = { friendPendingUnfriend = it },
-                        onBlock = { friendPendingBlock = it },
-                        modifier = Modifier.animateItem()
-                    )
-                }
             }
-        }
-        }
         }
 
         AnimatedVisibility(
@@ -989,12 +995,14 @@ private fun friendActionOptionShape(index: Int, lastIndex: Int): RoundedCornerSh
             bottomEnd = 0.dp,
             bottomStart = 0.dp
         )
+
         index == lastIndex -> RoundedCornerShape(
             topStart = 0.dp,
             topEnd = 0.dp,
             bottomEnd = 8.dp,
             bottomStart = 8.dp
         )
+
         else -> RoundedCornerShape(0.dp)
     }
 }

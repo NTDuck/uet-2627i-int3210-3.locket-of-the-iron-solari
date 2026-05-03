@@ -28,7 +28,7 @@ class SolariViewModelFactory(
             modelClass.isAssignableFrom(SettingsViewModel::class.java) -> {
                 SettingsViewModel(userPreferencesStore)
             }
-            
+
             modelClass.isAssignableFrom(AppAuthViewModel::class.java) -> {
                 AppAuthViewModel(authRepository)
             }

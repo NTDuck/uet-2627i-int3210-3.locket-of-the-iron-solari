@@ -6,16 +6,40 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -24,17 +48,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.solari.app.ui.models.Conversation
-import com.solari.app.ui.models.FriendRequest
-import com.solari.app.ui.models.FriendRequestDirection
+import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariFeedbackPill
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.ui.graphics.graphicsLayer
-import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SortSelection
+import com.solari.app.ui.models.Conversation
+import com.solari.app.ui.models.FriendRequest
+import com.solari.app.ui.models.FriendRequestDirection
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
@@ -146,168 +167,174 @@ fun ConversationScreen(
             }
 
             Column(modifier = Modifier.fillMaxSize()) {
-                    Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 19.dp),
-                        verticalArrangement = Arrangement.spacedBy(13.dp),
-                        contentPadding = PaddingValues(bottom = 120.dp)
-                    ) {
-                        // Manage Friends Button aligned to the right
-                        item {
-                            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
-                                Surface(
-                                    onClick = onNavigateToManageFriends,
-                                    color = SolariTheme.colors.surfaceVariant,
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            Icons.Default.GroupAdd,
-                                            contentDescription = null,
-                                            tint = SolariTheme.colors.tertiary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Manage friends",
-                                            color = SolariTheme.colors.onBackground,
-                                            fontSize = 14.sp,
-                                            fontFamily = PlusJakartaSans,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Friend requests section: inline spinner or list
-                        if (viewModel.isLoadingFriendRequests) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 24.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(24.dp),
-                                        strokeWidth = 2.5.dp,
-                                        color = SolariTheme.colors.primary,
-                                        trackColor = SolariTheme.colors.surface
-                                    )
-                                }
-                            }
-                        } else if (viewModel.visibleFriendRequests.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = "FRIEND REQUESTS",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = PlusJakartaSans,
-                                    color = SolariTheme.colors.tertiary,
-                                    modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
-                                )
-                            }
-
-                            items(viewModel.visibleFriendRequests, key = { it.id }) { request ->
-                                FriendRequestItem(
-                                    request = request,
-                                    onAccept = { viewModel.acceptFriendRequest(request.id) },
-                                    onDecline = { viewModel.declineFriendRequest(request.id) },
-                                    onCancel = { requestPendingCancel = request },
-                                    modifier = Modifier.animateItem()
-                                )
-                            }
-
-                            if (viewModel.canViewMoreFriendRequests || viewModel.canViewLessFriendRequests) {
-                                item {
-                                    Box(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        FriendRequestTogglePill(
-                                            text = when {
-                                                viewModel.canViewMoreFriendRequests -> "View more"
-                                                else -> "View less"
-                                            },
-                                            isLoading = viewModel.isLoadingMoreFriendRequests,
-                                            enabled = !viewModel.isLoadingMoreFriendRequests,
-                                            onClick = {
-                                                if (viewModel.canViewMoreFriendRequests) {
-                                                    viewModel.expandFriendRequests()
-                                                } else {
-                                                    viewModel.collapseFriendRequests()
-                                                }
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Conversations section header (always visible)
-                        item {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 13.dp, bottom = 2.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 19.dp),
+                    verticalArrangement = Arrangement.spacedBy(13.dp),
+                    contentPadding = PaddingValues(bottom = 120.dp)
+                ) {
+                    // Manage Friends Button aligned to the right
+                    item {
+                        Box(
+                            modifier = Modifier.fillMaxWidth(),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Surface(
+                                onClick = onNavigateToManageFriends,
+                                color = SolariTheme.colors.surfaceVariant,
+                                shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text(
-                                    text = "CONVERSATIONS",
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = PlusJakartaSans,
-                                    color = SolariTheme.colors.tertiary
-                                )
-                                FilterToggleButton(
-                                    selected = sortSelection,
-                                    onToggle = { sortSelection = it },
-                                    iconTint = SolariTheme.colors.tertiary,
-                                    modifier = Modifier.size(28.dp),
-                                    iconSize = 17
-                                )
-                            }
-                        }
-
-                        // Conversations section: inline spinner or list
-                        if (viewModel.isLoadingConversations) {
-                            item {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 24.dp),
-                                    contentAlignment = Alignment.Center
+                                Row(
+                                    modifier = Modifier.padding(
+                                        horizontal = 13.dp,
+                                        vertical = 8.dp
+                                    ),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(24.dp),
-                                        strokeWidth = 2.5.dp,
-                                        color = SolariTheme.colors.primary,
-                                        trackColor = SolariTheme.colors.surface
+                                    Icon(
+                                        Icons.Default.GroupAdd,
+                                        contentDescription = null,
+                                        tint = SolariTheme.colors.tertiary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "Manage friends",
+                                        color = SolariTheme.colors.onBackground,
+                                        fontSize = 14.sp,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
-                            }
-                        } else {
-                            items(sortedConversations, key = { it.id }) { conversation ->
-                                ConversationItem(
-                                    conversation = conversation,
-                                    onClick = {
-                                        viewModel.markConversationAsRead(conversation.id)
-                                        onNavigateToChat(conversation)
-                                    },
-                                    modifier = Modifier.animateItem()
-                                )
                             }
                         }
                     }
+
+                    // Friend requests section: inline spinner or list
+                    if (viewModel.isLoadingFriendRequests) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.5.dp,
+                                    color = SolariTheme.colors.primary,
+                                    trackColor = SolariTheme.colors.surface
+                                )
+                            }
+                        }
+                    } else if (viewModel.visibleFriendRequests.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "FRIEND REQUESTS",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = PlusJakartaSans,
+                                color = SolariTheme.colors.tertiary,
+                                modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+                            )
+                        }
+
+                        items(viewModel.visibleFriendRequests, key = { it.id }) { request ->
+                            FriendRequestItem(
+                                request = request,
+                                onAccept = { viewModel.acceptFriendRequest(request.id) },
+                                onDecline = { viewModel.declineFriendRequest(request.id) },
+                                onCancel = { requestPendingCancel = request },
+                                modifier = Modifier.animateItem()
+                            )
+                        }
+
+                        if (viewModel.canViewMoreFriendRequests || viewModel.canViewLessFriendRequests) {
+                            item {
+                                Box(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    FriendRequestTogglePill(
+                                        text = when {
+                                            viewModel.canViewMoreFriendRequests -> "View more"
+                                            else -> "View less"
+                                        },
+                                        isLoading = viewModel.isLoadingMoreFriendRequests,
+                                        enabled = !viewModel.isLoadingMoreFriendRequests,
+                                        onClick = {
+                                            if (viewModel.canViewMoreFriendRequests) {
+                                                viewModel.expandFriendRequests()
+                                            } else {
+                                                viewModel.collapseFriendRequests()
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Conversations section header (always visible)
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 13.dp, bottom = 2.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "CONVERSATIONS",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = PlusJakartaSans,
+                                color = SolariTheme.colors.tertiary
+                            )
+                            FilterToggleButton(
+                                selected = sortSelection,
+                                onToggle = { sortSelection = it },
+                                iconTint = SolariTheme.colors.tertiary,
+                                modifier = Modifier.size(28.dp),
+                                iconSize = 17
+                            )
+                        }
+                    }
+
+                    // Conversations section: inline spinner or list
+                    if (viewModel.isLoadingConversations) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    strokeWidth = 2.5.dp,
+                                    color = SolariTheme.colors.primary,
+                                    trackColor = SolariTheme.colors.surface
+                                )
+                            }
+                        }
+                    } else {
+                        items(sortedConversations, key = { it.id }) { conversation ->
+                            ConversationItem(
+                                conversation = conversation,
+                                onClick = {
+                                    viewModel.markConversationAsRead(conversation.id)
+                                    onNavigateToChat(conversation)
+                                },
+                                modifier = Modifier.animateItem()
+                            )
+                        }
+                    }
                 }
+            }
 
             AnimatedVisibility(
                 visible = feedbackPillVisible,
@@ -425,8 +452,8 @@ fun FriendRequestItem(
                 Text(
                     text = request.user.displayName,
                     color = SolariTheme.colors.onBackground,
- 
-                    fontWeight = FontWeight.Bold, 
+
+                    fontWeight = FontWeight.Bold,
                     fontSize = 13.6.sp,
                     fontFamily = PlusJakartaSans
                 )
@@ -499,8 +526,8 @@ private fun ConversationFeedbackPill(
     message: String,
     isSuccess: Boolean
 ) {
-    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.2f)
-    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.error
+    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.error
+    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.onError
 
     Surface(
         color = backgroundColor,
@@ -558,11 +585,13 @@ fun ConversationItem(
                     conversation.lastMessageSenderId != conversation.otherUser.id -> {
                 "You unsent a message"
             }
+
             conversation.isLastMessageDeleted -> "Message unsent"
             conversation.lastMessageSenderId != null &&
                     conversation.lastMessageSenderId != conversation.otherUser.id -> {
                 "You: ${conversation.lastMessage}"
             }
+
             else -> conversation.lastMessage
         }
     }
@@ -585,7 +614,10 @@ fun ConversationItem(
                     modifier = Modifier
                         .width(3.dp)
                         .height(45.dp)
-                        .background(SolariTheme.colors.secondary, RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp))
+                        .background(
+                            SolariTheme.colors.secondary,
+                            RoundedCornerShape(topEnd = 3.dp, bottomEnd = 3.dp)
+                        )
                 )
             } else {
                 Spacer(modifier = Modifier.width(3.dp))
@@ -617,14 +649,14 @@ fun ConversationItem(
                         Text(
                             text = displayName,
                             color = SolariTheme.colors.onBackground,
- 
+
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
                             fontFamily = PlusJakartaSans
                         )
                         Text(
                             text = conversation.timestamp.toRelativeTimeLabel(),
-                            color = if (conversation.isUnread) SolariTheme.colors.secondary else SolariTheme.colors.onSurfaceVariant, 
+                            color = if (conversation.isUnread) SolariTheme.colors.secondary else SolariTheme.colors.onSurfaceVariant,
                             fontSize = 11.sp,
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Medium

@@ -1,10 +1,20 @@
 package com.solari.app.ui.screens
 
-import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
@@ -17,26 +27,37 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material3.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import com.solari.app.navigation.SolariRoute
+import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
-import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostUploadStatus
@@ -51,7 +72,10 @@ private const val FeedBrowseGridColumnCount = 3
 private val FeedBrowseThumbnailCornerRadius = 8.dp
 
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    androidx.compose.animation.ExperimentalSharedTransitionApi::class
+)
 @Composable
 fun FeedBrowseScreen(
     viewModel: FeedBrowseViewModel,
@@ -84,7 +108,7 @@ fun FeedBrowseScreen(
     val visibleFriends = remember(friends, currentUser?.id) {
         friends.filterNot { it.id == currentUser?.id }
     }
-    
+
     val filteredSortedPosts = posts
 
     val context = LocalContext.current
@@ -155,6 +179,7 @@ fun FeedBrowseScreen(
         "oldest" -> SortSelection.Oldest
         else -> SortSelection.Newest
     }
+
     fun navigateToFirstGridPost() {
         val firstPost = filteredSortedPosts.firstOrNull()
         if (firstPost == null) {
@@ -364,19 +389,26 @@ fun FeedBrowseScreen(
                                             firstVisibleItemIndex = feedListState.firstVisibleItemIndex,
                                             firstVisibleItemScrollOffset = feedListState.firstVisibleItemScrollOffset
                                         )
-                                        onNavigateToPost(post, filteredSortedPosts, selectedFriendIds, selectedSort, false)
+                                        onNavigateToPost(
+                                            post,
+                                            filteredSortedPosts,
+                                            selectedFriendIds,
+                                            selectedSort,
+                                            false
+                                        )
                                     }
                                     .clip(RoundedCornerShape(FeedBrowseThumbnailCornerRadius))
                                     .background(SolariTheme.colors.surface)
                             ) {
                                 if (thumbnailUrl.isNotBlank()) {
-                                    val thumbnailRequest = remember(context, post.id, thumbnailUrl) {
-                                        ImageRequest.Builder(context)
-                                            .data(thumbnailUrl)
-                                            .memoryCacheKey("thumb_${post.id}")
-                                            .crossfade(false)
-                                            .build()
-                                    }
+                                    val thumbnailRequest =
+                                        remember(context, post.id, thumbnailUrl) {
+                                            ImageRequest.Builder(context)
+                                                .data(thumbnailUrl)
+                                                .memoryCacheKey("thumb_${post.id}")
+                                                .crossfade(false)
+                                                .build()
+                                        }
 
                                     AsyncImage(
                                         model = thumbnailRequest,
@@ -397,7 +429,9 @@ fun FeedBrowseScreen(
                                         ) {
                                             CircularProgressIndicator(
                                                 color = SolariTheme.colors.onBackground,
-                                                trackColor = SolariTheme.colors.onBackground.copy(alpha = 0.18f),
+                                                trackColor = SolariTheme.colors.onBackground.copy(
+                                                    alpha = 0.18f
+                                                ),
                                                 modifier = Modifier.size(24.dp),
                                                 strokeWidth = 2.dp
                                             )

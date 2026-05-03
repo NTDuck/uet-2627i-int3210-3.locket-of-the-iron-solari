@@ -51,7 +51,8 @@ class PasswordResetViewModel(
             successMessage = null
 
             try {
-                when (val result = userRepository.updatePassword(oldPasswordValue, newPasswordValue)) {
+                when (val result =
+                    userRepository.updatePassword(oldPasswordValue, newPasswordValue)) {
                     is ApiResult.Success -> {
                         oldPassword = ""
                         newPassword = ""

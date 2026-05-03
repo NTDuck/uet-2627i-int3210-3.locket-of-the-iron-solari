@@ -88,6 +88,7 @@ class FriendInvitePreviewViewModel(
                     is ApiResult.Success -> result.data.items.filter {
                         it.direction == FriendRequestDirection.Outgoing
                     }
+
                     is ApiResult.Failure -> emptyList()
                 }
 

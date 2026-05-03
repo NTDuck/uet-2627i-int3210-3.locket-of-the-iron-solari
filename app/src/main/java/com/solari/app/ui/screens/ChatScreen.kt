@@ -9,12 +9,12 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.keyframes
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,13 +26,13 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.calculateEndPadding
-import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -45,12 +45,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -96,21 +96,21 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.solari.app.navigation.SolariRoute
-import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariAvatar
+import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.models.Message
 import com.solari.app.ui.models.MessageDeliveryState
@@ -370,7 +370,8 @@ fun ChatScreen(
                         trackColor = ChatInput
                     )
                 } else {
-                    val isMessageListVisible = chatMessageListState.isMessageScrollInitialized || sortedMessages.isEmpty()
+                    val isMessageListVisible =
+                        chatMessageListState.isMessageScrollInitialized || sortedMessages.isEmpty()
 
                     LazyColumn(
                         state = messageListState,
@@ -414,7 +415,8 @@ fun ChatScreen(
                                         },
                                         onJumpToMessage = { messageId ->
                                             if (!jumpToMessage(messageId)) {
-                                                chatMessageListState.pendingJumpToMessageId = messageId
+                                                chatMessageListState.pendingJumpToMessageId =
+                                                    messageId
                                             }
                                         }
                                     )
@@ -446,7 +448,7 @@ fun ChatScreen(
                             .align(Alignment.TopCenter)
                             .padding(top = 4.dp)
                     ) {
-                        androidx.compose.animation.AnimatedVisibility(
+                        this@Column.AnimatedVisibility(
                             visible = viewModel.isLoadingOlderMessages,
                             enter = fadeIn(animationSpec = tween(durationMillis = 120)),
                             exit = fadeOut(animationSpec = tween(durationMillis = 120))
@@ -559,7 +561,8 @@ private fun rememberJumpToMessage(
                 onHighlightMessage(messageId)
                 coroutineScope.launch {
                     val layoutInfo = messageListState.layoutInfo
-                    val targetItemInfo = layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
+                    val targetItemInfo =
+                        layoutInfo.visibleItemsInfo.firstOrNull { it.index == targetIndex }
                     if (targetItemInfo != null &&
                         targetItemInfo.offset < layoutInfo.viewportEndOffset &&
                         targetItemInfo.offset + targetItemInfo.size > layoutInfo.viewportStartOffset
@@ -822,11 +825,11 @@ private fun BindChatMessageListEffects(
 
         val previousTailMessageId = state.previousLastMessageId
         val hasNewTailMessage = sortedMessages.size > state.previousMessageCount &&
-            lastMessage?.id != previousTailMessageId
+                lastMessage?.id != previousTailMessageId
         val shouldKeepBottomPinned = hasNewTailMessage &&
-            (state.shouldKeepChatPinnedToBottom ||
-                state.previousMessageCount == 0 ||
-                state.lastBottomVisibleMessageId == previousTailMessageId)
+                (state.shouldKeepChatPinnedToBottom ||
+                        state.previousMessageCount == 0 ||
+                        state.lastBottomVisibleMessageId == previousTailMessageId)
         val newMessageFromCurrentUser = hasNewTailMessage && lastMessage?.senderId == currentUserId
 
         state.previousMessageCount = sortedMessages.size
@@ -859,8 +862,8 @@ private fun BindChatMessageListEffects(
         }
 
         val shouldKeepBottomPinned = sortedMessages.isEmpty() ||
-            state.shouldKeepChatPinnedToBottom ||
-            state.lastBottomVisibleMessageId == lastMessage?.id
+                state.shouldKeepChatPinnedToBottom ||
+                state.lastBottomVisibleMessageId == lastMessage?.id
         if (lastListItemIndex >= 0 && shouldKeepBottomPinned) {
             messageListState.scrollToMessageBottom(lastListItemIndex)
             state.lastBottomVisibleMessageId = lastMessage?.id
@@ -920,7 +923,7 @@ private fun rememberChatContentPaddingState(
                     keyboardRestoreAnchor = state.listState.viewportAnchor()
                 }
                 val shouldKeepBottomVisible = state.shouldKeepChatPinnedToBottom ||
-                    keyboardRestoreAnchor?.isScrolledToBottom == true
+                        keyboardRestoreAnchor?.isScrolledToBottom == true
                 displayedContentBottomPadding = targetContentBottomPadding
                 if (shouldKeepBottomVisible && lastListItemIndex >= 0) {
                     state.listState.scrollToMessageBottom(lastListItemIndex)
@@ -999,7 +1002,8 @@ private fun ChatHeaderBar(
                 username = partnerUsername,
                 contentDescription = "$partnerName avatar",
                 modifier = Modifier
-                    .size(40.dp).clip(CircleShape),
+                    .size(40.dp)
+                    .clip(CircleShape),
                 fontSize = 18.sp
             )
 
@@ -1199,7 +1203,8 @@ private fun ChatMessageRow(
                     username = partner?.username.orEmpty(),
                     contentDescription = partner?.let { "${it.displayName} avatar" },
                     modifier = Modifier
-                        .size(36.dp).clip(CircleShape),
+                        .size(36.dp)
+                        .clip(CircleShape),
                     fontSize = 14.sp
                 )
             } else {
@@ -1245,7 +1250,7 @@ private fun ChatBubble(
     onReactToMessage: (Message, String) -> Unit,
     onReplyToMessage: (Message) -> Unit,
     onJumpToMessage: (String) -> Unit
-) { 
+) {
     var isActionMenuExpanded by remember { mutableStateOf(false) }
     var isEmojiPickerExpanded by remember { mutableStateOf(false) }
     var isConfirmingUnsend by remember { mutableStateOf(false) }
@@ -1274,6 +1279,7 @@ private fun ChatBubble(
     val currentUserReactionEmoji = message.reactions
         .firstOrNull { it.userId == currentUserId }
         ?.emoji
+
     fun reactWithRecent(emoji: String) {
         onRecordRecentEmoji(emoji)
         onReactToMessage(message, emoji)
@@ -1783,7 +1789,8 @@ fun EmojiPickerPopup(
                                 isSheetDragging = true
                             },
                             onDrag = { dragAmount ->
-                                sheetDragOffsetPx = (sheetDragOffsetPx + dragAmount).coerceAtLeast(0f)
+                                sheetDragOffsetPx =
+                                    (sheetDragOffsetPx + dragAmount).coerceAtLeast(0f)
                             },
                             onDragEnd = {
                                 isSheetDragging = false
@@ -1841,7 +1848,11 @@ fun EmojiPickerPopup(
                                 .fillMaxWidth()
                                 .weight(1f)
                                 .padding(top = 16.dp),
-                            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, bottom = 24.dp),
+                            contentPadding = PaddingValues(
+                                start = 14.dp,
+                                end = 14.dp,
+                                bottom = 24.dp
+                            ),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -1856,7 +1867,11 @@ fun EmojiPickerPopup(
                                         fontSize = 17.sp,
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.padding(start = 6.dp, top = 8.dp, bottom = 8.dp)
+                                        modifier = Modifier.padding(
+                                            start = 6.dp,
+                                            top = 8.dp,
+                                            bottom = 8.dp
+                                        )
                                     )
                                 }
 
@@ -1886,7 +1901,11 @@ fun EmojiPickerPopup(
                                         fontSize = 17.sp,
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.padding(start = 6.dp, top = 8.dp, bottom = 8.dp)
+                                        modifier = Modifier.padding(
+                                            start = 6.dp,
+                                            top = 8.dp,
+                                            bottom = 8.dp
+                                        )
                                     )
                                 }
 
@@ -1916,7 +1935,10 @@ fun EmojiPickerPopup(
                                         fontSize = 16.sp,
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Medium,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 24.dp)
+                                        modifier = Modifier.padding(
+                                            horizontal = 8.dp,
+                                            vertical = 24.dp
+                                        )
                                     )
                                 }
                             }
@@ -1927,6 +1949,7 @@ fun EmojiPickerPopup(
         }
     }
 }
+
 @Composable
 private fun EmojiPickerHandle(
     onDragStart: () -> Unit,
@@ -2274,8 +2297,8 @@ private fun buildChatListItems(
         val nextMessage = messages.getOrNull(index + 1)
         val nextDate = nextMessage?.timestamp?.toLocalDate(zoneId)
         val isLastInIncomingGroup = nextMessage == null ||
-            nextDate != messageDate ||
-            nextMessage.senderId != message.senderId
+                nextDate != messageDate ||
+                nextMessage.senderId != message.senderId
 
         items += ChatMessageItem(
             message = message,

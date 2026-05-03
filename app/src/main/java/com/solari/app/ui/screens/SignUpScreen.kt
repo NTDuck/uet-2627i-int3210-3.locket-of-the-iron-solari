@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -38,9 +37,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,7 +48,6 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -59,16 +57,16 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.solari.app.ui.components.SolariButton
 import com.solari.app.ui.components.SolariBackButton
+import com.solari.app.ui.components.SolariButton
 import com.solari.app.ui.components.SolariTextField
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
@@ -110,6 +108,7 @@ fun SignUpScreen(
         focusedField = null
         focusManager.clearFocus(force = true)
     }
+
     fun isInsideInputField(position: Offset): Boolean {
         return listOfNotNull(
             usernameBounds,
@@ -118,6 +117,7 @@ fun SignUpScreen(
             confirmPasswordBounds
         ).any { bounds -> bounds.contains(position) }
     }
+
     val isKeyboardVisible = WindowInsets.ime.getBottom(density) > 0
 
     val contentOffset by animateDpAsState(
@@ -364,7 +364,7 @@ fun SignUpScreen(
 @Composable
 private fun SignUpFeedbackPill(message: String) {
     Surface(
-        color = SolariTheme.colors.error.copy(alpha = 0.2f),
+        color = SolariTheme.colors.error,
         shape = RoundedCornerShape(20.dp),
         shadowElevation = 10.dp
     ) {
@@ -375,7 +375,7 @@ private fun SignUpFeedbackPill(message: String) {
             Icon(
                 imageVector = Icons.Default.Error,
                 contentDescription = null,
-                tint = SolariTheme.colors.error,
+                tint = SolariTheme.colors.onError,
                 modifier = Modifier.size(22.dp)
             )
 

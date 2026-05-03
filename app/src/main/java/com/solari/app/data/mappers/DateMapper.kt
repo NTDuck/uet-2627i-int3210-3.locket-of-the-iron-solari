@@ -15,7 +15,9 @@ fun String?.toEpochMillisOrNow(): Long {
 private fun parseBackendTimestamp(value: String): Instant {
     return runCatching { Instant.parse(value) }
         .getOrElse {
-            runCatching { OffsetDateTime.parse(value, DateTimeFormatter.ISO_OFFSET_DATE_TIME).toInstant() }
+            runCatching {
+                OffsetDateTime.parse(value, DateTimeFormatter.ISO_OFFSET_DATE_TIME).toInstant()
+            }
                 .getOrElse {
                     PostgresTimestampFormatters.firstNotNullOf { formatter ->
                         runCatching { OffsetDateTime.parse(value, formatter).toInstant() }

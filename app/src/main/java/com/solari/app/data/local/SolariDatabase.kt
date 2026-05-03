@@ -1,8 +1,8 @@
 package com.solari.app.data.local
 
 import androidx.room.Database
-import androidx.room.migration.Migration
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.solari.app.data.local.auth.AuthSessionDao
 import com.solari.app.data.local.auth.AuthSessionEntity

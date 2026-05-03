@@ -43,7 +43,8 @@ class DefaultConversationRepository(
     }
 
     override suspend fun getConversation(conversationId: String): ApiResult<Conversation> {
-        return when (val result = apiExecutor.execute { conversationApi.getConversation(conversationId) }) {
+        return when (val result =
+            apiExecutor.execute { conversationApi.getConversation(conversationId) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(result.data.conversation.toUiConversation())
         }
@@ -114,7 +115,8 @@ class DefaultConversationRepository(
         conversationId: String,
         messageId: String
     ): ApiResult<Unit> {
-        return when (val result = apiExecutor.execute { conversationApi.unsendMessage(conversationId, messageId) }) {
+        return when (val result =
+            apiExecutor.execute { conversationApi.unsendMessage(conversationId, messageId) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(Unit)
         }
@@ -136,7 +138,8 @@ class DefaultConversationRepository(
     }
 
     override suspend fun clearConversationHistory(conversationId: String): ApiResult<Unit> {
-        return when (val result = apiExecutor.execute { conversationApi.clearConversationHistory(conversationId) }) {
+        return when (val result =
+            apiExecutor.execute { conversationApi.clearConversationHistory(conversationId) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(Unit)
         }
@@ -160,14 +163,16 @@ class DefaultConversationRepository(
     }
 
     override suspend fun markConversationRead(conversationId: String): ApiResult<Unit> {
-        return when (val result = apiExecutor.execute { conversationApi.markConversationRead(conversationId) }) {
+        return when (val result =
+            apiExecutor.execute { conversationApi.markConversationRead(conversationId) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(Unit)
         }
     }
 
     override suspend fun removeMessageReaction(messageId: String): ApiResult<Unit> {
-        return when (val result = apiExecutor.execute { conversationApi.removeMessageReaction(messageId) }) {
+        return when (val result =
+            apiExecutor.execute { conversationApi.removeMessageReaction(messageId) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(Unit)
         }

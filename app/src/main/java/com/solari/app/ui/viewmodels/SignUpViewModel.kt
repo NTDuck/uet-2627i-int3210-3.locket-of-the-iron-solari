@@ -38,10 +38,12 @@ class SignUpViewModel(
             errorMessage = null
 
             try {
-                when (val signUpResult = authRepository.signUp(normalizedUsername, normalizedEmail, password)) {
+                when (val signUpResult =
+                    authRepository.signUp(normalizedUsername, normalizedEmail, password)) {
                     is ApiResult.Failure -> errorMessage = signUpResult.message
                     is ApiResult.Success -> {
-                        when (val signInResult = authRepository.signIn(normalizedUsername, password)) {
+                        when (val signInResult =
+                            authRepository.signIn(normalizedUsername, password)) {
                             is ApiResult.Failure -> errorMessage = signInResult.message
                             is ApiResult.Success -> onSuccess()
                         }

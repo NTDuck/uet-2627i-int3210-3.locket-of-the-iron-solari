@@ -141,7 +141,8 @@ class WebSocketEventParser(
     }
 
     private fun parseNewFriendRequest(envelope: WebSocketEnvelopeDto): WebSocketEvent.NewFriendRequest {
-        val payload = json.decodeFromString<FriendRequestCreatedPayloadDto>(envelope.payload.toString())
+        val payload =
+            json.decodeFromString<FriendRequestCreatedPayloadDto>(envelope.payload.toString())
         return WebSocketEvent.NewFriendRequest(
             requestId = payload.id,
             requesterId = payload.requesterId,
@@ -151,7 +152,8 @@ class WebSocketEventParser(
     }
 
     private fun parseFriendRequestAccepted(envelope: WebSocketEnvelopeDto): WebSocketEvent.FriendRequestAccepted {
-        val payload = json.decodeFromString<FriendRequestAcceptedPayloadDto>(envelope.payload.toString())
+        val payload =
+            json.decodeFromString<FriendRequestAcceptedPayloadDto>(envelope.payload.toString())
         return WebSocketEvent.FriendRequestAccepted(
             requestId = payload.id,
             requesterId = payload.requesterId,
@@ -161,7 +163,8 @@ class WebSocketEventParser(
     }
 
     private fun parseFriendRequestRemoved(envelope: WebSocketEnvelopeDto): WebSocketEvent.FriendRequestRemoved {
-        val payload = json.decodeFromString<FriendRequestRemovedPayloadDto>(envelope.payload.toString())
+        val payload =
+            json.decodeFromString<FriendRequestRemovedPayloadDto>(envelope.payload.toString())
         return WebSocketEvent.FriendRequestRemoved(
             requestId = payload.requestId,
             requesterId = payload.requesterId,
@@ -172,7 +175,8 @@ class WebSocketEventParser(
     private fun parseFriendshipStatusChanged(
         envelope: WebSocketEnvelopeDto
     ): WebSocketEvent.FriendshipStatusChanged {
-        val payload = json.decodeFromString<FriendshipStatusChangedPayloadDto>(envelope.payload.toString())
+        val payload =
+            json.decodeFromString<FriendshipStatusChangedPayloadDto>(envelope.payload.toString())
         return WebSocketEvent.FriendshipStatusChanged(
             partnerId = payload.partnerId,
             isFriend = payload.isFriend
@@ -180,7 +184,8 @@ class WebSocketEventParser(
     }
 
     private fun parseFriendProfileUpdated(envelope: WebSocketEnvelopeDto): WebSocketEvent.FriendProfileUpdated {
-        val payload = json.decodeFromString<FriendProfileUpdatedPayloadDto>(envelope.payload.toString())
+        val payload =
+            json.decodeFromString<FriendProfileUpdatedPayloadDto>(envelope.payload.toString())
         return WebSocketEvent.FriendProfileUpdated(
             userId = payload.userId,
             username = payload.username,

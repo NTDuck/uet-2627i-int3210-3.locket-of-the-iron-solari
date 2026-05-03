@@ -5,8 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.feed.PostUploadCoordinator
+import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.OptimisticPostDraft

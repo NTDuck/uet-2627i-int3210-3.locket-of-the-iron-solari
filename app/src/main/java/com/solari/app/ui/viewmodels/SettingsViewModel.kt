@@ -17,7 +17,7 @@ class SettingsViewModel(
 ) : ViewModel() {
     var isDarkMode by mutableStateOf(true)
     var isNotificationsEnabled by mutableStateOf(false)
-    
+
     var currentLightTheme by mutableStateOf(SolariThemeVariant.DEFAULT_LIGHT)
     var currentDarkTheme by mutableStateOf(SolariThemeVariant.DEFAULT_DARK)
 

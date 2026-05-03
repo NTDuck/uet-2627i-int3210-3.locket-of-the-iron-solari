@@ -1,9 +1,9 @@
 package com.solari.app.data.network
 
-import java.io.IOException
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import retrofit2.Response
+import java.io.IOException
 
 class ApiExecutor(
     private val json: Json

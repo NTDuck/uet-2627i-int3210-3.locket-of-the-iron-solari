@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
 import okhttp3.OkHttpClient
@@ -144,7 +143,10 @@ class WebSocketManager(
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
             val failures = consecutiveFailures.getAndIncrement()
-            val baseDelay = min(InitialReconnectDelayMs * (1L shl min(failures, MaxBackoffShift)), MaxReconnectDelayMs)
+            val baseDelay = min(
+                InitialReconnectDelayMs * (1L shl min(failures, MaxBackoffShift)),
+                MaxReconnectDelayMs
+            )
             // Add jitter: 0-25% of the base delay
             val jitter = (baseDelay * 0.25 * Math.random()).toLong()
             val delayMs = baseDelay + jitter
@@ -184,7 +186,10 @@ class WebSocketManager(
             val event = eventParser.parse(text) ?: return
             val emitted = _events.tryEmit(event)
             if (!emitted) {
-                Log.w(Tag, "WebSocket event buffer full; dropping event: ${event::class.simpleName}")
+                Log.w(
+                    Tag,
+                    "WebSocket event buffer full; dropping event: ${event::class.simpleName}"
+                )
             }
         }
 
@@ -213,6 +218,7 @@ class WebSocketManager(
         const val NormalClosureCode = 1000
         const val InitialReconnectDelayMs = 1_000L
         const val MaxReconnectDelayMs = 30_000L
+
         // Cap exponent to avoid overflow: 2^4 = 16, so max base = 16_000ms before cap
         const val MaxBackoffShift = 4
     }

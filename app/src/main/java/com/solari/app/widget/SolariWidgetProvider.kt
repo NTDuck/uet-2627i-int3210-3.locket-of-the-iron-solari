@@ -5,33 +5,29 @@ import android.appwidget.AppWidgetProvider
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Paint
-import android.graphics.PorterDuff
-import android.graphics.PorterDuffXfermode
-import android.graphics.Rect
-import android.graphics.RectF
 import android.util.Log
 import android.widget.RemoteViews
+import androidx.core.graphics.drawable.toBitmap
 import coil.ImageLoader
 import coil.request.ImageRequest
 import coil.transform.CircleCropTransformation
 import com.solari.app.R
 import com.solari.app.SolariApplication
 import com.solari.app.data.network.ApiResult
-import com.solari.app.ui.models.Post
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-import androidx.core.graphics.drawable.toBitmap
-
 class SolariWidgetProvider : AppWidgetProvider() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+    override fun onUpdate(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetIds: IntArray
+    ) {
         val pendingResult = goAsync()
         scope.launch {
             try {
@@ -44,10 +40,14 @@ class SolariWidgetProvider : AppWidgetProvider() {
         }
     }
 
-    private suspend fun updateAppWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
+    private suspend fun updateAppWidget(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int
+    ) {
         Log.d("SolariWidget", "Updating widget $appWidgetId")
         val views = RemoteViews(context.packageName, R.layout.solari_widget_layout)
-        
+
         // Set up click intent first so widget is interactive even while loading
         val intent = Intent(context, com.solari.app.MainActivity::class.java)
         val pendingIntent = android.app.PendingIntent.getActivity(
@@ -73,16 +73,19 @@ class SolariWidgetProvider : AppWidgetProvider() {
             } else null
 
             if (latestPost != null) {
-                Log.d("SolariWidget", "Found latest post: ${latestPost.id} from ${latestPost.author.username}")
+                Log.d(
+                    "SolariWidget",
+                    "Found latest post: ${latestPost.id} from ${latestPost.author.username}"
+                )
                 if (!latestPost.caption.isNullOrEmpty()) {
                     views.setTextViewText(R.id.widget_post_caption, latestPost.caption)
                     views.setViewVisibility(R.id.widget_post_caption, android.view.View.VISIBLE)
                 } else {
                     views.setViewVisibility(R.id.widget_post_caption, android.view.View.GONE)
                 }
-                
+
                 val imageLoader = ImageLoader(context)
-                
+
                 // Load post image - Resize to avoid Binder transaction limit (1MB)
                 // 384 * 384 * 4 = ~576KB, safe for Binder
                 val postImageRequest = ImageRequest.Builder(context)
@@ -91,8 +94,9 @@ class SolariWidgetProvider : AppWidgetProvider() {
                     .allowHardware(false)
                     .bitmapConfig(Bitmap.Config.ARGB_8888)
                     .build()
-                
-                val postImageResult = withContext(Dispatchers.IO) { imageLoader.execute(postImageRequest) }
+
+                val postImageResult =
+                    withContext(Dispatchers.IO) { imageLoader.execute(postImageRequest) }
                 postImageResult.drawable?.let {
                     val bitmap = it.toBitmap(384, 384, Bitmap.Config.ARGB_8888)
                     views.setImageViewBitmap(R.id.widget_post_image, bitmap)
@@ -106,8 +110,9 @@ class SolariWidgetProvider : AppWidgetProvider() {
                     .allowHardware(false)
                     .bitmapConfig(Bitmap.Config.ARGB_8888)
                     .build()
-                
-                val avatarResult = withContext(Dispatchers.IO) { imageLoader.execute(avatarRequest) }
+
+                val avatarResult =
+                    withContext(Dispatchers.IO) { imageLoader.execute(avatarRequest) }
                 avatarResult.drawable?.let {
                     val bitmap = it.toBitmap(96, 96, Bitmap.Config.ARGB_8888)
                     views.setImageViewBitmap(R.id.widget_author_avatar, bitmap)

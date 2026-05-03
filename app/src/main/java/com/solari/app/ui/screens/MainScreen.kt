@@ -1,16 +1,21 @@
 package com.solari.app.ui.screens
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.lifecycle.ViewModelProvider
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariBottomNavBar
@@ -18,9 +23,17 @@ import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.models.Post
-import com.solari.app.ui.viewmodels.*
+import com.solari.app.ui.viewmodels.ConversationViewModel
+import com.solari.app.ui.viewmodels.FeedViewModel
+import com.solari.app.ui.viewmodels.HomepageBeforeCapturingViewModel
+import com.solari.app.ui.viewmodels.ProfileViewModel
+import com.solari.app.ui.viewmodels.SettingsViewModel
 import kotlinx.coroutines.launch
-@OptIn(ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+
+@OptIn(
+    ExperimentalFoundationApi::class,
+    androidx.compose.animation.ExperimentalSharedTransitionApi::class
+)
 @Composable
 fun MainScreen(
     initialPage: Int = 0,
@@ -109,10 +122,13 @@ fun MainScreen(
                     val index = routes.indexOfFirst { it.name == routeName }
                     if (index != -1) {
                         if (index == 1 && viewModelStoreOwner != null) {
-                            val feedViewModel: FeedViewModel = ViewModelProvider(viewModelStoreOwner, viewModelFactory)[FeedViewModel::class.java]
+                            val feedViewModel: FeedViewModel = ViewModelProvider(
+                                viewModelStoreOwner,
+                                viewModelFactory
+                            )[FeedViewModel::class.java]
                             feedViewModel.resetFilters()
                         }
-                        
+
                         if (
                             routeName == SolariRoute.Screen.Feed.name &&
                             pagerState.currentPage == 1
@@ -137,12 +153,15 @@ fun MainScreen(
     ) { innerPadding ->
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.fillMaxSize().padding(innerPadding),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
             userScrollEnabled = !isFeedActivityPanelVisible
         ) { page ->
             when (page) {
                 0 -> {
-                    val viewModel: HomepageBeforeCapturingViewModel = viewModel(factory = viewModelFactory)
+                    val viewModel: HomepageBeforeCapturingViewModel =
+                        viewModel(factory = viewModelFactory)
                     HomepageBeforeCapturingScreen(
                         viewModel = viewModel,
                         onNavigateBack = {},
@@ -152,6 +171,7 @@ fun MainScreen(
                         onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } }
                     )
                 }
+
                 1 -> {
                     val viewModel: FeedViewModel = viewModel(factory = viewModelFactory)
                     LaunchedEffect(optimisticPostDraft?.id) {
@@ -172,7 +192,13 @@ fun MainScreen(
                             animatedVisibilityScope = animatedVisibilityScope,
                             onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
                             onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
-                            onNavigateToConversations = { scope.launch { pagerState.animateScrollToPage(2) } },
+                            onNavigateToConversations = {
+                                scope.launch {
+                                    pagerState.animateScrollToPage(
+                                        2
+                                    )
+                                }
+                            },
                             onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } },
                             onNavigateToBrowse = onNavigateToFeedBrowse,
                             isFeedVisible = pagerState.currentPage == 1,
@@ -180,6 +206,7 @@ fun MainScreen(
                         )
                     }
                 }
+
                 2 -> {
                     val viewModel: ConversationViewModel = viewModel(factory = viewModelFactory)
                     ConversationScreen(
@@ -194,6 +221,7 @@ fun MainScreen(
                         onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } }
                     )
                 }
+
                 3 -> {
                     val viewModel: ProfileViewModel = viewModel(factory = viewModelFactory)
                     ProfileScreen(

@@ -36,7 +36,8 @@ class SolariApplication : Application(), ImageLoaderFactory {
     }
 
     private fun createNotificationChannels() {
-        val notificationManager = getSystemService(android.app.NotificationManager::class.java) ?: return
+        val notificationManager =
+            getSystemService(android.app.NotificationManager::class.java) ?: return
 
         val directMessagesChannel = android.app.NotificationChannel(
             "direct_messages",

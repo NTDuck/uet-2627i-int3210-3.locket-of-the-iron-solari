@@ -5,10 +5,7 @@ import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.Canvas as AndroidCanvas
 import android.graphics.ImageDecoder
-import android.graphics.Matrix as AndroidMatrix
-import android.graphics.Paint as AndroidPaint
 import android.media.MediaScannerConnection
 import android.net.Uri
 import android.os.Build
@@ -17,20 +14,21 @@ import android.provider.MediaStore
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.ui.zIndex
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,7 +39,6 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -70,25 +67,20 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -96,15 +88,23 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -115,9 +115,9 @@ import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.solari.app.navigation.SolariRoute
+import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariFeedbackPill
-import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.CapturedMediaSource
 import com.solari.app.ui.models.OptimisticPostDraft
@@ -133,6 +133,9 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.max
 import kotlin.math.min
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Matrix as AndroidMatrix
+import android.graphics.Paint as AndroidPaint
 
 private val CapturePreviewCornerRadius = 24.dp
 
@@ -152,7 +155,7 @@ private enum class CaptureSendState {
 @Composable
 fun HomepageAfterCapturingScreen(
     viewModel: HomepageAfterCapturingViewModel,
-    initialCapturedMedia: com.solari.app.ui.models.CapturedMedia? = null,
+    initialCapturedMedia: CapturedMedia? = null,
     onNavigateBack: () -> Unit,
     onSend: (OptimisticPostDraft) -> Unit,
     onCancel: () -> Unit,
@@ -262,7 +265,7 @@ fun HomepageAfterCapturingScreen(
     Scaffold(
         containerColor = SolariTheme.colors.background,
         bottomBar = {
-            androidx.compose.animation.AnimatedVisibility(
+            AnimatedVisibility(
                 visible = !isZooming,
                 enter = fadeIn(),
                 exit = fadeOut()
@@ -365,7 +368,8 @@ fun HomepageAfterCapturingScreen(
                                     selected = isSelected,
                                     onClick = {
                                         selectedFriends = if (isSelected) {
-                                            (selectedFriends - friend.id).takeIf { it.isNotEmpty() } ?: emptySet()
+                                            (selectedFriends - friend.id).takeIf { it.isNotEmpty() }
+                                                ?: emptySet()
                                         } else {
                                             selectedFriends + friend.id
                                         }
@@ -600,8 +604,10 @@ private fun CapturePreviewCard(
                             size.width / sourceImageSize.width.toFloat(),
                             size.height / sourceImageSize.height.toFloat()
                         )
-                        val displayedWidth = sourceImageSize.width * baseScale * mediaTransform.scale
-                        val displayedHeight = sourceImageSize.height * baseScale * mediaTransform.scale
+                        val displayedWidth =
+                            sourceImageSize.width * baseScale * mediaTransform.scale
+                        val displayedHeight =
+                            sourceImageSize.height * baseScale * mediaTransform.scale
                         val widthDp = with(density) { displayedWidth.toDp() }
                         val heightDp = with(density) { displayedHeight.toDp() }
 
@@ -1140,7 +1146,7 @@ private fun CaptureActionButtons(
 
 private suspend fun saveMediaToPictures(
     context: android.content.Context,
-    media: com.solari.app.ui.models.CapturedMedia?
+    media: CapturedMedia?
 ): Result<Unit> {
     val mediaUri = media?.uri
     if (mediaUri == null) {
@@ -1150,7 +1156,9 @@ private suspend fun saveMediaToPictures(
     return runCatching {
         val mimeType = media.contentType.ifBlank {
             context.contentResolver.getType(mediaUri)
-                ?: if (mediaUri.toString().lowercase().endsWith(".mp4")) "video/mp4" else "image/jpeg"
+                ?: if (mediaUri.toString().lowercase()
+                        .endsWith(".mp4")
+                ) "video/mp4" else "image/jpeg"
         }
         val isImage = mimeType.startsWith("image/")
         val outputMimeType = if (isImage) "image/jpeg" else mimeType
@@ -1174,7 +1182,10 @@ private suspend fun saveMediaToPictures(
             val values = ContentValues().apply {
                 put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                 put(MediaStore.MediaColumns.MIME_TYPE, outputMimeType)
-                put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Solari")
+                put(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    "${Environment.DIRECTORY_PICTURES}/Solari"
+                )
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
 

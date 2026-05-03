@@ -5,8 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.solari.app.data.auth.AuthSignInMethod
 import com.solari.app.data.auth.AuthRepository
+import com.solari.app.data.auth.AuthSignInMethod
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.user.DeleteAccountVerification
 import com.solari.app.data.user.ProfileAvatarUpload

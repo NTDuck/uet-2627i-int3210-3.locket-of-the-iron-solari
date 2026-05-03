@@ -2,15 +2,15 @@ package com.solari.app.notifications
 
 import android.content.Context
 import android.util.Log
-import com.google.firebase.messaging.FirebaseMessaging
 import com.google.android.gms.tasks.Task
+import com.google.firebase.messaging.FirebaseMessaging
 import com.solari.app.data.auth.AuthRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.preferences.PushNotificationStore
 import com.solari.app.data.user.UserRepository
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
-import kotlinx.coroutines.suspendCancellableCoroutine
 
 class PushNotificationCoordinator(
     context: Context,
@@ -101,7 +101,9 @@ class PushNotificationCoordinator(
             if (task.isSuccessful) {
                 continuation.resume(task.result)
             } else {
-                continuation.resumeWithException(task.exception ?: IllegalStateException("Task failed"))
+                continuation.resumeWithException(
+                    task.exception ?: IllegalStateException("Task failed")
+                )
             }
         }
     }

@@ -11,8 +11,8 @@ import com.solari.app.data.feed.PostUploadEntry
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.user.UserRepository
-import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.OptimisticPostDraft
+import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.models.User
 import kotlinx.coroutines.flow.collectLatest
@@ -195,6 +195,7 @@ class FeedBrowseViewModel(
                     postUploadCoordinator.removeSyncedUploads(newPosts.map { it.id }.toSet())
                     applyDisplayPosts()
                 }
+
                 is ApiResult.Failure -> {
                     if (requestSequence != feedRequestSequence) return@launch
                     if (errorMessage == null) errorMessage = feedResult.message
@@ -240,7 +241,8 @@ class FeedBrowseViewModel(
                     (selectedFriendIds.isEmpty() || post.author.id in selectedFriendIds)
         }
         val uploadPostIds = visibleUploadPosts.map(Post::id).toSet()
-        val combinedPosts = visibleUploadPosts + remotePosts.filterNot { it.id in uploadPostIds || it.id in deletedPostIds }
+        val combinedPosts =
+            visibleUploadPosts + remotePosts.filterNot { it.id in uploadPostIds || it.id in deletedPostIds }
         posts = when (selectedSort) {
             "oldest" -> combinedPosts.sortedBy(Post::timestamp)
             else -> combinedPosts.sortedByDescending(Post::timestamp)

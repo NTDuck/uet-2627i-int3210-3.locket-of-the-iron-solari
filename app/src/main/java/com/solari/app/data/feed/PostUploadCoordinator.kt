@@ -9,8 +9,6 @@ import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.util.preparePostMediaForUpload
-import java.util.TimeZone
-import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,6 +17,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.TimeZone
+import java.util.UUID
 
 data class PostUploadEntry(
     val localId: String,
@@ -47,6 +47,7 @@ class PostUploadCoordinator(
                         postId = event.postId,
                         message = event.error.ifBlank { "Post processing failed." }
                     )
+
                     else -> Unit
                 }
             }
@@ -67,7 +68,14 @@ class PostUploadCoordinator(
             caption = caption.trim()
         )
 
-        _uploads.update { uploads -> listOf(PostUploadEntry(localId = localId, draft = draft)) + uploads }
+        _uploads.update { uploads ->
+            listOf(
+                PostUploadEntry(
+                    localId = localId,
+                    draft = draft
+                )
+            ) + uploads
+        }
 
         scope.launch {
             uploadPost(
@@ -112,10 +120,11 @@ class PostUploadCoordinator(
         isPublic: Boolean,
         selectedFriendIds: Set<String>
     ) {
-        val preparedMedia = preparePostMediaForUpload(applicationContext, media).getOrElse { error ->
-            markFailed(localId = localId, message = error.message ?: "Failed to prepare media.")
-            return
-        }
+        val preparedMedia =
+            preparePostMediaForUpload(applicationContext, media).getOrElse { error ->
+                markFailed(localId = localId, message = error.message ?: "Failed to prepare media.")
+                return
+            }
 
         updateDraft(localId) { draft ->
             draft.copy(
@@ -141,6 +150,7 @@ class PostUploadCoordinator(
                 markFailed(localId = localId, message = result.message)
                 return
             }
+
             is ApiResult.Success -> result.data
         }
 
@@ -157,6 +167,7 @@ class PostUploadCoordinator(
                 markFailed(postId = session.postId, message = uploadResult.message)
                 return
             }
+
             is ApiResult.Success -> Unit
         }
 
@@ -166,7 +177,11 @@ class PostUploadCoordinator(
                 objectKey = session.objectKey
             )
         ) {
-            is ApiResult.Failure -> markFailed(postId = session.postId, message = finalizeResult.message)
+            is ApiResult.Failure -> markFailed(
+                postId = session.postId,
+                message = finalizeResult.message
+            )
+
             is ApiResult.Success -> markProcessing(postId = session.postId)
         }
     }
@@ -187,7 +202,10 @@ class PostUploadCoordinator(
                             uploadStatus = PostUploadStatus.None,
                             uploadError = null
                         ),
-                        remotePost = remotePost?.copy(uploadStatus = PostUploadStatus.None, uploadError = null)
+                        remotePost = remotePost?.copy(
+                            uploadStatus = PostUploadStatus.None,
+                            uploadError = null
+                        )
                     )
                 } else {
                     entry
@@ -228,7 +246,8 @@ class PostUploadCoordinator(
         _uploads.update { uploads ->
             uploads.map { entry ->
                 val matchesLocalId = localId != null && entry.localId == localId
-                val matchesPostId = postId != null && (entry.serverPostId == postId || entry.draft.id == postId)
+                val matchesPostId =
+                    postId != null && (entry.serverPostId == postId || entry.draft.id == postId)
                 if (matchesLocalId || matchesPostId) {
                     entry.copy(
                         draft = entry.draft.copy(
@@ -252,7 +271,8 @@ class PostUploadCoordinator(
         _uploads.update { uploads ->
             uploads.map { entry ->
                 val matchesLocalId = localId != null && entry.localId == localId
-                val matchesPostId = postId != null && (entry.serverPostId == postId || entry.draft.id == postId)
+                val matchesPostId =
+                    postId != null && (entry.serverPostId == postId || entry.draft.id == postId)
                 if (matchesLocalId || matchesPostId) {
                     entry.copy(draft = transform(entry.draft))
                 } else {

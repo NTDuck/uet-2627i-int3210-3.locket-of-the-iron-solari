@@ -15,16 +15,16 @@ import com.solari.app.data.remote.feed.SendPostReactionRequestDto
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostActivityEntry
 import com.solari.app.ui.models.User
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 
 class DefaultFeedRepository(
     private val feedApi: FeedApi,
@@ -87,14 +87,16 @@ class DefaultFeedRepository(
     }
 
     override suspend fun getPostReactions(postId: String): ApiResult<List<PostActivityEntry>> {
-        return when (val result = apiExecutor.execute { feedApi.getPostReactions(postId = postId) }) {
+        return when (val result =
+            apiExecutor.execute { feedApi.getPostReactions(postId = postId) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiActivityEntry() })
         }
     }
 
     override suspend fun registerPostView(postId: String): ApiResult<Unit> {
-        return when (val result = apiExecutor.execute { feedApi.registerPostView(postId = postId) }) {
+        return when (val result =
+            apiExecutor.execute { feedApi.registerPostView(postId = postId) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(Unit)
         }
@@ -196,7 +198,8 @@ class DefaultFeedRepository(
                 ApiResult.Failure(
                     statusCode = null,
                     type = "UPLOAD_FAILED",
-                    message = error.message ?: "Media upload failed. Check Logcat tag $uploadLogTag.",
+                    message = error.message
+                        ?: "Media upload failed. Check Logcat tag $uploadLogTag.",
                     cause = error
                 )
             }

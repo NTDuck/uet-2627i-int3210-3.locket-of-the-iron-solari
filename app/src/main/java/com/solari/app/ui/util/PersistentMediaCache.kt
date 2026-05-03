@@ -3,15 +3,15 @@ package com.solari.app.ui.util
 import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.util.Properties
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 
 private const val MediaCacheTtlMillis = 7L * 24L * 60L * 60L * 1000L
 private const val FeedMediaCacheMaxBytes = 200L * 1024L * 1024L
@@ -259,7 +259,8 @@ private fun findEntry(directory: File, key: String): CacheEntry? {
         metadataFile.inputStream().use(::load)
     }
     val fileName = properties.getProperty("fileName") ?: return null
-    val downloadedAtMillis = properties.getProperty("downloadedAtMillis")?.toLongOrNull() ?: return null
+    val downloadedAtMillis =
+        properties.getProperty("downloadedAtMillis")?.toLongOrNull() ?: return null
     val lastAccessedAtMillis = properties.getProperty("lastAccessedAtMillis")?.toLongOrNull()
         ?: downloadedAtMillis
     val file = File(directory, fileName)

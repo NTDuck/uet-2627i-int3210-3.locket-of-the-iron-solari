@@ -1,7 +1,7 @@
 package com.solari.app.data.user
 
-import com.solari.app.data.mappers.toUiUser
 import com.solari.app.data.mappers.toEpochMillisOrNow
+import com.solari.app.data.mappers.toUiUser
 import com.solari.app.data.network.ApiExecutor
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.remote.user.BlockedUserDto
@@ -48,7 +48,8 @@ class DefaultUserRepository(
         }
         val avatarPart = avatar?.toMultipartPart()
 
-        return when (val result = apiExecutor.execute { userApi.updateProfile(fields, avatarPart) }) {
+        return when (val result =
+            apiExecutor.execute { userApi.updateProfile(fields, avatarPart) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(result.data.user.toUiUser())
         }

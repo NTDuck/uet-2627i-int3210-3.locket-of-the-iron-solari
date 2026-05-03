@@ -8,12 +8,12 @@ import com.solari.app.data.remote.auth.AuthApi
 import com.solari.app.data.remote.auth.RefreshSessionRequestDto
 import com.solari.app.data.remote.auth.SignInResponseDto
 import com.solari.app.data.security.TokenCipher
-import java.security.GeneralSecurityException
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
+import java.security.GeneralSecurityException
 
 class TokenRefreshAuthenticator(
     private val authApi: AuthApi,

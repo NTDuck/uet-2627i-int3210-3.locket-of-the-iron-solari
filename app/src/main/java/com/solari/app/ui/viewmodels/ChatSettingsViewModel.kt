@@ -3,8 +3,8 @@ package com.solari.app.ui.viewmodels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.solari.app.data.conversation.ConversationRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.user.UserRepository
@@ -100,6 +100,7 @@ class ChatSettingsViewModel(
                     successMessage = "Chat history cleared"
                     onCleared()
                 }
+
                 is ApiResult.Failure -> errorMessage = result.message
             }
             isLoading = false
@@ -117,6 +118,7 @@ class ChatSettingsViewModel(
                     successMessage = "User blocked"
                     onBlocked()
                 }
+
                 is ApiResult.Failure -> errorMessage = result.message
             }
             isLoading = false

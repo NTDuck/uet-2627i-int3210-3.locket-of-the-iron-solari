@@ -262,7 +262,8 @@ class ConversationViewModel(
                 try {
                     when (val conversationsResult = conversationRepository.getConversations()) {
                         is ApiResult.Success -> conversations = conversationsResult.data
-                        is ApiResult.Failure -> if (errorMessage == null) errorMessage = conversationsResult.message
+                        is ApiResult.Failure -> if (errorMessage == null) errorMessage =
+                            conversationsResult.message
                     }
                 } catch (throwable: Throwable) {
                     if (throwable is CancellationException) throw throwable
@@ -303,7 +304,8 @@ class ConversationViewModel(
                 ) {
                     is ApiResult.Success -> {
                         val existingIds = friendRequests.mapTo(mutableSetOf()) { it.id }
-                        friendRequests = friendRequests + result.data.items.filter { existingIds.add(it.id) }
+                        friendRequests =
+                            friendRequests + result.data.items.filter { existingIds.add(it.id) }
                         friendRequestsNextCursor = result.data.nextCursor
                     }
 
@@ -377,7 +379,9 @@ class ConversationViewModel(
         viewModelScope.launch {
             try {
                 when (val result = friendRepository.deleteFriendRequest(requestId)) {
-                    is ApiResult.Success -> this@ConversationViewModel.successMessage = successMessage
+                    is ApiResult.Success -> this@ConversationViewModel.successMessage =
+                        successMessage
+
                     is ApiResult.Failure -> {
                         friendRequests = previousRequests
                         errorMessage = result.message

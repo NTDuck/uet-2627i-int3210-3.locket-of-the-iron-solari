@@ -10,30 +10,50 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.webkit.MimeTypeMap
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.*
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
 import androidx.compose.foundation.gestures.calculateRotation
 import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.VerticalPager
@@ -48,45 +68,65 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material3.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import coil.request.CachePolicy
-import com.solari.app.R
-import com.solari.app.ui.components.SolariConfirmationDialog
+import coil.request.ImageRequest
 import com.solari.app.ui.components.SolariAvatar
-import com.solari.app.ui.components.SolariBottomNavBar
-import com.solari.app.navigation.SolariRoute
+import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostActivityEntry
 import com.solari.app.ui.models.PostUploadStatus
@@ -97,25 +137,15 @@ import com.solari.app.ui.util.PersistentMediaCache
 import com.solari.app.ui.util.PersistentMediaCacheKind
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.FeedViewModel
-import androidx.media3.common.C
-import androidx.media3.common.MediaItem
-import androidx.media3.common.MimeTypes
-import androidx.media3.common.Player
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
-import coil.request.ImageRequest
-import java.io.File
-import java.net.URL
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import java.net.URL
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 private enum class FeedInputOverlayMode {
@@ -136,7 +166,10 @@ private data class FeedActivityUserGroup(
     val activities: List<PostActivityEntry>
 )
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    androidx.compose.animation.ExperimentalSharedTransitionApi::class
+)
 @Composable
 fun FeedScreen(
     viewModel: FeedViewModel,
@@ -168,7 +201,10 @@ fun FeedScreen(
     var feedbackPillEventId by remember { mutableStateOf(0) }
     var isInputOverlayVisible by remember { mutableStateOf(false) }
     var isUserRefreshing by remember { mutableStateOf(false) }
-    var isOpeningMediaSharedTransitionEnabled by remember(initialPostId, enableInitialSharedTransition) {
+    var isOpeningMediaSharedTransitionEnabled by remember(
+        initialPostId,
+        enableInitialSharedTransition
+    ) {
         mutableStateOf(enableInitialSharedTransition && initialPostId != null && initialPosts != null)
     }
     var hasOpeningMediaSharedTransitionStarted by remember(initialPostId) { mutableStateOf(false) }
@@ -279,9 +315,10 @@ fun FeedScreen(
         val currentPage = pagerState.currentPage
         if (posts.isEmpty() || currentPage !in posts.indices) return@LaunchedEffect
 
-        val prefetchPosts = ((currentPage - FeedNeighborPrefetchDistance)..(currentPage + FeedNeighborPrefetchDistance))
-            .filter { page -> page in posts.indices && page != currentPage }
-            .map { posts[it] }
+        val prefetchPosts =
+            ((currentPage - FeedNeighborPrefetchDistance)..(currentPage + FeedNeighborPrefetchDistance))
+                .filter { page -> page in posts.indices && page != currentPage }
+                .map { posts[it] }
 
         val imagePrefetchUrls = prefetchPosts
             .filter { !it.isVideoMedia() }
@@ -402,10 +439,12 @@ fun FeedScreen(
                             keyboardBottom < lastInputOverlayKeyboardBottom -> {
                         dismissInputOverlay(fromKeyboard = true)
                     }
+
                     keyboardBottom > 0 -> {
                         hasInputOverlayKeyboardOpened = true
                         lastInputOverlayKeyboardBottom = keyboardBottom
                     }
+
                     hasInputOverlayKeyboardOpened -> dismissInputOverlay(fromKeyboard = true)
                 }
             }
@@ -700,42 +739,42 @@ fun FeedScreen(
                 ) {
                     when (overlayMode) {
                         FeedInputOverlayMode.Reaction -> {
-                                FeedReactionField(
-                                    value = reactionNote,
-                                    onValueChange = { reactionNote = it.take(20) },
-                                    onReact = ::sendReactionOptimistically,
-                                    onOpenEmojiPicker = { showEmojiPicker = true },
-                                    isEditable = true,
-                                    focusRequester = focusRequester,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
+                            FeedReactionField(
+                                value = reactionNote,
+                                onValueChange = { reactionNote = it.take(20) },
+                                onReact = ::sendReactionOptimistically,
+                                onOpenEmojiPicker = { showEmojiPicker = true },
+                                isEditable = true,
+                                focusRequester = focusRequester,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
 
-                            FeedInputOverlayMode.Message -> {
-                                FeedMessageField(
-                                    value = messageText,
-                                    onValueChange = { messageText = it },
-                                    onSend = ::sendMessageOptimistically,
-                                    isEditable = true,
-                                    focusRequester = focusRequester,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            }
+                        FeedInputOverlayMode.Message -> {
+                            FeedMessageField(
+                                value = messageText,
+                                onValueChange = { messageText = it },
+                                onSend = ::sendMessageOptimistically,
+                                isEditable = true,
+                                focusRequester = focusRequester,
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     }
                 }
             }
+        }
 
-            if (showEmojiPicker) {
-                EmojiPickerPopup(
-                    onClosed = { showEmojiPicker = false },
-                    selectedEmoji = null,
-                    recentEmojis = emptyList(),
-                    onReact = ::sendReactionOptimistically
-                )
-            }
+        if (showEmojiPicker) {
+            EmojiPickerPopup(
+                onClosed = { showEmojiPicker = false },
+                selectedEmoji = null,
+                recentEmojis = emptyList(),
+                onReact = ::sendReactionOptimistically
+            )
         }
     }
+}
 
 private suspend fun saveFeedPostMediaToPictures(
     context: Context,
@@ -763,7 +802,10 @@ private suspend fun saveFeedPostMediaToPictures(
                 ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
                     put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-                    put(MediaStore.MediaColumns.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/Solari")
+                    put(
+                        MediaStore.MediaColumns.RELATIVE_PATH,
+                        "${Environment.DIRECTORY_PICTURES}/Solari"
+                    )
                     put(MediaStore.MediaColumns.IS_PENDING, 1)
                 }
             ) ?: throw IllegalStateException("Failed to create destination file.")
@@ -810,12 +852,14 @@ private fun Context.readFeedMediaBytes(uri: Uri): ByteArray {
             contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 ?: throw IllegalStateException("Failed to read media.")
         }
+
         "file" -> File(requireNotNull(uri.path) { "Missing media path." }).readBytes()
         "http", "https" -> URL(uri.toString()).openConnection().run {
             connectTimeout = 15_000
             readTimeout = 30_000
             getInputStream().use { it.readBytes() }
         }
+
         else -> throw IllegalStateException("Unsupported media URL.")
     }
 }
@@ -946,7 +990,10 @@ private fun FeedPostActionButton(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+@OptIn(
+    ExperimentalFoundationApi::class,
+    androidx.compose.animation.ExperimentalSharedTransitionApi::class
+)
 @Composable
 private fun FeedPost(
     post: Post,
@@ -1065,7 +1112,7 @@ private fun FeedPost(
                             do {
                                 val event = awaitPointerEvent()
                             } while (event.changes.any { it.pressed })
-                            
+
                             coroutineScope.launch {
                                 isZooming = false
                                 launch { zoomScale.animateTo(1f, tween(300)) }
@@ -1135,7 +1182,7 @@ private fun FeedPost(
                     }
                 }
 
-                androidx.compose.animation.AnimatedVisibility(
+                this@Column.AnimatedVisibility(
                     visible = isPostChromeVisible && !isZooming,
                     enter = fadeIn(animationSpec = tween(durationMillis = 180)),
                     exit = fadeOut(),
@@ -1167,7 +1214,7 @@ private fun FeedPost(
                 }
 
                 if (post.caption.isNotEmpty()) {
-                    androidx.compose.animation.AnimatedVisibility(
+                    this@Column.AnimatedVisibility(
                         visible = isPostChromeVisible && !isZooming,
                         enter = fadeIn(animationSpec = tween(durationMillis = 180)),
                         exit = fadeOut(),
@@ -1953,28 +2000,28 @@ private fun FeedVideoPlayer(
         if (player == null) {
             onDispose {}
         } else {
-        val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                isLoading = playbackState == Player.STATE_BUFFERING ||
-                        playbackState == Player.STATE_IDLE
+            val listener = object : Player.Listener {
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    isLoading = playbackState == Player.STATE_BUFFERING ||
+                            playbackState == Player.STATE_IDLE
+                }
+
+                override fun onRenderedFirstFrame() {
+                    isLoading = false
+                }
+
+                override fun onPlayerError(error: PlaybackException) {
+                    isLoading = false
+                }
             }
 
-            override fun onRenderedFirstFrame() {
-                isLoading = false
+            player.addListener(listener)
+            isLoading = player.playbackState == Player.STATE_BUFFERING ||
+                    player.playbackState == Player.STATE_IDLE
+
+            onDispose {
+                player.removeListener(listener)
             }
-
-            override fun onPlayerError(error: PlaybackException) {
-                isLoading = false
-            }
-        }
-
-        player.addListener(listener)
-        isLoading = player.playbackState == Player.STATE_BUFFERING ||
-                player.playbackState == Player.STATE_IDLE
-
-        onDispose {
-            player.removeListener(listener)
-        }
         }
     }
 
