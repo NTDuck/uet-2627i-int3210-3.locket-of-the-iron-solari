@@ -24,6 +24,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -43,8 +44,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -52,11 +58,16 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.StarHalf
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarOutline
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -133,6 +144,10 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import kotlin.math.max
 import kotlin.math.min
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import androidx.compose.foundation.lazy.LazyColumn
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Matrix as AndroidMatrix
 import android.graphics.Paint as AndroidPaint
@@ -151,7 +166,7 @@ private enum class CaptureSendState {
     Sent
 }
 
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun HomepageAfterCapturingScreen(
     viewModel: HomepageAfterCapturingViewModel,
@@ -174,7 +189,48 @@ fun HomepageAfterCapturingScreen(
     var selectedFriends by remember { mutableStateOf(setOf<String>()) }
     var topPillVisible by remember { mutableStateOf(false) }
     var topPillMessage by remember { mutableStateOf("") }
-    var topPillIsSuccess by remember { mutableStateOf(false) }
+    var topPillIsSuccess by remember { mutableStateOf(true) }
+
+    val pagerState = rememberPagerState(pageCount = { 6 })
+    var customCaptionText by remember { mutableStateOf(viewModel.caption) }
+    var locationText by remember { mutableStateOf("") }
+    var ratingValue by remember { mutableStateOf(0f) }
+    var ratingReviewText by remember { mutableStateOf("") }
+    var selectedWeatherCondition by remember { mutableStateOf<String?>(null) }
+    var weatherTempCText by remember { mutableStateOf("") }
+    var isWeatherSheetOpen by remember { mutableStateOf(false) }
+
+    LaunchedEffect(
+        pagerState.currentPage,
+        customCaptionText,
+        locationText,
+        ratingValue,
+        ratingReviewText,
+        selectedWeatherCondition,
+        weatherTempCText
+    ) {
+        when (pagerState.currentPage) {
+            0 -> viewModel.updateCaption("text", com.solari.app.ui.models.CaptionMetadata.Text(customCaptionText), customCaptionText)
+            1 -> viewModel.updateCaption("ootd", com.solari.app.ui.models.CaptionMetadata.Ootd, "🕶️ OOTD")
+            2 -> {
+                val condition = selectedWeatherCondition ?: "Sunny"
+                val temp = weatherTempCText.toFloatOrNull()
+                val fallback = if (temp != null) "$condition $temp°C" else condition
+                viewModel.updateCaption("weather", com.solari.app.ui.models.CaptionMetadata.Weather(condition, temp), fallback)
+            }
+            3 -> viewModel.updateCaption("location", com.solari.app.ui.models.CaptionMetadata.Location(locationText), locationText)
+            4 -> {
+                val fallback = "Rating: $ratingValue" + if (ratingReviewText.isNotBlank()) " - $ratingReviewText" else ""
+                viewModel.updateCaption("rating", com.solari.app.ui.models.CaptionMetadata.Rating(ratingValue, ratingReviewText.takeIf { it.isNotBlank() }), fallback)
+            }
+            5 -> {
+                val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
+                val timeString = timeFormat.format(Date())
+                viewModel.updateCaption("clock", com.solari.app.ui.models.CaptionMetadata.Clock(timeString), "⏱️ $timeString")
+            }
+            else -> viewModel.updateCaption("text", com.solari.app.ui.models.CaptionMetadata.Text(customCaptionText), customCaptionText)
+        }
+    }
     var topPillEventId by remember { mutableStateOf(0) }
     var captionBounds by remember { mutableStateOf<Rect?>(null) }
     var isCaptionFocused by remember { mutableStateOf(false) }
@@ -310,8 +366,19 @@ fun HomepageAfterCapturingScreen(
                 CapturePreviewCard(
                     mediaUri = media?.uri,
                     isVideo = media?.isVideo == true,
-                    caption = viewModel.caption,
-                    onCaptionChange = viewModel::updateCaption,
+                    customCaptionText = customCaptionText,
+                    onCustomCaptionChange = { customCaptionText = it },
+                    locationText = locationText,
+                    onLocationTextChange = { locationText = it },
+                    ratingValue = ratingValue,
+                    onRatingValueChange = { ratingValue = it },
+                    ratingReviewText = ratingReviewText,
+                    onRatingReviewTextChange = { ratingReviewText = it },
+                    selectedWeatherCondition = selectedWeatherCondition,
+                    weatherTempCText = weatherTempCText,
+                    onWeatherTempCTextChange = { weatherTempCText = it },
+                    onOpenWeatherSheet = { isWeatherSheetOpen = true },
+                    pagerState = pagerState,
                     focusRequester = focusRequester,
                     onDownload = ::downloadPreviewMedia,
                     onCaptionBoundsChanged = { captionBounds = it },
@@ -322,6 +389,23 @@ fun HomepageAfterCapturingScreen(
                     mediaTransform = mediaTransform,
                     onMediaTransformChange = { mediaTransform = it }
                 )
+
+                Row(
+                    modifier = Modifier.padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(6) { page ->
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .background(
+                                    color = if (pagerState.currentPage == page) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color.White.copy(alpha = 0.5f),
+                                    shape = CircleShape
+                                )
+                        )
+                    }
+                }
 
                 androidx.compose.animation.AnimatedVisibility(
                     visible = !isZooming,
@@ -457,14 +541,53 @@ fun HomepageAfterCapturingScreen(
             }
         }
     }
+
+    if (isWeatherSheetOpen) {
+        ModalBottomSheet(
+            onDismissRequest = { isWeatherSheetOpen = false },
+            containerColor = SolariTheme.colors.surface
+        ) {
+            Column(modifier = Modifier.padding(bottom = 32.dp, start = 16.dp, end = 16.dp)) {
+                Text("Select Condition", color = SolariTheme.colors.onSurface, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(16.dp))
+                LazyColumn {
+                    items(listOf("Sunny", "Cloudy", "Cool", "Cold", "Rainy", "Snowy", "Windy", "Stormy")) { condition ->
+                        Text(
+                            text = condition,
+                            color = SolariTheme.colors.onSurface,
+                            fontSize = 18.sp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    selectedWeatherCondition = condition
+                                    isWeatherSheetOpen = false
+                                }
+                                .padding(vertical = 12.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun CapturePreviewCard(
     mediaUri: Uri?,
     isVideo: Boolean,
-    caption: String,
-    onCaptionChange: (String) -> Unit,
+    customCaptionText: String,
+    onCustomCaptionChange: (String) -> Unit,
+    locationText: String,
+    onLocationTextChange: (String) -> Unit,
+    ratingValue: Float,
+    onRatingValueChange: (Float) -> Unit,
+    ratingReviewText: String,
+    onRatingReviewTextChange: (String) -> Unit,
+    selectedWeatherCondition: String?,
+    weatherTempCText: String,
+    onWeatherTempCTextChange: (String) -> Unit,
+    onOpenWeatherSheet: () -> Unit,
+    pagerState: PagerState,
     focusRequester: FocusRequester,
     onDownload: () -> Unit,
     onCaptionBoundsChanged: (Rect?) -> Unit,
@@ -664,68 +787,324 @@ private fun CapturePreviewCard(
             )
         }
 
-        Surface(
-            color = SolariTheme.colors.background.copy(alpha = 0.58f),
-            shape = RoundedCornerShape(12.dp),
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 15.dp)
-                .scaledClickable(pressedScale = 1.08f) {
-                    focusRequester.requestFocus()
-                }
-                .onGloballyPositioned { coordinates ->
-                    onCaptionBoundsChanged(coordinates.boundsInRoot())
-                }
-        ) {
-            BasicTextField(
-                value = caption,
-                onValueChange = { onCaptionChange(it.take(48)) },
-                modifier = Modifier
-                    .width(236.dp)
-                    .focusRequester(focusRequester)
-                    .onFocusChanged { onCaptionFocusChanged(it.isFocused) }
-                    .onPreviewKeyEvent { event ->
-                        if (
-                            (event.type == KeyEventType.KeyDown || event.type == KeyEventType.KeyUp) &&
-                            event.key == Key.Enter
+        HorizontalPager(
+            state = pagerState,
+            modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = mediaTransform.scale <= 1f
+        ) { page ->
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                when (page) {
+                    0 -> {
+                        Surface(
+                            color = SolariTheme.colors.background.copy(alpha = 0.58f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .padding(bottom = 15.dp)
+                                .scaledClickable(pressedScale = 1.08f) {
+                                    focusRequester.requestFocus()
+                                }
+                                .onGloballyPositioned { coordinates ->
+                                    onCaptionBoundsChanged(coordinates.boundsInRoot())
+                                }
                         ) {
-                            onCaptionDone()
-                            true
-                        } else {
-                            false
+                            BasicTextField(
+                                value = customCaptionText,
+                                onValueChange = { onCustomCaptionChange(it.take(48)) },
+                                modifier = Modifier
+                                    .widthIn(max = 280.dp)
+                                    .wrapContentWidth()
+                                    .focusRequester(focusRequester)
+                                    .onFocusChanged { onCaptionFocusChanged(it.isFocused) }
+                                    .onPreviewKeyEvent { event ->
+                                        if (
+                                            (event.type == KeyEventType.KeyDown || event.type == KeyEventType.KeyUp) &&
+                                            event.key == Key.Enter
+                                        ) {
+                                            onCaptionDone()
+                                            true
+                                        } else {
+                                            false
+                                        }
+                                    }
+                                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                                textStyle = TextStyle(
+                                    color = SolariTheme.colors.onBackground,
+                                    fontSize = 14.sp,
+                                    lineHeight = 19.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    textAlign = TextAlign.Center
+                                ),
+                                cursorBrush = SolidColor(SolariTheme.colors.onBackground),
+                                singleLine = false,
+                                maxLines = 2,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                keyboardActions = KeyboardActions(
+                                    onDone = { onCaptionDone() }
+                                ),
+                                decorationBox = { innerTextField ->
+                                    Box(contentAlignment = Alignment.Center) {
+                                        if (customCaptionText.isBlank()) {
+                                            Text(
+                                                text = "Add a message",
+                                                color = SolariTheme.colors.onBackground.copy(alpha = 0.72f),
+                                                fontSize = 14.sp,
+                                                lineHeight = 19.sp,
+                                                fontFamily = PlusJakartaSans,
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                }
+                            )
                         }
                     }
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                textStyle = TextStyle(
-                    color = SolariTheme.colors.onBackground,
-                    fontSize = 14.sp,
-                    lineHeight = 19.sp,
-                    fontFamily = PlusJakartaSans,
-                    textAlign = TextAlign.Center
-                ),
-                cursorBrush = SolidColor(SolariTheme.colors.onBackground),
-                singleLine = false,
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                keyboardActions = KeyboardActions(
-                    onDone = { onCaptionDone() }
-                ),
-                decorationBox = { innerTextField ->
-                    if (caption.isBlank()) {
-                        Text(
-                            text = "Enter your caption",
-                            color = SolariTheme.colors.onBackground.copy(alpha = 0.72f),
-                            fontSize = 14.sp,
-                            lineHeight = 19.sp,
-                            fontFamily = PlusJakartaSans,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .align(Alignment.Center)
-                        )
+                    1 -> {
+                        Surface(
+                            color = androidx.compose.ui.graphics.Color(0xFF8A2BE2).copy(alpha = 0.85f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.padding(bottom = 15.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.glasses),
+                                    contentDescription = null,
+                                    tint = androidx.compose.ui.graphics.Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "OOTD",
+                                    color = SolariTheme.colors.onBackground,
+                                    fontSize = 14.sp,
+                                    lineHeight = 19.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                )
+                            }
+                        }
                     }
-                    innerTextField()
+                    2 -> {
+                        Surface(
+                            color = androidx.compose.ui.graphics.Color(0xFF00ACC1).copy(alpha = 0.85f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .padding(bottom = 15.dp)
+                                .scaledClickable(pressedScale = 1.08f) { onOpenWeatherSheet() }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                val condition = selectedWeatherCondition ?: "Sunny"
+                                val iconMap = mapOf("Sunny" to "☀️", "Cloudy" to "☁️", "Cool" to "❄️", "Cold" to "🥶", "Rainy" to "🌧️", "Snowy" to "🌨️", "Windy" to "💨", "Stormy" to "⛈️")
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = iconMap[condition] ?: "☀️",
+                                        fontSize = 18.sp
+                                    )
+                                    Text(
+                                        text = condition,
+                                        color = SolariTheme.colors.onBackground,
+                                        fontSize = 14.sp,
+                                        lineHeight = 19.sp,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                    )
+                                }
+                                BasicTextField(
+                                    value = weatherTempCText,
+                                    onValueChange = { onWeatherTempCTextChange(it.take(5)) },
+                                    modifier = Modifier
+                                        .widthIn(min = 72.dp, max = 100.dp)
+                                        .height(20.dp),
+                                    textStyle = TextStyle(
+                                        color = SolariTheme.colors.onBackground,
+                                        fontSize = 14.sp,
+                                        lineHeight = 19.sp,
+                                        fontFamily = PlusJakartaSans,
+                                        textAlign = TextAlign.Center
+                                    ),
+                                    cursorBrush = SolidColor(SolariTheme.colors.onBackground),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number, imeAction = ImeAction.Done),
+                                    keyboardActions = KeyboardActions(onDone = { onCaptionDone() }),
+                                    decorationBox = { innerTextField ->
+                                        Box(contentAlignment = Alignment.Center) {
+                                            if (weatherTempCText.isBlank()) {
+                                                Text(
+                                                    text = "Temp °C",
+                                                    color = SolariTheme.colors.onBackground.copy(alpha = 0.5f),
+                                                    fontSize = 14.sp,
+                                                    lineHeight = 19.sp,
+                                                    fontFamily = PlusJakartaSans,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                innerTextField()
+                                                if (weatherTempCText.isNotBlank()) {
+                                                    Text(
+                                                        text = "°C",
+                                                        color = SolariTheme.colors.onBackground,
+                                                        fontSize = 14.sp,
+                                                        lineHeight = 19.sp,
+                                                        fontFamily = PlusJakartaSans
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    3 -> {
+                        Surface(
+                            color = SolariTheme.colors.background.copy(alpha = 0.85f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.padding(bottom = 15.dp)
+                                .scaledClickable(pressedScale = 1.08f) { focusRequester.requestFocus() }
+                                .onGloballyPositioned { onCaptionBoundsChanged(it.boundsInRoot()) }
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.location),
+                                    contentDescription = null,
+                                    tint = androidx.compose.ui.graphics.Color.White,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                BasicTextField(
+                                    value = locationText,
+                                    onValueChange = { onLocationTextChange(it.take(48)) },
+                                    modifier = Modifier
+                                        .widthIn(min = 122.dp, max = 280.dp)
+                                        .focusRequester(focusRequester)
+                                        .onFocusChanged { onCaptionFocusChanged(it.isFocused) },
+                                    textStyle = TextStyle(
+                                        color = SolariTheme.colors.onBackground,
+                                        fontSize = 14.sp,
+                                        lineHeight = 19.sp,
+                                        fontFamily = PlusJakartaSans,
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                        textAlign = TextAlign.Start
+                                    ),
+                                    cursorBrush = SolidColor(SolariTheme.colors.onBackground),
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                    keyboardActions = KeyboardActions(onDone = { onCaptionDone() }),
+                                    decorationBox = { innerTextField ->
+                                        Box {
+                                            if (locationText.isBlank()) {
+                                                Text(
+                                                    text = "Location name",
+                                                    color = SolariTheme.colors.onBackground.copy(alpha = 0.7f),
+                                                    fontSize = 14.sp,
+                                                    lineHeight = 19.sp,
+                                                    fontFamily = PlusJakartaSans,
+                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                            innerTextField()
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                    4 -> {
+                        Surface(
+                            color = androidx.compose.ui.graphics.Color(0xFFF57C00).copy(alpha = 0.85f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.padding(bottom = 15.dp)
+                                .onGloballyPositioned { onCaptionBoundsChanged(it.boundsInRoot()) }
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                StarRatingInput(
+                                    rating = ratingValue,
+                                    onRatingChange = onRatingValueChange
+                                )
+                                if (ratingValue > 0f) {
+                                    BasicTextField(
+                                        value = ratingReviewText,
+                                        onValueChange = { onRatingReviewTextChange(it.take(48)) },
+                                        modifier = Modifier.widthIn(max = 240.dp).wrapContentWidth().focusRequester(focusRequester).onFocusChanged { onCaptionFocusChanged(it.isFocused) },
+                                        textStyle = TextStyle(
+                                            color = SolariTheme.colors.onBackground,
+                                            fontSize = 14.sp,
+                                            lineHeight = 19.sp,
+                                            fontFamily = PlusJakartaSans,
+                                            textAlign = TextAlign.Center
+                                        ),
+                                        cursorBrush = SolidColor(SolariTheme.colors.onBackground),
+                                        singleLine = false,
+                                        maxLines = 2,
+                                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                                        keyboardActions = KeyboardActions(onDone = { onCaptionDone() }),
+                                        decorationBox = { innerTextField ->
+                                            Box(contentAlignment = Alignment.Center) {
+                                                if (ratingReviewText.isBlank()) {
+                                                    Text("Write a review...", color = SolariTheme.colors.onBackground.copy(alpha = 0.7f), fontSize = 14.sp, fontFamily = PlusJakartaSans)
+                                                }
+                                                innerTextField()
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    5 -> {
+                        Surface(
+                            color = androidx.compose.ui.graphics.Color(0xFF1E88E5).copy(alpha = 0.85f),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.padding(bottom = 15.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.clock),
+                                    contentDescription = null,
+                                    tint = androidx.compose.ui.graphics.Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
+                                Text(
+                                    text = timeFormat.format(Date()),
+                                    color = SolariTheme.colors.onBackground,
+                                    fontSize = 14.sp,
+                                    lineHeight = 19.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                 }
-            )
+            }
         }
     }
 }
@@ -1144,14 +1523,11 @@ private fun CaptureActionButtons(
     }
 }
 
-private suspend fun saveMediaToPictures(
+private fun saveMediaToPictures(
     context: android.content.Context,
     media: CapturedMedia?
 ): Result<Unit> {
-    val mediaUri = media?.uri
-    if (mediaUri == null) {
-        return Result.failure(IllegalStateException("No media selected."))
-    }
+    val mediaUri = media?.uri ?: return Result.failure(IllegalStateException("No media selected."))
 
     return runCatching {
         val mimeType = media.contentType.ifBlank {
@@ -1258,6 +1634,56 @@ private fun android.content.Context.encodePreviewCroppedImage(uri: Uri): ByteArr
             croppedBitmap.recycle()
         }
         decodedBitmap.recycle()
+    }
+}
+
+@Composable
+private fun StarRatingInput(
+    rating: Float,
+    onRatingChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var width by remember { mutableStateOf(0f) }
+    Row(
+        modifier = modifier
+            .onGloballyPositioned { width = it.size.width.toFloat() }
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
+                    var x = down.position.x
+                    if (width > 0) {
+                        onRatingChange((Math.round((x / width * 5f).coerceIn(0f, 5f) * 2) / 2.0).toFloat())
+                    }
+                    do {
+                        val event = awaitPointerEvent()
+                        x = event.changes.first().position.x
+                        if (width > 0) {
+                            onRatingChange((Math.round((x / width * 5f).coerceIn(0f, 5f) * 2) / 2.0).toFloat())
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            },
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        for (i in 1..5) {
+            val fraction = (rating - (i - 1)).coerceIn(0f, 1f)
+            Box(modifier = Modifier.size(24.dp)) {
+                Icon(
+                    imageVector = Icons.Default.StarOutline,
+                    contentDescription = null,
+                    tint = androidx.compose.ui.graphics.Color.LightGray.copy(alpha = 0.5f),
+                    modifier = Modifier.fillMaxSize()
+                )
+                if (fraction > 0f) {
+                    Icon(
+                        imageVector = if (fraction >= 1f) Icons.Default.Star else Icons.AutoMirrored.Filled.StarHalf,
+                        contentDescription = null,
+                        tint = androidx.compose.ui.graphics.Color(0xFFFFC107),
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+            }
+        }
     }
 }
 

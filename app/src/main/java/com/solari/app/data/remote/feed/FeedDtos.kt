@@ -3,6 +3,46 @@ package com.solari.app.data.remote.feed
 import com.solari.app.data.remote.common.ApiUserDto
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
+
+@Serializable
+sealed class CaptionMetadataDto {
+    @Serializable
+    @SerialName("text")
+    data class Text(val data: String? = null) : CaptionMetadataDto()
+
+    @Serializable
+    @SerialName("ootd")
+    data class Ootd(val data: JsonObject? = null) : CaptionMetadataDto()
+
+    @Serializable
+    @SerialName("weather")
+    data class Weather(val data: WeatherDataDto) : CaptionMetadataDto() {
+        @Serializable
+        data class WeatherDataDto(val condition: String, @SerialName("temperature_c") val temperatureC: Float? = null)
+    }
+
+    @Serializable
+    @SerialName("location")
+    data class Location(val data: LocationDataDto) : CaptionMetadataDto() {
+        @Serializable
+        data class LocationDataDto(@SerialName("place_name") val placeName: String)
+    }
+
+    @Serializable
+    @SerialName("rating")
+    data class Rating(val data: RatingDataDto) : CaptionMetadataDto() {
+        @Serializable
+        data class RatingDataDto(@SerialName("star_rating") val starRating: Float, val review: String? = null)
+    }
+
+    @Serializable
+    @SerialName("clock")
+    data class Clock(val data: ClockDataDto) : CaptionMetadataDto() {
+        @Serializable
+        data class ClockDataDto(val time: String)
+    }
+}
 
 @Serializable
 data class GetFeedResponseDto(
@@ -20,6 +60,10 @@ data class GetPostResponseDto(
 data class FeedPostDto(
     val id: String,
     val caption: String? = null,
+    @SerialName("caption_type")
+    val captionType: String? = null,
+    @SerialName("caption_metadata")
+    val captionMetadata: CaptionMetadataDto? = null,
     @SerialName("created_at")
     val createdAt: String,
     val author: ApiUserDto,
@@ -97,6 +141,10 @@ data class InitiatePostUploadRequestDto(
     @SerialName("content_type")
     val contentType: String,
     val caption: String? = null,
+    @SerialName("caption_type")
+    val captionType: String? = null,
+    @SerialName("caption_metadata")
+    val captionMetadata: CaptionMetadataDto? = null,
     @SerialName("audience_type")
     val audienceType: String,
     @SerialName("viewer_ids")

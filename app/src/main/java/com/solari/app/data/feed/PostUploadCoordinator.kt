@@ -8,6 +8,7 @@ import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostUploadStatus
+import com.solari.app.ui.models.CaptionMetadata
 import com.solari.app.ui.util.preparePostMediaForUpload
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -57,6 +58,8 @@ class PostUploadCoordinator(
     fun startUpload(
         media: CapturedMedia,
         caption: String,
+        captionType: String = "text",
+        captionMetadata: CaptionMetadata? = null,
         isPublic: Boolean,
         selectedFriendIds: Set<String>
     ): OptimisticPostDraft {
@@ -65,7 +68,9 @@ class PostUploadCoordinator(
             id = localId,
             mediaUri = media.uri,
             contentType = media.contentType,
-            caption = caption.trim()
+            caption = caption.trim(),
+            captionType = captionType,
+            captionMetadata = captionMetadata
         )
 
         _uploads.update { uploads ->
@@ -82,6 +87,8 @@ class PostUploadCoordinator(
                 localId = localId,
                 media = media,
                 caption = draft.caption,
+                captionType = draft.captionType,
+                captionMetadata = draft.captionMetadata,
                 isPublic = isPublic,
                 selectedFriendIds = selectedFriendIds
             )
@@ -117,6 +124,8 @@ class PostUploadCoordinator(
         localId: String,
         media: CapturedMedia,
         caption: String,
+        captionType: String = "text",
+        captionMetadata: CaptionMetadata? = null,
         isPublic: Boolean,
         selectedFriendIds: Set<String>
     ) {
@@ -136,6 +145,8 @@ class PostUploadCoordinator(
         val initiateRequest = InitiatePostUploadRequest(
             contentType = preparedMedia.contentType,
             caption = caption.takeIf { it.isNotEmpty() },
+            captionType = captionType,
+            captionMetadata = captionMetadata,
             audienceType = if (isPublic) "all" else "selected",
             viewerIds = if (isPublic) emptyList() else selectedFriendIds.toList(),
             width = preparedMedia.width,

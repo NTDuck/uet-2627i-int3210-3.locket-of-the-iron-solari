@@ -263,6 +263,8 @@ class FeedBrowseViewModel(
             mediaType = contentType,
             timestamp = createdAt,
             caption = caption,
+            captionType = captionType,
+            captionMetadata = captionMetadata,
             uploadStatus = uploadStatus,
             uploadError = uploadError
         )

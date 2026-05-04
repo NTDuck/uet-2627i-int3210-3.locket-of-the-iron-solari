@@ -54,6 +54,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.VerticalPager
@@ -63,9 +64,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.automirrored.filled.StarHalf
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
@@ -134,6 +138,7 @@ import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostActivityEntry
 import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.models.User
+import com.solari.app.ui.models.CaptionMetadata
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.PersistentMediaCache
@@ -230,7 +235,7 @@ fun FeedScreen(
             val visibleInitialPosts = initialPosts.filterNot { it.id in deletedPostIds }
             val initialPostIds = visibleInitialPosts.map(Post::id).toSet()
             val syncedInitialPosts = visibleInitialPosts.map { post ->
-                refreshedPostsById[post.id] ?: post
+                refreshedPostsById[post.id]?.withCaptionFieldsFromFallback(post) ?: post
             }
             val additionalPosts = if (isSourceListSyncedToRequestedFilters) {
                 sourcePosts.filterNot { it.id in initialPostIds || it.id in deletedPostIds }
@@ -239,9 +244,17 @@ fun FeedScreen(
             }
             syncedInitialPosts + additionalPosts
         } else {
+            val initialSelectedPost = initialPost?.takeIf { it.id !in deletedPostIds }
             val selectedPost = initialPostId
-                ?.let { targetPostId -> refreshedPostsById[targetPostId] }
-                ?: initialPost?.takeIf { it.id !in deletedPostIds }
+                ?.let { targetPostId ->
+                    val refreshedPost = refreshedPostsById[targetPostId]
+                    if (refreshedPost != null && initialSelectedPost?.id == refreshedPost.id) {
+                        refreshedPost.withCaptionFieldsFromFallback(initialSelectedPost)
+                    } else {
+                        refreshedPost
+                    }
+                }
+                ?: initialSelectedPost
             val remainingPosts = selectedPost
                 ?.let { selected -> sourcePosts.filterNot { it.id == selected.id || it.id in deletedPostIds } }
                 ?: sourcePosts.filterNot { it.id in deletedPostIds }
@@ -1181,7 +1194,7 @@ private fun FeedPost(
                                 .padding(10.dp)
                                 .size(36.dp)
                                 .clip(RoundedCornerShape(18.dp))
-                                .background(SolariTheme.colors.background.copy(alpha = 0.36f))
+                                .background(SolariTheme.colors.background.copy(alpha = 0.7f))
                                 .clickable(onClick = onMoreClick),
                             contentAlignment = Alignment.Center
                         ) {
@@ -1196,7 +1209,7 @@ private fun FeedPost(
                     }
                 }
 
-                if (post.caption.isNotEmpty()) {
+                if (post.hasDisplayableFeedCaption()) {
                     this@Column.AnimatedVisibility(
                         visible = isPostChromeVisible && !isZooming,
                         enter = fadeIn(animationSpec = tween(durationMillis = 180)),
@@ -1206,21 +1219,9 @@ private fun FeedPost(
                             .fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
                     ) {
-                        Text(
-                            text = post.caption,
-                            color = SolariTheme.colors.onBackground,
-                            fontSize = 14.sp,
-                            lineHeight = 16.sp,
-                            fontFamily = PlusJakartaSans,
-                            textAlign = TextAlign.Center,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(SolariTheme.colors.background.copy(alpha = 0.36f))
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            FeedCaptionPill(post = post)
+                        }
                     }
                 }
             }
@@ -1478,6 +1479,315 @@ private fun FeedActivityPill(
             }
         }
     }
+}
+
+@Composable
+private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
+    val metadata = post.resolvedCaptionMetadata()
+    if (post.caption.isEmpty() && metadata == null) return
+
+    if (metadata == null || metadata is CaptionMetadata.Text) {
+        val text = if (metadata is CaptionMetadata.Text) metadata.data ?: post.caption else post.caption
+        if (text.isEmpty()) return
+        Text(
+            text = text,
+            color = SolariTheme.colors.onBackground,
+            fontSize = 14.sp,
+            lineHeight = 16.sp,
+            fontFamily = PlusJakartaSans,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = modifier
+                .widthIn(max = 280.dp)
+                .wrapContentWidth()
+                .clip(RoundedCornerShape(10.dp))
+                .background(SolariTheme.colors.background.copy(alpha = 0.7f))
+                .padding(horizontal = 12.dp, vertical = 6.dp)
+        )
+        return
+    }
+
+    when (metadata) {
+        is CaptionMetadata.Ootd -> {
+            Row(
+                modifier = modifier
+                    .widthIn(max = 280.dp)
+                    .wrapContentWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(SolariTheme.colors.background.copy(alpha = 0.85f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.glasses),
+                    contentDescription = null,
+                    tint = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = "OOTD",
+                    color = androidx.compose.ui.graphics.Color.White,
+                    fontSize = 14.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        is CaptionMetadata.Weather -> {
+            val iconMap = mapOf("Sunny" to "☀️", "Cloudy" to "☁️", "Cool" to "❄️", "Cold" to "🥶", "Rainy" to "🌧️", "Snowy" to "🌨️", "Windy" to "💨", "Stormy" to "⛈️")
+            Row(
+                modifier = modifier
+                    .widthIn(max = 280.dp)
+                    .wrapContentWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(androidx.compose.ui.graphics.Color(0xFF00ACC1).copy(alpha = 0.85f)) // Cyan for Weather
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = iconMap[metadata.condition] ?: "☀️", fontSize = 16.sp)
+                if (metadata.temperatureC != null) {
+                    Text(
+                        text = "${metadata.temperatureC.formatCaptionTemperature()}°C",
+                        color = androidx.compose.ui.graphics.Color.White,
+                        fontSize = 14.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+        is CaptionMetadata.Location -> {
+            Row(
+                modifier = modifier
+                    .widthIn(max = 280.dp)
+                    .wrapContentWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(SolariTheme.colors.background.copy(alpha = 0.85f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.location),
+                    contentDescription = null,
+                    tint = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+                Text(
+                    text = metadata.placeName,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    fontSize = 14.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        is CaptionMetadata.Clock -> {
+            Row(
+                modifier = modifier
+                    .widthIn(max = 280.dp)
+                    .wrapContentWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(SolariTheme.colors.background.copy(alpha = 0.85f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.clock),
+                    contentDescription = null,
+                    tint = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = metadata.time,
+                    color = androidx.compose.ui.graphics.Color.White,
+                    fontSize = 14.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+        }
+        is CaptionMetadata.Rating -> {
+            Row(
+                modifier = modifier
+                    .widthIn(max = 280.dp)
+                    .wrapContentWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(SolariTheme.colors.background.copy(alpha = 0.85f))
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                    for (i in 1..5) {
+                        val fraction = (metadata.starRating - (i - 1)).coerceIn(0f, 1f)
+                        Box(modifier = Modifier.size(16.dp)) {
+                            Icon(
+                                imageVector = Icons.Default.StarOutline,
+                                contentDescription = null,
+                                tint = androidx.compose.ui.graphics.Color(0xFFFFC107).copy(alpha = 0.45f),
+                                modifier = Modifier.fillMaxSize()
+                            )
+                            if (fraction > 0f) {
+                                Icon(
+                                    imageVector = if (fraction >= 1f) Icons.Default.Star else Icons.AutoMirrored.Filled.StarHalf,
+                                    contentDescription = null,
+                                    tint = androidx.compose.ui.graphics.Color(0xFFFFC107),
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+                    }
+                }
+                if (!metadata.review.isNullOrBlank()) {
+                    Text(
+                        text = " - \"${metadata.review}\"",
+                        color = androidx.compose.ui.graphics.Color.White,
+                        fontSize = 14.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+        else -> {}
+    }
+}
+
+private val FeedWeatherCaptionConditions = listOf(
+    "Sunny",
+    "Cloudy",
+    "Cool",
+    "Cold",
+    "Rainy",
+    "Snowy",
+    "Windy",
+    "Stormy"
+)
+
+private val FeedStyledCaptionTypes = setOf("ootd", "weather", "location", "clock", "rating")
+private val FeedWeatherTemperaturePattern = Regex("""(-?\d+(?:\.\d+)?)\s*°?\s*C""")
+private val FeedRatingPattern = Regex("""Rating:\s*([0-5](?:\.\d+)?)""", RegexOption.IGNORE_CASE)
+
+private fun Post.hasDisplayableFeedCaption(): Boolean {
+    return caption.isNotEmpty() || resolvedCaptionMetadata()?.let { it !is CaptionMetadata.Text } == true
+}
+
+private fun Post.withCaptionFieldsFromFallback(fallback: Post): Post {
+    if (hasStyledCaptionFields() || !fallback.hasStyledCaptionFields()) return this
+
+    return copy(
+        caption = caption.ifBlank { fallback.caption },
+        captionType = fallback.captionType,
+        captionMetadata = fallback.captionMetadata
+    )
+}
+
+private fun Post.hasStyledCaptionFields(): Boolean {
+    return captionMetadata?.let { it !is CaptionMetadata.Text } == true ||
+            captionType.normalizedFeedCaptionType() in FeedStyledCaptionTypes
+}
+
+private fun Post.resolvedCaptionMetadata(): CaptionMetadata? {
+    captionMetadata?.let { return it }
+
+    val normalizedType = captionType.normalizedFeedCaptionType()
+    val trimmedCaption = caption.trim()
+    return when (normalizedType) {
+        "ootd" -> CaptionMetadata.Ootd
+        "weather" -> {
+            val condition = FeedWeatherCaptionConditions.firstOrNull { condition ->
+                trimmedCaption.contains(condition, ignoreCase = true)
+            } ?: trimmedCaption
+                .replace(FeedWeatherTemperaturePattern, "")
+                .trim()
+                .takeIf { it.isNotEmpty() }
+                ?: "Weather"
+            val temperatureC = FeedWeatherTemperaturePattern
+                .find(trimmedCaption)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toFloatOrNull()
+
+            CaptionMetadata.Weather(condition, temperatureC)
+        }
+        "location" -> trimmedCaption
+            .takeIf { it.isNotEmpty() }
+            ?.let(CaptionMetadata::Location)
+        "clock" -> trimmedCaption
+            .removePrefix("⏱️")
+            .trim()
+            .takeIf { it.isNotEmpty() }
+            ?.let(CaptionMetadata::Clock)
+        "rating" -> {
+            val rating = FeedRatingPattern
+                .find(trimmedCaption)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toFloatOrNull()
+                ?: return null
+            val review = trimmedCaption
+                .substringAfter(" - ", missingDelimiterValue = "")
+                .takeIf { it.isNotBlank() }
+
+            CaptionMetadata.Rating(rating, review)
+        }
+        else -> trimmedCaption.toGeneratedCaptionMetadataOrNull()
+    }
+}
+
+private fun String.normalizedFeedCaptionType(): String = trim().lowercase()
+
+private fun String.toGeneratedCaptionMetadataOrNull(): CaptionMetadata? {
+    if (isEmpty()) return null
+
+    val captionWithoutSunglasses = replace("🕶️", "")
+        .replace("🕶", "")
+        .trim()
+    if (captionWithoutSunglasses.equals("OOTD", ignoreCase = true)) {
+        return CaptionMetadata.Ootd
+    }
+
+    FeedRatingPattern.find(this)?.let { match ->
+        val rating = match.groupValues.getOrNull(1)?.toFloatOrNull() ?: return@let
+        val review = substringAfter(" - ", missingDelimiterValue = "")
+            .takeIf { it.isNotBlank() }
+        return CaptionMetadata.Rating(rating, review)
+    }
+
+    val weatherCondition = FeedWeatherCaptionConditions.firstOrNull { condition ->
+        contains(condition, ignoreCase = true)
+    }
+    if (weatherCondition != null) {
+        val temperatureC = FeedWeatherTemperaturePattern
+            .find(this)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toFloatOrNull()
+        return CaptionMetadata.Weather(weatherCondition, temperatureC)
+    }
+
+    val clockCaption = removePrefix("⏱️")
+        .removePrefix("⏱")
+        .trim()
+    if (clockCaption != this && clockCaption.isNotEmpty()) {
+        return CaptionMetadata.Clock(clockCaption)
+    }
+
+    return null
+}
+
+private fun Float.formatCaptionTemperature(): String {
+    val rounded = roundToInt()
+    return if (this == rounded.toFloat()) rounded.toString() else toString()
 }
 
 @Composable
