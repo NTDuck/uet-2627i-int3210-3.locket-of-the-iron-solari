@@ -21,17 +21,17 @@ class SolariApplication : Application(), ImageLoaderFactory {
         return ImageLoader.Builder(this)
             .memoryCache {
                 MemoryCache.Builder(this)
-                    .maxSizePercent(0.3) // 30% of available memory for images
+                    .maxSizePercent(0.3)
                     .build()
             }
             .diskCache {
                 DiskCache.Builder()
                     .directory(cacheDir.resolve("image_cache"))
-                    .maxSizeBytes(250L * 1024 * 1024) // 250 MB
+                    .maxSizeBytes(250L * 1024 * 1024)
                     .build()
             }
             .crossfade(false)
-            .respectCacheHeaders(false) // ignore cache headers for feed images
+            .respectCacheHeaders(false)
             .build()
     }
 

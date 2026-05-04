@@ -7,6 +7,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.util.Log
 import android.widget.RemoteViews
+import androidx.core.graphics.createBitmap
 import androidx.core.graphics.drawable.toBitmap
 import coil.ImageLoader
 import coil.request.ImageRequest
@@ -14,15 +15,14 @@ import coil.transform.CircleCropTransformation
 import com.solari.app.R
 import com.solari.app.SolariApplication
 import com.solari.app.data.network.ApiResult
-import java.util.TimeZone
-import kotlinx.coroutines.flow.first
+import com.solari.app.ui.models.Post
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import com.solari.app.ui.models.Post
-import androidx.core.graphics.createBitmap
+import java.util.TimeZone
 
 class SolariWidgetProvider : AppWidgetProvider() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -32,7 +32,10 @@ class SolariWidgetProvider : AppWidgetProvider() {
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray
     ) {
-        Log.d("SolariWidgetUpdate", "SolariWidgetProvider.onUpdate triggered with ids: ${appWidgetIds.contentToString()}")
+        Log.d(
+            "SolariWidgetUpdate",
+            "SolariWidgetProvider.onUpdate triggered with ids: ${appWidgetIds.contentToString()}"
+        )
         val pendingResult = goAsync()
         scope.launch {
             try {
@@ -83,7 +86,8 @@ class SolariWidgetProvider : AppWidgetProvider() {
             val myId = meResult.data.id
 
             // Fetch current streak
-            val streakResult = withContext(Dispatchers.IO) { userRepository.getCurrentStreak(TimeZone.getDefault().id) }
+            val streakResult =
+                withContext(Dispatchers.IO) { userRepository.getCurrentStreak(TimeZone.getDefault().id) }
             val streak = (streakResult as? ApiResult.Success)?.data ?: 0
 
             if (streak > 0) {
@@ -102,15 +106,20 @@ class SolariWidgetProvider : AppWidgetProvider() {
             var nextCursor: String? = null
 
             do {
-                val feedResult = withContext(Dispatchers.IO) { feedRepository.getFeed(limit = 20, cursor = nextCursor) }
+                val feedResult = withContext(Dispatchers.IO) {
+                    feedRepository.getFeed(
+                        limit = 20,
+                        cursor = nextCursor
+                    )
+                }
                 if (feedResult is ApiResult.Success) {
                     val posts = feedResult.data.posts
                     val friendPosts = posts.filter { it.author.id != myId }
-                    
+
                     unseenCount += friendPosts.count { it.timestamp > lastViewedTimestamp }
 
                     latestPost = friendPosts.firstOrNull()
-                    
+
                     nextCursor = feedResult.data.nextCursor
                     if (latestPost != null || nextCursor == null || posts.isEmpty()) {
                         break
@@ -200,13 +209,13 @@ class SolariWidgetProvider : AppWidgetProvider() {
         val size = 64
         val bitmap = createBitmap(size, size)
         val canvas = android.graphics.Canvas(bitmap)
-        
+
         val paint = android.graphics.Paint().apply {
             color = android.graphics.Color.DKGRAY
             isAntiAlias = true
         }
         canvas.drawCircle(size / 2f, size / 2f, size / 2f, paint)
-        
+
         val textPaint = android.graphics.Paint().apply {
             color = android.graphics.Color.WHITE
             textSize = 32f
@@ -214,11 +223,11 @@ class SolariWidgetProvider : AppWidgetProvider() {
             textAlign = android.graphics.Paint.Align.CENTER
             isAntiAlias = true
         }
-        
+
         val fontMetrics = textPaint.fontMetrics
         val baseline = size / 2f + (fontMetrics.bottom - fontMetrics.top) / 2f - fontMetrics.bottom
         canvas.drawText(letter, size / 2f, baseline, textPaint)
-        
+
         return bitmap
     }
 }

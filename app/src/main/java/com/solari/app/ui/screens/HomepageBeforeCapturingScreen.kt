@@ -94,12 +94,12 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.CapturedMediaSource
 import com.solari.app.ui.theme.SolariTheme
@@ -132,11 +132,7 @@ private enum class CaptureMode {
 @Composable
 fun HomepageBeforeCapturingScreen(
     viewModel: HomepageBeforeCapturingViewModel,
-    onNavigateBack: () -> Unit,
-    onCapture: (CapturedMedia) -> Unit,
-    onNavigateToFeed: () -> Unit,
-    onNavigateToChat: () -> Unit,
-    onNavigateToProfile: () -> Unit
+    onCapture: (CapturedMedia) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current

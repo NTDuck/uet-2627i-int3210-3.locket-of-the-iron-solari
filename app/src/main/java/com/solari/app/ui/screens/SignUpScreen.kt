@@ -142,7 +142,6 @@ fun SignUpScreen(
 
     LaunchedEffect(isKeyboardVisible) {
         if (!isKeyboardVisible) {
-            focusedField = null
             focusManager.clearFocus(force = true)
         }
     }
@@ -186,9 +185,7 @@ fun SignUpScreen(
                     textFieldModifier = Modifier
                         .focusRequester(usernameFocusRequester)
                         .onGloballyPositioned { usernameBounds = it.boundsInRoot() }
-                        .onFocusChanged {
-                            if (it.isFocused) focusedField = SignUpFocusedField.Username
-                        },
+                        .onFocusChanged {},
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(
                         onNext = { emailFocusRequester.requestFocus() }
@@ -207,9 +204,7 @@ fun SignUpScreen(
                     textFieldModifier = Modifier
                         .focusRequester(emailFocusRequester)
                         .onGloballyPositioned { emailBounds = it.boundsInRoot() }
-                        .onFocusChanged {
-                            if (it.isFocused) focusedField = SignUpFocusedField.Email
-                        },
+                        .onFocusChanged {},
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(
                         onNext = { passwordFocusRequester.requestFocus() }
@@ -231,9 +226,7 @@ fun SignUpScreen(
                     textFieldModifier = Modifier
                         .focusRequester(passwordFocusRequester)
                         .onGloballyPositioned { passwordBounds = it.boundsInRoot() }
-                        .onFocusChanged {
-                            if (it.isFocused) focusedField = SignUpFocusedField.Password
-                        },
+                        .onFocusChanged {},
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(
                         onNext = { confirmPasswordFocusRequester.requestFocus() }
@@ -255,9 +248,7 @@ fun SignUpScreen(
                     textFieldModifier = Modifier
                         .focusRequester(confirmPasswordFocusRequester)
                         .onGloballyPositioned { confirmPasswordBounds = it.boundsInRoot() }
-                        .onFocusChanged {
-                            if (it.isFocused) focusedField = SignUpFocusedField.ConfirmPassword
-                        }
+                        .onFocusChanged {}
                         .onPreviewKeyEvent { event ->
                             if (
                                 (event.type == KeyEventType.KeyDown || event.type == KeyEventType.KeyUp) &&

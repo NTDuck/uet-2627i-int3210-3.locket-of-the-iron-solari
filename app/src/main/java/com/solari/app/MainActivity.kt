@@ -12,6 +12,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -37,6 +38,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,6 +49,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.NavType
@@ -128,6 +131,7 @@ class MainActivity : ComponentActivity() {
     private var pendingFriendInviteDeepLink by mutableStateOf<FriendInviteDeepLink?>(null)
     private var friendInviteDeepLinkSequence = 0L
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (intent?.action == "com.solari.app.ACTION_EXIT") {
@@ -286,6 +290,7 @@ private fun String?.toFeedAuthorFilterIds(): Set<String> {
         .orEmpty()
 }
 
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
 private fun SolariApp(
@@ -311,18 +316,16 @@ private fun SolariApp(
     var inviteFeedbackVisible by remember { mutableStateOf(false) }
     var inviteFeedbackMessage by remember { mutableStateOf("") }
     var inviteFeedbackIsSuccess by remember { mutableStateOf(false) }
-    var inviteFeedbackEventId by remember { mutableStateOf(0) }
+    var inviteFeedbackEventId by remember { mutableIntStateOf(0) }
     var internetFeedbackVisible by remember { mutableStateOf(false) }
     var internetFeedbackMessage by remember { mutableStateOf("") }
     var internetFeedbackIsSuccess by remember { mutableStateOf(false) }
     var internetFeedbackIsLoading by remember { mutableStateOf(false) }
-    var internetFeedbackEventId by remember { mutableStateOf(0) }
-    var selectedMainPage by rememberSaveable { mutableStateOf(0) }
+    var internetFeedbackEventId by remember { mutableIntStateOf(0) }
+    var selectedMainPage by rememberSaveable { mutableIntStateOf(0) }
     var mainPageHistory by rememberSaveable { mutableStateOf(listOf(0)) }
     var notificationPermissionGranted by remember {
-        mutableStateOf(
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    ContextCompat.checkSelfPermission(
+        mutableStateOf(ContextCompat.checkSelfPermission(
                         context,
                         Manifest.permission.POST_NOTIFICATIONS
                     ) == PackageManager.PERMISSION_GRANTED
@@ -410,8 +413,7 @@ private fun SolariApp(
     }
 
     LaunchedEffect(authState.isAuthenticated, pendingFriendInviteDeepLink?.sequence) {
-        val friendInvite = pendingFriendInviteDeepLink
-        if (friendInvite == null) return@LaunchedEffect
+        val friendInvite = pendingFriendInviteDeepLink ?: return@LaunchedEffect
 
         pendingFriendInviteConfirmation = null
         if (authState.isAuthenticated) {
@@ -526,19 +528,15 @@ private fun SolariApp(
         }
     }
 
-    LaunchedEffect(authState.isCheckingSession, authState.isAuthenticated) {
-        if (authState.isCheckingSession || !authState.isAuthenticated) return@LaunchedEffect
+    LaunchedEffect(false, authState.isAuthenticated) {
+        if (!authState.isAuthenticated) return@LaunchedEffect
 
-        notificationPermissionGranted =
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.POST_NOTIFICATIONS
-                    ) == PackageManager.PERMISSION_GRANTED
+        notificationPermissionGranted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
 
-        if (!notificationPermissionGranted &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            !appContainer.pushNotificationCoordinator.hasRequestedNotificationPermission()
+        if (!notificationPermissionGranted && !appContainer.pushNotificationCoordinator.hasRequestedNotificationPermission()
         ) {
             appContainer.pushNotificationCoordinator.markNotificationPermissionRequested()
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -962,7 +960,7 @@ private fun SolariApp(
                     val initialMedia =
                         capturedMediaForPreview ?: capturedMediaUri?.let { uriString ->
                             CapturedMedia(
-                                uri = Uri.parse(uriString),
+                                uri = uriString.toUri(),
                                 contentType = capturedMediaType,
                                 isVideo = capturedMediaIsVideo,
                                 durationMs = capturedMediaDuration,
@@ -1013,7 +1011,7 @@ private fun SolariApp(
                     val routeCapturedMedia =
                         capturedMediaForPreview ?: capturedMediaUri?.let { uriString ->
                             CapturedMedia(
-                                uri = Uri.parse(uriString),
+                                uri = uriString.toUri(),
                                 contentType = capturedMediaType,
                                 isVideo = capturedMediaIsVideo,
                                 durationMs = capturedMediaDuration,
@@ -1039,15 +1037,14 @@ private fun SolariApp(
                             navigateToMainPage(0, replaceCurrent = true)
                         },
                         onNavigateToEdit = {
-                            val currentMedia = routeCapturedMedia
-                            if (currentMedia != null) {
-                                capturedMediaForPreview = currentMedia
+                            if (routeCapturedMedia != null) {
+                                capturedMediaForPreview = routeCapturedMedia
                                 navController.currentBackStackEntry?.savedStateHandle?.apply {
-                                    set(CapturedMediaUriKey, currentMedia.uri.toString())
-                                    set(CapturedMediaTypeKey, currentMedia.contentType)
-                                    set(CapturedMediaIsVideoKey, currentMedia.isVideo)
-                                    set(CapturedMediaDurationKey, currentMedia.durationMs)
-                                    set(CapturedMediaSourceKey, currentMedia.source.name)
+                                    set(CapturedMediaUriKey, routeCapturedMedia.uri.toString())
+                                    set(CapturedMediaTypeKey, routeCapturedMedia.contentType)
+                                    set(CapturedMediaIsVideoKey, routeCapturedMedia.isVideo)
+                                    set(CapturedMediaDurationKey, routeCapturedMedia.durationMs)
+                                    set(CapturedMediaSourceKey, routeCapturedMedia.source.name)
                                 }
                             }
                             navController.navigate(SolariRoute.Screen.ImageEditing.name)
@@ -1086,9 +1083,6 @@ private fun SolariApp(
                     FeedBrowseScreen(
                         viewModel = viewModel,
                         initialAuthorId = initialAuthorId,
-                        sharedTransitionScope = this@SharedTransitionLayout,
-                        animatedVisibilityScope = this@composable,
-                        onNavigateBack = { navController.popBackStack() },
                         onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },
                         onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
                         onNavigateToChat = { navigateToMainPage(2, replaceCurrent = true) },
@@ -1160,10 +1154,6 @@ private fun SolariApp(
                                 }
                             }
                         },
-                        onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
-                        onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },
-                        onNavigateToChat = { navigateToMainPage(2, replaceCurrent = true) },
-                        onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) }
                     )
                 }
                 composable(SolariRoute.Screen.ChangeTheme.name) {
@@ -1207,7 +1197,6 @@ private fun SolariApp(
                         viewModel(factory = appContainer.viewModelFactory)
                     FriendManagementScreen(
                         viewModel = viewModel,
-                        onNavigateBack = { navController.popBackStack() },
                         onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
                         onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
                         onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },

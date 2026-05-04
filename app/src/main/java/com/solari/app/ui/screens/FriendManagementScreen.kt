@@ -2,7 +2,6 @@ package com.solari.app.ui.screens
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -45,6 +44,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -73,6 +73,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import androidx.core.net.toUri
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SolariAvatar
@@ -82,7 +83,6 @@ import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
-import com.solari.app.ui.theme.SolariColors
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.FriendManagementViewModel
@@ -104,7 +104,6 @@ private data class NicknameDialogState(
 @Composable
 fun FriendManagementScreen(
     viewModel: FriendManagementViewModel,
-    onNavigateBack: () -> Unit,
     onNavigateToBlockedAccounts: () -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToFeed: () -> Unit,
@@ -124,7 +123,7 @@ fun FriendManagementScreen(
     var feedbackPillVisible by remember { mutableStateOf(false) }
     var feedbackPillMessage by remember { mutableStateOf("") }
     var feedbackPillIsSuccess by remember { mutableStateOf(false) }
-    var feedbackEventId by remember { mutableStateOf(0) }
+    var feedbackEventId by remember { mutableIntStateOf(0) }
     val inviteLink = viewModel.currentUser?.username?.let(::buildInviteLink).orEmpty()
     val friends = viewModel.friends
     val feedbackMessage = viewModel.successMessage ?: viewModel.errorMessage
@@ -225,14 +224,13 @@ fun FriendManagementScreen(
 
                             Spacer(modifier = Modifier.height(13.dp))
 
-                            SolariTheme.colors.primaryButton(
+                            PrimaryButton(
                                 text = "Share Invite Link",
                                 icon = Icons.Outlined.Share,
-                                enabled = inviteLink.isNotBlank(),
-                                onClick = {
-                                    shareInviteLink(context, inviteLink)
-                                }
-                            )
+                                enabled = inviteLink.isNotBlank()
+                            ) {
+                                shareInviteLink(context, inviteLink)
+                            }
                         }
                     }
 
@@ -476,9 +474,8 @@ fun FriendManagementScreen(
             confirmText = "Unfriend",
             onConfirm = {
                 viewModel.unfriend(friend)
-                friendPendingUnfriend = null
             },
-            onDismiss = { friendPendingUnfriend = null }
+            onDismiss = { }
         )
     }
 
@@ -489,9 +486,8 @@ fun FriendManagementScreen(
             confirmText = "Block",
             onConfirm = {
                 viewModel.blockFriend(friend)
-                friendPendingBlock = null
             },
-            onDismiss = { friendPendingBlock = null }
+            onDismiss = { }
         )
     }
 
@@ -503,9 +499,8 @@ fun FriendManagementScreen(
                     NicknameAction.Set -> viewModel.setNickname(state.friend, nickname)
                     NicknameAction.Update -> viewModel.updateNickname(state.friend, nickname)
                 }
-                nicknameDialogState = null
             },
-            onDismiss = { nicknameDialogState = null }
+            onDismiss = { }
         )
     }
 }
@@ -562,8 +557,8 @@ private fun FriendManagementSectionTitle(text: String) {
 }
 
 @Composable
-private fun SolariColors.primaryButton(
-    text: String,
+private fun PrimaryButton(
+    @Suppress("SameParameterValue") text: String,
     icon: ImageVector,
     enabled: Boolean = true,
     onClick: () -> Unit
@@ -596,7 +591,7 @@ private fun SolariColors.primaryButton(
 }
 
 private fun buildInviteLink(username: String): String {
-    return Uri.parse(InviteBaseUrl)
+    return InviteBaseUrl.toUri()
         .buildUpon()
         .appendPath("u")
         .appendPath(username)
@@ -987,16 +982,16 @@ private fun FriendActionMenuItem(
 }
 
 private fun friendActionOptionShape(index: Int, lastIndex: Int): RoundedCornerShape {
-    return when {
-        index == 0 && index == lastIndex -> RoundedCornerShape(8.dp)
-        index == 0 -> RoundedCornerShape(
+    return when (index) {
+        0 if 0 == lastIndex -> RoundedCornerShape(8.dp)
+        0 -> RoundedCornerShape(
             topStart = 8.dp,
             topEnd = 8.dp,
             bottomEnd = 0.dp,
             bottomStart = 0.dp
         )
 
-        index == lastIndex -> RoundedCornerShape(
+        lastIndex -> RoundedCornerShape(
             topStart = 0.dp,
             topEnd = 0.dp,
             bottomEnd = 8.dp,

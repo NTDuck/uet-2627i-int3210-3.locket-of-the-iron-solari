@@ -164,11 +164,7 @@ fun MainScreen(
                         viewModel(factory = viewModelFactory)
                     HomepageBeforeCapturingScreen(
                         viewModel = viewModel,
-                        onNavigateBack = {},
-                        onCapture = onCapture,
-                        onNavigateToFeed = { scope.launch { pagerState.animateScrollToPage(1) } },
-                        onNavigateToChat = { scope.launch { pagerState.animateScrollToPage(2) } },
-                        onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } }
+                        onCapture = onCapture
                     )
                 }
 
@@ -176,7 +172,7 @@ fun MainScreen(
                     val viewModel: FeedViewModel = viewModel(factory = viewModelFactory)
                     LaunchedEffect(optimisticPostDraft?.id) {
                         val draft = optimisticPostDraft ?: return@LaunchedEffect
-                        viewModel.addOptimisticPost(draft)
+                        viewModel.addOptimisticPost()
                         onOptimisticPostDraftConsumed(draft.id)
                     }
                     if (sharedTransitionScope != null && animatedVisibilityScope != null) {
@@ -190,16 +186,6 @@ fun MainScreen(
                             sortMode = initialFeedSort,
                             sharedTransitionScope = sharedTransitionScope,
                             animatedVisibilityScope = animatedVisibilityScope,
-                            onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
-                            onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
-                            onNavigateToConversations = {
-                                scope.launch {
-                                    pagerState.animateScrollToPage(
-                                        2
-                                    )
-                                }
-                            },
-                            onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } },
                             onNavigateToBrowse = onNavigateToFeedBrowse,
                             isFeedVisible = pagerState.currentPage == 1,
                             onActivityPanelVisibilityChanged = { isFeedActivityPanelVisible = it }
@@ -213,12 +199,8 @@ fun MainScreen(
                         viewModel = viewModel,
                         externalFeedbackMessage = conversationFeedbackMessage,
                         onExternalFeedbackConsumed = onConversationFeedbackConsumed,
-                        onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToChat = onNavigateToChat,
-                        onNavigateToManageFriends = onNavigateToManageFriends,
-                        onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
-                        onNavigateToFeed = { scope.launch { pagerState.animateScrollToPage(1) } },
-                        onNavigateToProfile = { scope.launch { pagerState.animateScrollToPage(3) } }
+                        onNavigateToManageFriends = onNavigateToManageFriends
                     )
                 }
 
@@ -229,13 +211,9 @@ fun MainScreen(
                         settingsViewModel = settingsViewModel,
                         externalFeedbackMessage = profileFeedbackMessage,
                         onExternalFeedbackConsumed = onProfileFeedbackConsumed,
-                        onNavigateBack = { scope.launch { pagerState.animateScrollToPage(0) } },
                         onNavigateToChangePassword = onNavigateToChangePassword,
                         onNavigateToChangeTheme = onNavigateToChangeTheme,
                         onNavigateToManageFriends = onNavigateToManageFriends,
-                        onNavigateToCamera = { scope.launch { pagerState.animateScrollToPage(0) } },
-                        onNavigateToFeed = { scope.launch { pagerState.animateScrollToPage(1) } },
-                        onNavigateToChat = { scope.launch { pagerState.animateScrollToPage(2) } },
                         onLogout = onLogout
                     )
                 }

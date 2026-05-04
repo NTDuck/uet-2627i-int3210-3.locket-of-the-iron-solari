@@ -154,7 +154,6 @@ class AppContainer(
     )
 
     val pushNotificationCoordinator = PushNotificationCoordinator(
-        context = applicationContext,
         pushNotificationStore = pushNotificationStore,
         authRepository = authRepository,
         userRepository = userRepository

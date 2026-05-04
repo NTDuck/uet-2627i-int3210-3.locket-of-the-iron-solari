@@ -8,6 +8,7 @@ import android.graphics.ImageDecoder
 import android.media.MediaMetadataRetriever
 import android.net.Uri
 import android.os.Build
+import androidx.core.graphics.createBitmap
 import com.solari.app.ui.models.CapturedMedia
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -15,6 +16,7 @@ import java.io.File
 private const val PostImageMaxDimensionPx = 1440
 private const val PostImageCompressionQuality = 92
 
+@Suppress("ArrayInDataClass")
 data class PreparedPostMedia(
     val previewUri: Uri,
     val contentType: String,
@@ -175,13 +177,14 @@ private fun Bitmap.encodeForPost(): EncodedPostImage {
 private fun Bitmap.flattenForJpeg(): Bitmap {
     if (!hasAlpha()) return this
 
-    val flattenedBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val flattenedBitmap = createBitmap(width, height)
     val canvas = Canvas(flattenedBitmap)
     canvas.drawColor(Color.WHITE)
     canvas.drawBitmap(this, 0f, 0f, null)
     return flattenedBitmap
 }
 
+@Suppress("ArrayInDataClass")
 private data class EncodedPostImage(
     val mimeType: String,
     val bytes: ByteArray,

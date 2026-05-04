@@ -37,6 +37,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -69,12 +70,8 @@ fun ConversationScreen(
     viewModel: ConversationViewModel,
     externalFeedbackMessage: String? = null,
     onExternalFeedbackConsumed: () -> Unit = {},
-    onNavigateBack: () -> Unit,
     onNavigateToChat: (Conversation) -> Unit,
     onNavigateToManageFriends: () -> Unit,
-    onNavigateToCamera: () -> Unit,
-    onNavigateToFeed: () -> Unit,
-    onNavigateToProfile: () -> Unit
 ) {
     var sortSelection by remember { mutableStateOf(SortSelection.Newest) }
     var isUserRefreshing by remember { mutableStateOf(false) }
@@ -82,10 +79,10 @@ fun ConversationScreen(
     var feedbackPillVisible by remember { mutableStateOf(false) }
     var feedbackPillMessage by remember { mutableStateOf("") }
     var feedbackPillIsSuccess by remember { mutableStateOf(false) }
-    var feedbackEventId by remember { mutableStateOf(0) }
+    var feedbackEventId by remember { mutableIntStateOf(0) }
     var topFeedbackVisible by remember { mutableStateOf(false) }
     var topFeedbackMessage by remember { mutableStateOf("") }
-    var topFeedbackEventId by remember { mutableStateOf(0) }
+    var topFeedbackEventId by remember { mutableIntStateOf(0) }
     val feedbackMessage = viewModel.successMessage ?: viewModel.errorMessage
     val isSuccessFeedback = viewModel.successMessage != null
 
@@ -137,7 +134,6 @@ fun ConversationScreen(
     PullToRefreshBox(
         isRefreshing = isUserRefreshing,
         onRefresh = {
-            isUserRefreshing = true
             viewModel.refresh()
         },
         modifier = Modifier
@@ -366,9 +362,8 @@ fun ConversationScreen(
             confirmText = "Unsend",
             onConfirm = {
                 viewModel.cancelFriendRequest(request.id)
-                requestPendingCancel = null
             },
-            onDismiss = { requestPendingCancel = null }
+            onDismiss = { }
         )
     }
 }

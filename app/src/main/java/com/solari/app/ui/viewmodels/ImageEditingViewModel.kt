@@ -23,8 +23,4 @@ class ImageEditingViewModel : ViewModel() {
         editedBitmap = bitmap
         hasChanges = true
     }
-
-    fun resetChanges() {
-        hasChanges = false
-    }
 }

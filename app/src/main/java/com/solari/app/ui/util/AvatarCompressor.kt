@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
+import androidx.core.graphics.createBitmap
 import com.solari.app.data.user.ProfileAvatarUpload
 import java.io.ByteArrayOutputStream
 import kotlin.math.roundToInt
@@ -89,7 +90,7 @@ private fun Bitmap.encodeAvatar(): EncodedAvatar {
 private fun Bitmap.flattenForJpeg(): Bitmap {
     if (!hasAlpha()) return this
 
-    val flattenedBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val flattenedBitmap = createBitmap(width, height)
     val canvas = Canvas(flattenedBitmap)
     canvas.drawColor(Color.WHITE)
     canvas.drawBitmap(this, 0f, 0f, null)
@@ -99,5 +100,5 @@ private fun Bitmap.flattenForJpeg(): Bitmap {
 private data class EncodedAvatar(
     val mimeType: String,
     val extension: String,
-    val bytes: ByteArray
+    @Suppress("ArrayInDataClass") val bytes: ByteArray
 )

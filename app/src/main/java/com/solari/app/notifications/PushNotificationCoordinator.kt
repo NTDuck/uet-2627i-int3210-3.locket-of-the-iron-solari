@@ -1,6 +1,5 @@
 package com.solari.app.notifications
 
-import android.content.Context
 import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.firebase.messaging.FirebaseMessaging
@@ -13,13 +12,10 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class PushNotificationCoordinator(
-    context: Context,
     private val pushNotificationStore: PushNotificationStore,
     private val authRepository: AuthRepository,
     private val userRepository: UserRepository
 ) {
-    private val applicationContext = context.applicationContext
-
     suspend fun hasRequestedNotificationPermission(): Boolean {
         return pushNotificationStore.hasRequestedNotificationPermission()
     }
@@ -41,7 +37,7 @@ class PushNotificationCoordinator(
         return runCatching {
             FirebaseMessaging.getInstance().token.await()
         }.onFailure { error ->
-            Log.e(LogTag, "Failed to fetch FCM token.", error)
+            Log.e(LOG_TAG, "Failed to fetch FCM token.", error)
         }.getOrNull()
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
@@ -72,24 +68,16 @@ class PushNotificationCoordinator(
         registerStoredDeviceIfAuthenticated()
     }
 
-    suspend fun getCurrentDeviceToken(): String? {
-        return pushNotificationStore.getCurrentDeviceToken()
-    }
-
-    suspend fun markDeviceUnregistered() {
-        pushNotificationStore.clearRegisteredDeviceToken()
-    }
-
     private suspend fun registerDeviceToken(token: String) {
         if (pushNotificationStore.getRegisteredDeviceToken() == token) {
             return
         }
 
-        when (val result = userRepository.registerDevice(token, platform = AndroidPlatform)) {
+        when (val result = userRepository.registerDevice(token, platform = ANDROID_PLATFORM)) {
             is ApiResult.Success -> pushNotificationStore.markRegisteredDeviceToken(token)
             is ApiResult.Failure -> {
                 Log.w(
-                    LogTag,
+                    LOG_TAG,
                     "Failed to register device. statusCode=${result.statusCode}, type=${result.type}, message=${result.message}"
                 )
             }
@@ -109,7 +97,7 @@ class PushNotificationCoordinator(
     }
 
     private companion object {
-        const val LogTag = "SolariPush"
-        const val AndroidPlatform = "android"
+        const val LOG_TAG = "SolariPush"
+        const val ANDROID_PLATFORM = "android"
     }
 }

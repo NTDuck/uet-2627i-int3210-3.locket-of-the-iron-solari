@@ -59,6 +59,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -101,13 +102,9 @@ import kotlinx.coroutines.withContext
 fun ProfileScreen(
     viewModel: ProfileViewModel,
     settingsViewModel: SettingsViewModel,
-    onNavigateBack: () -> Unit,
     onNavigateToChangePassword: () -> Unit,
     onNavigateToChangeTheme: () -> Unit,
     onNavigateToManageFriends: () -> Unit,
-    onNavigateToCamera: () -> Unit,
-    onNavigateToFeed: () -> Unit,
-    onNavigateToChat: () -> Unit,
     onLogout: () -> Unit,
     externalFeedbackMessage: String? = null,
     onExternalFeedbackConsumed: () -> Unit = {}
@@ -126,11 +123,11 @@ fun ProfileScreen(
     var topPillVisible by remember { mutableStateOf(false) }
     var topPillMessage by remember { mutableStateOf("") }
     var topPillIsSuccess by remember { mutableStateOf(false) }
-    var topPillEventId by remember { mutableStateOf(0) }
+    var topPillEventId by remember { mutableIntStateOf(0) }
     var suppressNextBottomError by remember { mutableStateOf(false) }
     var routeNextProfileEditFeedbackToTop by remember { mutableStateOf(false) }
 
-    var editingField by remember { mutableStateOf<String?>(null) } // "displayName", "email"
+    var editingField by remember { mutableStateOf<String?>(null) }
     var tempValue by remember { mutableStateOf("") }
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -629,30 +626,28 @@ fun ProfileScreen(
                         icon = Icons.Default.Widgets,
                         title = "Add the Widget",
                         onClick = {
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                val appWidgetManager =
-                                    android.appwidget.AppWidgetManager.getInstance(context)
-                                val myProvider = android.content.ComponentName(
-                                    context,
-                                    com.solari.app.widget.SolariWidgetProvider::class.java
-                                )
+                            val appWidgetManager =
+                                android.appwidget.AppWidgetManager.getInstance(context)
+                            val myProvider = android.content.ComponentName(
+                                context,
+                                com.solari.app.widget.SolariWidgetProvider::class.java
+                            )
 
-                                if (appWidgetManager.isRequestPinAppWidgetSupported) {
-                                    val successCallback = android.app.PendingIntent.getBroadcast(
+                            if (appWidgetManager.isRequestPinAppWidgetSupported) {
+                                val successCallback = android.app.PendingIntent.getBroadcast(
+                                    context,
+                                    0,
+                                    android.content.Intent(
                                         context,
-                                        0,
-                                        android.content.Intent(
-                                            context,
-                                            com.solari.app.widget.WidgetPinReceiver::class.java
-                                        ),
-                                        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-                                    )
-                                    appWidgetManager.requestPinAppWidget(
-                                        myProvider,
-                                        null,
-                                        successCallback
-                                    )
-                                }
+                                        com.solari.app.widget.WidgetPinReceiver::class.java
+                                    ),
+                                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                                )
+                                appWidgetManager.requestPinAppWidget(
+                                    myProvider,
+                                    null,
+                                    successCallback
+                                )
                             }
                         },
                         trailing = {
@@ -743,11 +738,10 @@ fun ProfileScreen(
     if (showDeleteConfirm) {
         DeleteAccountDialog(
             password = deletePassword,
-            onPasswordChange = { deletePassword = it },
+            onPasswordChange = { },
             isDeleting = viewModel.isDeletingAccount,
             onConfirm = {
                 val password = deletePassword
-                showDeleteConfirm = false
                 deletePassword = ""
                 viewModel.deleteAccount(
                     password = password,
@@ -759,10 +753,7 @@ fun ProfileScreen(
                     }
                 )
             },
-            onDismiss = {
-                showDeleteConfirm = false
-                deletePassword = ""
-            }
+            onDismiss = { }
         )
     }
 
@@ -773,10 +764,9 @@ fun ProfileScreen(
             confirmText = "Delete Account",
             confirmColor = SolariTheme.colors.error,
             onConfirm = {
-                showGoogleDeleteConfirm = false
                 deleteAccountWithGoogleVerification()
             },
-            onDismiss = { showGoogleDeleteConfirm = false }
+            onDismiss = { }
         )
     }
 
@@ -786,11 +776,10 @@ fun ProfileScreen(
             message = "Your profile will show your username instead.",
             confirmText = "Remove Display Name",
             onConfirm = {
-                showRemoveDisplayNameConfirm = false
                 viewModel.clearMessages()
                 viewModel.removeDisplayName()
             },
-            onDismiss = { showRemoveDisplayNameConfirm = false }
+            onDismiss = { }
         )
     }
 
@@ -800,14 +789,13 @@ fun ProfileScreen(
             message = "Your current avatar will be removed and the default avatar will be shown.",
             confirmText = "Remove Avatar",
             onConfirm = {
-                showRemoveAvatarConfirm = false
                 viewModel.clearMessages()
                 viewModel.removeAvatar {
                     selectedAvatarUri = null
                     committedAvatarPreviewUri = null
                 }
             },
-            onDismiss = { showRemoveAvatarConfirm = false }
+            onDismiss = { }
         )
     }
 
@@ -818,14 +806,9 @@ fun ProfileScreen(
             confirmText = if (viewModel.isSigningOut) "Logging Out..." else "Log Out",
             onConfirm = {
                 if (viewModel.isSigningOut) return@SolariConfirmationDialog
-                showLogoutConfirm = false
                 viewModel.signOut(onSuccess = onLogout)
             },
-            onDismiss = {
-                if (!viewModel.isSigningOut) {
-                    showLogoutConfirm = false
-                }
-            }
+            onDismiss = {}
         )
     }
 }

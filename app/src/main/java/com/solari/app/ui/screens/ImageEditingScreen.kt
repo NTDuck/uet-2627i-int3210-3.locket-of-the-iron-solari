@@ -65,6 +65,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -106,6 +107,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
+import androidx.core.graphics.withRotation
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
@@ -117,6 +119,7 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.min
 import kotlin.math.sqrt
@@ -155,8 +158,8 @@ private class TextOverlay(
 ) {
     var text by mutableStateOf(text)
     var position by mutableStateOf(position)
-    var rotation by mutableStateOf(rotation)
-    var scale by mutableStateOf(scale)
+    var rotation by mutableFloatStateOf(rotation)
+    var scale by mutableFloatStateOf(scale)
     var color by mutableStateOf(color)
     var isPlaceholder by mutableStateOf(isPlaceholder)
 }
@@ -165,9 +168,9 @@ private val PresetColors = listOf(
     Color.White,
     Color.Gray,
     Color.Black,
-    Color(0xFF800080), // Purple
+    Color(0xFF800080),
     Color.Red,
-    Color(0xFFFFA500), // Orange
+    Color(0xFFFFA500),
     Color.Yellow,
     Color.Green,
     Color.Blue
@@ -187,13 +190,13 @@ fun ImageEditingScreen(
     var isLoading by remember { mutableStateOf(true) }
     var applyTrigger by remember { mutableStateOf(false) }
 
-    var cropRotation by remember { mutableStateOf(0f) }
-    var cropFlipH by remember { mutableStateOf(1f) }
-    var cropFlipV by remember { mutableStateOf(1f) }
+    var cropRotation by remember { mutableFloatStateOf(0f) }
+    var cropFlipH by remember { mutableFloatStateOf(1f) }
+    var cropFlipV by remember { mutableFloatStateOf(1f) }
 
     var drawColor by remember { mutableStateOf(Color.Red) }
     var drawTool by remember { mutableStateOf(DrawTool.Brush) }
-    var selectedEraserSize by remember { mutableStateOf(30f) }
+    var selectedEraserSize by remember { mutableFloatStateOf(30f) }
 
     var textColor by remember { mutableStateOf(Color.Red) }
 
@@ -276,7 +279,7 @@ fun ImageEditingScreen(
                 } else {
                     SubScreenTopBar(
                         onCancel = { currentMode = EditMode.Main },
-                        onApply = { applyTrigger = true }
+                        onApply = { }
                     )
                 }
             }
@@ -387,10 +390,6 @@ fun ImageEditingScreen(
                                     bitmap = bitmap,
                                     selectedColor = textColor,
                                     applyTrigger = applyTrigger,
-                                    onCancel = {
-                                        currentMode = EditMode.Main
-                                        applyTrigger = false
-                                    },
                                     onApply = { edited ->
                                         currentBitmap = edited
                                         viewModel.updateBitmap(edited)
@@ -593,10 +592,10 @@ private fun CropWorkspace(
                 val newBottom = cropRect.bottom.coerceIn(newTop + 100f, imageRect.bottom)
 
                 val size = min(newRight - newLeft, newBottom - newTop)
-                if (size != cropRect.width() || size != cropRect.height()) {
-                    cropRect = RectF(newLeft, newTop, newLeft + size, newTop + size)
+                cropRect = if (size != cropRect.width() || size != cropRect.height()) {
+                    RectF(newLeft, newTop, newLeft + size, newTop + size)
                 } else {
-                    cropRect = RectF(newLeft, newTop, newRight, newBottom)
+                    RectF(newLeft, newTop, newRight, newBottom)
                 }
             }
 
@@ -622,26 +621,26 @@ private fun CropWorkspace(
                                 onDragStart = { offset ->
                                     val hitSlop = 40.dp.toPx()
                                     draggingEdge = when {
-                                        Math.abs(offset.x - cropRect.left) < hitSlop && Math.abs(
+                                        abs(offset.x - cropRect.left) < hitSlop && abs(
                                             offset.y - cropRect.top
                                         ) < hitSlop -> CropEdge.TopLeft
 
-                                        Math.abs(offset.x - cropRect.right) < hitSlop && Math.abs(
+                                        abs(offset.x - cropRect.right) < hitSlop && abs(
                                             offset.y - cropRect.top
                                         ) < hitSlop -> CropEdge.TopRight
 
-                                        Math.abs(offset.x - cropRect.left) < hitSlop && Math.abs(
+                                        abs(offset.x - cropRect.left) < hitSlop && abs(
                                             offset.y - cropRect.bottom
                                         ) < hitSlop -> CropEdge.BottomLeft
 
-                                        Math.abs(offset.x - cropRect.right) < hitSlop && Math.abs(
+                                        abs(offset.x - cropRect.right) < hitSlop && abs(
                                             offset.y - cropRect.bottom
                                         ) < hitSlop -> CropEdge.BottomRight
 
-                                        Math.abs(offset.x - cropRect.left) < hitSlop -> CropEdge.Left
-                                        Math.abs(offset.x - cropRect.right) < hitSlop -> CropEdge.Right
-                                        Math.abs(offset.y - cropRect.top) < hitSlop -> CropEdge.Top
-                                        Math.abs(offset.y - cropRect.bottom) < hitSlop -> CropEdge.Bottom
+                                        abs(offset.x - cropRect.left) < hitSlop -> CropEdge.Left
+                                        abs(offset.x - cropRect.right) < hitSlop -> CropEdge.Right
+                                        abs(offset.y - cropRect.top) < hitSlop -> CropEdge.Top
+                                        abs(offset.y - cropRect.bottom) < hitSlop -> CropEdge.Bottom
                                         else -> CropEdge.None
                                     }
                                 },
@@ -709,7 +708,7 @@ private fun CropWorkspace(
 
                                         CropEdge.TopLeft -> {
                                             val delta =
-                                                if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else dragAmount.y
+                                                if (abs(dragAmount.x) > abs(dragAmount.y)) dragAmount.x else dragAmount.y
                                             val size = (newRect.width() - delta).coerceIn(
                                                 100f,
                                                 min(
@@ -723,7 +722,7 @@ private fun CropWorkspace(
 
                                         CropEdge.TopRight -> {
                                             val delta =
-                                                if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else -dragAmount.y
+                                                if (abs(dragAmount.x) > abs(dragAmount.y)) dragAmount.x else -dragAmount.y
                                             val size = (newRect.width() + delta).coerceIn(
                                                 100f,
                                                 min(
@@ -737,7 +736,7 @@ private fun CropWorkspace(
 
                                         CropEdge.BottomLeft -> {
                                             val delta =
-                                                if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else -dragAmount.y
+                                                if (abs(dragAmount.x) > abs(dragAmount.y)) dragAmount.x else -dragAmount.y
                                             val size = (newRect.width() - delta).coerceIn(
                                                 100f,
                                                 min(
@@ -751,7 +750,7 @@ private fun CropWorkspace(
 
                                         CropEdge.BottomRight -> {
                                             val delta =
-                                                if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else dragAmount.y
+                                                if (abs(dragAmount.x) > abs(dragAmount.y)) dragAmount.x else dragAmount.y
                                             val size = (newRect.width() + delta).coerceIn(
                                                 100f,
                                                 min(
@@ -949,7 +948,7 @@ private fun DrawWorkspace(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onGloballyPositioned { canvasSize = it.size.toSize() }
+            .onGloballyPositioned { }
             .pointerInput(selectedColor, selectedTool, selectedEraserSize, imgLeft, imgTop) {
                 detectDragGestures(
                     onDragStart = { offset ->
@@ -1143,7 +1142,6 @@ private fun TextWorkspace(
     bitmap: Bitmap,
     selectedColor: Color,
     applyTrigger: Boolean,
-    onCancel: () -> Unit,
     onApply: (Bitmap) -> Unit
 ) {
     var overlay by remember { mutableStateOf<TextOverlay?>(null) }
@@ -1185,10 +1183,9 @@ private fun TextWorkspace(
                 val verticalOffset = (fontMetrics.ascent + fontMetrics.descent) / 2f
                 val finalY = bitmapY - verticalOffset
 
-                canvas.save()
-                canvas.rotate(o.rotation, bitmapX, bitmapY)
-                canvas.drawText(o.text, bitmapX, finalY, paint)
-                canvas.restore()
+                canvas.withRotation(o.rotation, bitmapX, bitmapY) {
+                    drawText(o.text, bitmapX, finalY, paint)
+                }
                 currentWorkingBitmap = result
             }
         }

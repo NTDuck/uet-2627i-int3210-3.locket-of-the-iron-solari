@@ -54,10 +54,6 @@ fun ChatSettingsScreen(
     viewModel: ChatSettingsViewModel,
     onNavigateBack: () -> Unit,
     onClearHistoryComplete: (String) -> Unit,
-    onNavigateToCamera: () -> Unit,
-    onNavigateToFeed: () -> Unit,
-    onNavigateToChat: () -> Unit,
-    onNavigateToProfile: () -> Unit
 ) {
     val isAllLoading = viewModel.isLoading &&
             viewModel.username == null &&
@@ -261,12 +257,11 @@ fun ChatSettingsScreen(
             message = "This removes the visible message history on your side.",
             confirmText = "Clear",
             onConfirm = {
-                showClearHistoryConfirm = false
                 viewModel.clearChatHistory(chatId) {
                     onClearHistoryComplete("Chat history cleared")
                 }
             },
-            onDismiss = { showClearHistoryConfirm = false }
+            onDismiss = { }
         )
     }
 
@@ -276,10 +271,9 @@ fun ChatSettingsScreen(
             message = "${partner?.displayName ?: "This user"} will no longer be able to interact with you.",
             confirmText = "Block",
             onConfirm = {
-                showBlockConfirm = false
                 viewModel.blockPartner(onBlocked = onNavigateBack)
             },
-            onDismiss = { showBlockConfirm = false }
+            onDismiss = { }
         )
     }
 }

@@ -246,7 +246,6 @@ class FriendManagementViewModel(
 
     fun setNickname(friend: User, nickname: String) {
         submitNicknameMutation(
-            friend = friend,
             nickname = nickname,
             emptyMessage = "Enter a nickname",
             successMessage = "Nickname set"
@@ -257,7 +256,6 @@ class FriendManagementViewModel(
 
     fun updateNickname(friend: User, nickname: String) {
         submitNicknameMutation(
-            friend = friend,
             nickname = nickname,
             emptyMessage = "Enter a nickname",
             successMessage = "Nickname updated"
@@ -287,8 +285,8 @@ class FriendManagementViewModel(
         }
     }
 
+    @Suppress("SameParameterValue")
     private fun submitNicknameMutation(
-        friend: User,
         nickname: String,
         emptyMessage: String,
         successMessage: String,

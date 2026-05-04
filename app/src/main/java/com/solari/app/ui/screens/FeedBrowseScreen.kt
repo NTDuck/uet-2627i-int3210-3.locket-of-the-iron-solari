@@ -80,9 +80,6 @@ private val FeedBrowseThumbnailCornerRadius = 8.dp
 fun FeedBrowseScreen(
     viewModel: FeedBrowseViewModel,
     initialAuthorId: String? = null,
-    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
-    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
-    onNavigateBack: () -> Unit,
     onNavigateToFeed: () -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToChat: () -> Unit,
@@ -108,8 +105,6 @@ fun FeedBrowseScreen(
     val visibleFriends = remember(friends, currentUser?.id) {
         friends.filterNot { it.id == currentUser?.id }
     }
-
-    val filteredSortedPosts = posts
 
     val context = LocalContext.current
 
@@ -140,8 +135,6 @@ fun FeedBrowseScreen(
     fun scrollFeedListToTop() {
         viewModel.resetFeedListScroll()
         coroutineScope.launch {
-            // Instant jump instead of animateScrollToItem — animating across
-            // hundreds of grid items causes severe frame drops.
             feedListState.scrollToItem(0)
         }
     }
@@ -181,7 +174,7 @@ fun FeedBrowseScreen(
     }
 
     fun navigateToFirstGridPost() {
-        val firstPost = filteredSortedPosts.firstOrNull()
+        val firstPost = posts.firstOrNull()
         if (firstPost == null) {
             onNavigateToFeed()
             return
@@ -194,7 +187,7 @@ fun FeedBrowseScreen(
             firstVisibleItemIndex = feedListState.firstVisibleItemIndex,
             firstVisibleItemScrollOffset = feedListState.firstVisibleItemScrollOffset
         )
-        onNavigateToPost(firstPost, filteredSortedPosts, selectedFriendIds, selectedSort, false)
+        onNavigateToPost(firstPost, posts, selectedFriendIds, selectedSort, false)
     }
 
     Scaffold(
@@ -372,7 +365,7 @@ fun FeedBrowseScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
-                        items(filteredSortedPosts, key = { post -> post.id }) { post ->
+                        items(posts, key = { post -> post.id }) { post ->
                             val thumbnailUrl = post.thumbnailUrl.ifBlank { post.imageUrl }
 
                             Box(
@@ -391,7 +384,7 @@ fun FeedBrowseScreen(
                                         )
                                         onNavigateToPost(
                                             post,
-                                            filteredSortedPosts,
+                                            posts,
                                             selectedFriendIds,
                                             selectedSort,
                                             false

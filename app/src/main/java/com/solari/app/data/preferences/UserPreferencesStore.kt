@@ -79,26 +79,21 @@ class UserPreferencesStore(context: Context) {
         dataStore.edit { preferences ->
             preferences[LastFeedViewedTimestampKey] = timestamp
         }
-        // Broadcast widget update so the unseen count resets
-        val intent = android.content.Intent(applicationContext, com.solari.app.widget.SolariWidgetProvider::class.java).apply {
+        val intent = android.content.Intent(
+            applicationContext,
+            com.solari.app.widget.SolariWidgetProvider::class.java
+        ).apply {
             action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
         }
         val ids = android.appwidget.AppWidgetManager.getInstance(applicationContext)
-            .getAppWidgetIds(android.content.ComponentName(applicationContext, com.solari.app.widget.SolariWidgetProvider::class.java))
+            .getAppWidgetIds(
+                android.content.ComponentName(
+                    applicationContext,
+                    com.solari.app.widget.SolariWidgetProvider::class.java
+                )
+            )
         intent.putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
         applicationContext.sendBroadcast(intent)
-    }
-
-    suspend fun updateLightTheme(variant: SolariThemeVariant) {
-        dataStore.edit { preferences ->
-            preferences[CurrentLightThemeKey] = variant.name
-        }
-    }
-
-    suspend fun updateDarkTheme(variant: SolariThemeVariant) {
-        dataStore.edit { preferences ->
-            preferences[CurrentDarkThemeKey] = variant.name
-        }
     }
 
     private companion object {
@@ -107,7 +102,8 @@ class UserPreferencesStore(context: Context) {
         val CurrentDarkThemeKey = stringPreferencesKey("current_dark_theme")
         val IsFlashEnabledKey = booleanPreferencesKey("is_flash_enabled")
         val TimerValueKey = intPreferencesKey("timer_value")
-        val LastFeedViewedTimestampKey = androidx.datastore.preferences.core.longPreferencesKey("last_feed_viewed_timestamp")
+        val LastFeedViewedTimestampKey =
+            androidx.datastore.preferences.core.longPreferencesKey("last_feed_viewed_timestamp")
     }
 }
 

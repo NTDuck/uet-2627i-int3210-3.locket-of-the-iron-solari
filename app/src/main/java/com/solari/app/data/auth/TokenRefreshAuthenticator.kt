@@ -27,7 +27,7 @@ class TokenRefreshAuthenticator(
     override fun authenticate(route: Route?, response: Response): Request? {
         if (
             response.request.url.encodedPath in UnauthenticatedPaths ||
-            response.responseCount >= MaxAuthAttempts
+            response.responseCount >= MAX_AUTH_ATTEMPTS
         ) {
             return null
         }
@@ -85,7 +85,7 @@ class TokenRefreshAuthenticator(
     private suspend fun decryptOrClear(ciphertext: String): String? {
         return try {
             tokenCipher.decrypt(ciphertext)
-        } catch (error: GeneralSecurityException) {
+        } catch (_: GeneralSecurityException) {
             authSessionDao.clear()
             null
         }
@@ -103,22 +103,22 @@ class TokenRefreshAuthenticator(
                 signInMethod = refreshedSignInMethod,
                 updatedAtEpochMillis = System.currentTimeMillis()
             )
-        } catch (error: GeneralSecurityException) {
+        } catch (_: GeneralSecurityException) {
             null
         }
     }
 
     private fun Request.accessToken(): String? {
         return header("Authorization")
-            ?.takeIf { it.startsWith(BearerPrefix) }
-            ?.removePrefix(BearerPrefix)
+            ?.takeIf { it.startsWith(BEARER_PREFIX) }
+            ?.removePrefix(BEARER_PREFIX)
             ?.trim()
             ?.takeIf { it.isNotEmpty() }
     }
 
     private fun Request.withBearerToken(accessToken: String): Request {
         return newBuilder()
-            .header("Authorization", "$BearerPrefix$accessToken")
+            .header("Authorization", "$BEARER_PREFIX$accessToken")
             .build()
     }
 
@@ -134,8 +134,8 @@ class TokenRefreshAuthenticator(
         }
 
     private companion object {
-        const val BearerPrefix = "Bearer "
-        const val MaxAuthAttempts = 2
+        const val BEARER_PREFIX = "Bearer "
+        const val MAX_AUTH_ATTEMPTS = 2
 
         val UnauthenticatedPaths = setOf(
             "/signin",

@@ -125,21 +125,22 @@ class FriendInvitePreviewViewModel(
                     return@launch
                 }
 
-                when (val profileResult = userRepository.getPublicProfile(normalizedUsername)) {
-                    is ApiResult.Success -> {
-                        uiState = FriendInvitePreviewState(
-                            requestedUsername = normalizedUsername,
-                            user = profileResult.data
-                        )
-                    }
+                uiState =
+                    when (val profileResult = userRepository.getPublicProfile(normalizedUsername)) {
+                        is ApiResult.Success -> {
+                            FriendInvitePreviewState(
+                                requestedUsername = normalizedUsername,
+                                user = profileResult.data
+                            )
+                        }
 
-                    is ApiResult.Failure -> {
-                        uiState = FriendInvitePreviewState(
-                            requestedUsername = normalizedUsername,
-                            errorMessage = profileResult.message
-                        )
+                        is ApiResult.Failure -> {
+                            FriendInvitePreviewState(
+                                requestedUsername = normalizedUsername,
+                                errorMessage = profileResult.message
+                            )
+                        }
                     }
-                }
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 uiState = FriendInvitePreviewState(

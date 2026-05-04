@@ -1449,10 +1449,9 @@ private fun ChatBubble(
             message = "This message will be removed from the conversation.",
             confirmText = "Unsend",
             onConfirm = {
-                isConfirmingUnsend = false
                 onUnsendMessage(message)
             },
-            onDismiss = { isConfirmingUnsend = false }
+            onDismiss = { }
         )
     }
 }
@@ -1786,14 +1785,12 @@ fun EmojiPickerPopup(
                     ) {
                         EmojiPickerHandle(
                             onDragStart = {
-                                isSheetDragging = true
                             },
                             onDrag = { dragAmount ->
                                 sheetDragOffsetPx =
                                     (sheetDragOffsetPx + dragAmount).coerceAtLeast(0f)
                             },
                             onDragEnd = {
-                                isSheetDragging = false
                                 if (sheetDragOffsetPx > 80f) {
                                     dismissWithAnimation()
                                 } else {
@@ -1801,7 +1798,6 @@ fun EmojiPickerPopup(
                                 }
                             },
                             onDragCancel = {
-                                isSheetDragging = false
                                 sheetDragOffsetPx = 0f
                             }
                         )

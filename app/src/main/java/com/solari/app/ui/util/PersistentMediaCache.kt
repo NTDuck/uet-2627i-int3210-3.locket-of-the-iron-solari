@@ -3,6 +3,7 @@ package com.solari.app.ui.util
 import android.content.Context
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -35,33 +36,11 @@ object PersistentMediaCache {
         kind: PersistentMediaCacheKind
     ): Uri? {
         if (url.isBlank()) return null
-        if (!url.isRemoteHttpUrl()) return Uri.parse(url)
+        if (!url.isRemoteHttpUrl()) return url.toUri()
 
         val key = url.sha256()
         val now = System.currentTimeMillis()
         return readMemoryEntry(kind, key, now)?.let { Uri.fromFile(it.file) }
-    }
-
-    fun peek(
-        context: Context,
-        url: String,
-        kind: PersistentMediaCacheKind
-    ): Uri? {
-        if (url.isBlank()) return null
-        if (!url.isRemoteHttpUrl()) return Uri.parse(url)
-
-        val directory = context.applicationContext.mediaCacheDirectory(kind)
-        val key = url.sha256()
-        val now = System.currentTimeMillis()
-
-        readMemoryEntry(kind, key, now)?.let { return Uri.fromFile(it.file) }
-
-        return findEntry(directory, key)
-            ?.takeIf { entry ->
-                now - entry.downloadedAtMillis <= MediaCacheTtlMillis && entry.file.exists()
-            }
-            ?.also { rememberMemoryEntry(kind, it.key, it.file, it.downloadedAtMillis) }
-            ?.let { Uri.fromFile(it.file) }
     }
 
     suspend fun resolve(
@@ -71,7 +50,7 @@ object PersistentMediaCache {
     ): Result<Uri> = withContext(Dispatchers.IO) {
         runCatching {
             if (!url.isRemoteHttpUrl()) {
-                return@runCatching Uri.parse(url)
+                return@runCatching url.toUri()
             }
 
             val appContext = context.applicationContext
@@ -106,31 +85,6 @@ object PersistentMediaCache {
         }
     }
 
-    suspend fun retainOnly(
-        context: Context,
-        kind: PersistentMediaCacheKind,
-        urls: Set<String>
-    ) = withContext(Dispatchers.IO) {
-        val directory = context.applicationContext.mediaCacheDirectory(kind)
-        val retainedKeys = urls
-            .filter(String::isRemoteHttpUrl)
-            .mapTo(mutableSetOf()) { it.sha256() }
-
-        mutexes.getValue(kind).withLock {
-            if (!directory.exists()) return@withLock
-
-            directory.listFiles()
-                .orEmpty()
-                .filter { file ->
-                    val key = file.name.substringBefore('.')
-                    key.isNotBlank() && key !in retainedKeys
-                }
-                .forEach(File::delete)
-
-            forgetMemoryEntries(kind, retainedKeys)
-        }
-    }
-
     @Synchronized
     private fun cacheKeyMutex(kind: PersistentMediaCacheKind, key: String): Mutex {
         return keyMutexes.getOrPut("${kind.name}:$key") { Mutex() }
@@ -162,14 +116,6 @@ object PersistentMediaCache {
             file = file,
             downloadedAtMillis = downloadedAtMillis
         )
-    }
-
-    @Synchronized
-    private fun forgetMemoryEntries(kind: PersistentMediaCacheKind, retainedKeys: Set<String>) {
-        val prefix = "${kind.name}:"
-        memoryEntries.keys
-            .filter { memoryKey -> memoryKey.startsWith(prefix) && memoryKey.removePrefix(prefix) !in retainedKeys }
-            .forEach(memoryEntries::remove)
     }
 
     private fun memoryKey(kind: PersistentMediaCacheKind, key: String): String {

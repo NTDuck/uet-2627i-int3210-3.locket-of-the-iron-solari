@@ -68,7 +68,6 @@ class FeedViewModel(
         private set
 
     private var nextCursor: String? = null
-    private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
     private var remotePosts: List<Post> = emptyList()
     private var uploadEntries: List<PostUploadEntry> = emptyList()
 
@@ -244,27 +243,6 @@ class FeedViewModel(
         }
     }
 
-    fun registerPostView(post: Post) {
-        val currentUserId = currentUser?.id ?: return
-        if (post.uploadStatus != PostUploadStatus.None ||
-            post.author.id == currentUserId ||
-            post.id in registeredViewPostIds
-        ) {
-            return
-        }
-
-        registeredViewPostIds = registeredViewPostIds + post.id
-        viewModelScope.launch {
-            when (val result = feedRepository.registerPostView(post.id)) {
-                is ApiResult.Success -> Unit
-                is ApiResult.Failure -> {
-                    registeredViewPostIds = registeredViewPostIds - post.id
-                    errorMessage = result.message
-                }
-            }
-        }
-    }
-
     fun sendPostReaction(
         post: Post,
         emoji: String,
@@ -325,7 +303,7 @@ class FeedViewModel(
         successMessage = null
     }
 
-    fun addOptimisticPost(draft: OptimisticPostDraft) = Unit
+    fun addOptimisticPost() = Unit
 
     private fun applyDisplayPosts() {
         val user = currentUser

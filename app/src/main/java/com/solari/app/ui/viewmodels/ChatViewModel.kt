@@ -45,7 +45,6 @@ class ChatViewModel(
     private val replyPreviewByMessageId = mutableMapOf<String, String>()
     private val pendingReplyPreviewMessageIds = mutableSetOf<String>()
 
-    // Monotonically increasing version per message; stale API callbacks are discarded when version has advanced
     private val reactionVersionByMessageId = mutableMapOf<String, Long>()
 
     var conversation by mutableStateOf<Conversation?>(null)
@@ -155,7 +154,6 @@ class ChatViewModel(
 
             is WebSocketEvent.ConversationRead -> {
                 if (event.conversationId != activeChatId) return
-                // Only update partnerLastReadAt when the reader is the partner, not the current user
                 val myId = currentUser?.id ?: currentUserId
                 if (event.userId == myId) return
                 conversation = currentConversation.copy(

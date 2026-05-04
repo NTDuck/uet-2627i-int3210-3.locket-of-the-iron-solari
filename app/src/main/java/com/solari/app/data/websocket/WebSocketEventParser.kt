@@ -6,11 +6,6 @@ import com.solari.app.ui.models.Message
 import com.solari.app.ui.models.MessageReaction
 import kotlinx.serialization.json.Json
 
-/**
- * Parses a raw WebSocket text frame into a domain [WebSocketEvent].
- * Returns null for unknown or unparseable event types rather than crashing,
- * since the server may introduce new event types the client doesn't yet handle.
- */
 class WebSocketEventParser(
     private val json: Json
 ) {
@@ -18,7 +13,7 @@ class WebSocketEventParser(
         val envelope = try {
             json.decodeFromString<WebSocketEnvelopeDto>(rawText)
         } catch (e: Exception) {
-            Log.w(Tag, "Failed to parse WebSocket envelope: ${e.message}")
+            Log.w(TAG, "Failed to parse WebSocket envelope: ${e.message}")
             return null
         }
 
@@ -39,12 +34,12 @@ class WebSocketEventParser(
                 "FRIENDSHIP_STATUS_CHANGED" -> parseFriendshipStatusChanged(envelope)
                 "FRIEND_PROFILE_UPDATED" -> parseFriendProfileUpdated(envelope)
                 else -> {
-                    Log.d(Tag, "Unhandled WebSocket event type: ${envelope.type}")
+                    Log.d(TAG, "Unhandled WebSocket event type: ${envelope.type}")
                     null
                 }
             }
         } catch (e: Exception) {
-            Log.w(Tag, "Failed to parse payload for ${envelope.type}: ${e.message}")
+            Log.w(TAG, "Failed to parse payload for ${envelope.type}: ${e.message}")
             null
         }
     }
@@ -195,6 +190,6 @@ class WebSocketEventParser(
     }
 
     private companion object {
-        const val Tag = "WsEventParser"
+        const val TAG = "WsEventParser"
     }
 }

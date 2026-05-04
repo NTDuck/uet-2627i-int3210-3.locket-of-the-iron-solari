@@ -78,6 +78,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -113,6 +115,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
@@ -181,10 +184,6 @@ fun FeedScreen(
     sortMode: String = "default",
     sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
     animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
-    onNavigateBack: () -> Unit,
-    onNavigateToCamera: () -> Unit,
-    onNavigateToConversations: () -> Unit,
-    onNavigateToProfile: () -> Unit,
     onNavigateToBrowse: (String?) -> Unit,
     isFeedVisible: Boolean = true,
     onActivityPanelVisibilityChanged: (Boolean) -> Unit = {}
@@ -198,7 +197,7 @@ fun FeedScreen(
     var activitySheetPostId by remember { mutableStateOf<String?>(null) }
     var feedbackPillVisible by remember { mutableStateOf(false) }
     var feedbackPillMessage by remember { mutableStateOf("") }
-    var feedbackPillEventId by remember { mutableStateOf(0) }
+    var feedbackPillEventId by remember { mutableIntStateOf(0) }
     var isInputOverlayVisible by remember { mutableStateOf(false) }
     var isUserRefreshing by remember { mutableStateOf(false) }
     var isOpeningMediaSharedTransitionEnabled by remember(
@@ -304,7 +303,7 @@ fun FeedScreen(
     }
 
     LaunchedEffect(pagerState.currentPage, posts.size) {
-        if (posts.size > 0 && pagerState.currentPage >= posts.size - 3) {
+        if (posts.isNotEmpty() && pagerState.currentPage >= posts.size - 3) {
             viewModel.loadNextPage()
         }
     }
@@ -375,7 +374,7 @@ fun FeedScreen(
     val feedScreenDensity = LocalDensity.current
     val imeInsets = WindowInsets.ime
     var hasInputOverlayKeyboardOpened by remember { mutableStateOf(false) }
-    var lastInputOverlayKeyboardBottom by remember { mutableStateOf(0) }
+    var lastInputOverlayKeyboardBottom by remember { mutableIntStateOf(0) }
     // When true, the overlay was dismissed via keyboard-close (back gesture);
     // skip the exit animation so the input bar disappears instantly.
     var isOverlayDismissedByKeyboard by remember { mutableStateOf(false) }
@@ -553,19 +552,8 @@ fun FeedScreen(
                         viewModel.loadPostActivity(post.id, force = true)
                         isActivitySheetVisible = true
                     },
-                    onSendPostReaction = { emoji, note, onSent ->
-                        viewModel.sendPostReaction(post, emoji, note, onSent)
-                    },
-                    onSendPostReply = { content, onSent ->
-                        viewModel.sendPostReply(post, content, onSent)
-                    },
                     onNavigateToBrowse = onNavigateToBrowse,
-                    onInputOverlayVisibilityChanged = { isVisible ->
-                        isInputOverlayVisible = isVisible
-                    },
-                    isInputOverlayActive = isInputOverlayVisible,
                     currentUser = currentUser,
-                    activeInputOverlay = activeInputOverlay,
                     onShowInputOverlay = {
                         isOverlayDismissedByKeyboard = false
                         isInputOverlayVisible = true
@@ -784,7 +772,7 @@ private suspend fun saveFeedPostMediaToPictures(
         val mediaUrl = post.imageUrl.ifBlank { post.thumbnailUrl }
         require(mediaUrl.isNotBlank()) { "No media URL found." }
 
-        val mediaUri = Uri.parse(mediaUrl)
+        val mediaUri = mediaUrl.toUri()
         val isVideo = post.isVideoMedia()
         val mimeType = context.resolveFeedPostMimeType(mediaUri, post.mediaType, isVideo)
         val extension = mimeType.toFileExtension(mediaUri, isVideo)
@@ -1006,13 +994,8 @@ private fun FeedPost(
     onMoreClick: () -> Unit,
     activityEntries: List<PostActivityEntry>,
     onShowActivity: () -> Unit,
-    onSendPostReaction: (String, String?, () -> Unit) -> Unit,
-    onSendPostReply: (String, () -> Unit) -> Unit,
     onNavigateToBrowse: (String?) -> Unit,
-    onInputOverlayVisibilityChanged: (Boolean) -> Unit,
-    isInputOverlayActive: Boolean,
     currentUser: User?,
-    activeInputOverlay: FeedInputOverlayMode?,
     onShowInputOverlay: (FeedInputOverlayMode) -> Unit,
     reactionNote: String,
     onReactionNoteChange: (String) -> Unit,
@@ -1507,7 +1490,7 @@ private fun FeedActivitySheet(
     val dismissInteractionSource = remember { MutableInteractionSource() }
     val sheetInteractionSource = remember { MutableInteractionSource() }
     var isSheetDragging by remember { mutableStateOf(false) }
-    var sheetDragOffsetPx by remember { mutableStateOf(0f) }
+    var sheetDragOffsetPx by remember { mutableFloatStateOf(0f) }
     var expandedUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     val groupedActivities = remember(activities) {
         activities
@@ -1527,7 +1510,6 @@ private fun FeedActivitySheet(
 
     LaunchedEffect(visible) {
         if (visible) {
-            isSheetDragging = false
             sheetDragOffsetPx = 0f
             expandedUserIds = emptySet()
         }
@@ -1592,14 +1574,12 @@ private fun FeedActivitySheet(
                         .pointerInput(onDismiss) {
                             detectVerticalDragGestures(
                                 onDragStart = {
-                                    isSheetDragging = true
                                 },
                                 onVerticalDrag = { _, dragAmount ->
                                     sheetDragOffsetPx = (sheetDragOffsetPx + dragAmount)
                                         .coerceAtLeast(0f)
                                 },
                                 onDragEnd = {
-                                    isSheetDragging = false
                                     if (sheetDragOffsetPx > 80f) {
                                         onDismiss()
                                     } else {
@@ -1607,7 +1587,6 @@ private fun FeedActivitySheet(
                                     }
                                 },
                                 onDragCancel = {
-                                    isSheetDragging = false
                                     sheetDragOffsetPx = 0f
                                 }
                             )
@@ -2142,7 +2121,7 @@ private fun rememberFeedCachedMediaUri(url: String): Uri? {
                 url = url,
                 kind = PersistentMediaCacheKind.FeedMedia
             ).getOrElse {
-                Uri.parse(url)
+                url.toUri()
             }
         }
     }

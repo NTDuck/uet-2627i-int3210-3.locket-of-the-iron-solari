@@ -34,6 +34,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -74,7 +75,7 @@ fun PasswordResetScreen(
     var showConfirmation by remember { mutableStateOf(false) }
     var showSuccessDialog by remember { mutableStateOf(false) }
     var errorPillVisible by remember { mutableStateOf(false) }
-    var errorEventId by remember { mutableStateOf(0) }
+    var errorEventId by remember { mutableIntStateOf(0) }
 
     fun closeKeyboardAndFocus() {
         focusManager.clearFocus(force = true)
@@ -234,10 +235,9 @@ fun PasswordResetScreen(
             confirmText = "Submit",
             confirmColor = MaterialTheme.colorScheme.primary,
             onConfirm = {
-                showConfirmation = false
                 viewModel.submit()
             },
-            onDismiss = { showConfirmation = false }
+            onDismiss = { }
         )
     }
 
@@ -259,7 +259,6 @@ fun PasswordResetScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showSuccessDialog = false
                         onResetComplete()
                     }
                 ) {

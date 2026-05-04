@@ -4,18 +4,11 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-/**
- * Top-level envelope for all server-pushed WebSocket events.
- * The [payload] is kept as raw [JsonElement] so we can deserialize it
- * into the correct event-specific type after inspecting [type].
- */
 @Serializable
 data class WebSocketEnvelopeDto(
     val type: String,
     val payload: JsonElement
 )
-
-// -- Conversation-related event payloads --
 
 @Serializable
 data class NewMessagePayloadDto(
@@ -139,8 +132,6 @@ data class FriendProfileUpdatedPayloadDto(
     val effectiveAvatarUrl: String?
         get() = avatarUrl ?: snakeCaseAvatarUrl
 }
-
-// -- Client-to-server action envelope --
 
 @Serializable
 data class WebSocketActionDto(

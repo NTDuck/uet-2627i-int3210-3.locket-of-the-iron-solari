@@ -55,7 +55,6 @@ private val BlockedChip @Composable get() = SolariTheme.colors.surfaceVariant
 private val BlockedPrimary @Composable get() = SolariTheme.colors.primary
 private val BlockedPrimaryContent @Composable get() = SolariTheme.colors.onPrimary
 private val BlockedText @Composable get() = SolariTheme.colors.onBackground
-private val BlockedMuted @Composable get() = SolariTheme.colors.onSurface
 private val BlockedSubtle @Composable get() = SolariTheme.colors.onSurfaceVariant
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -178,9 +177,8 @@ fun BlockedAccountsScreen(
             confirmText = "Unblock",
             onConfirm = {
                 viewModel.unblockUser(account.user.id)
-                pendingUnblock = null
             },
-            onDismiss = { pendingUnblock = null }
+            onDismiss = { }
         )
     }
 }

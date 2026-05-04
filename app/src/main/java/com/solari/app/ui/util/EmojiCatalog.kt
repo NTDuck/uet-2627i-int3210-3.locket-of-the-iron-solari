@@ -15,7 +15,7 @@ object EmojiCatalog {
         parseEmojiData(EmojiDataChunks)
     }
 
-    private fun parseEmojiData(chunks: List<String>): List<EmojiCatalogCategory> {
+    private fun parseEmojiData(@Suppress("SameParameterValue") chunks: List<String>): List<EmojiCatalogCategory> {
         val grouped = linkedMapOf<String, MutableList<EmojiCatalogItem>>()
         chunks.forEach { chunk ->
             chunk.lineSequence().forEach { line ->
