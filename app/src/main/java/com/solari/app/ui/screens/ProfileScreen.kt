@@ -210,7 +210,10 @@ fun ProfileScreen(
                 is GoogleIdTokenResult.Success -> {
                     viewModel.deleteAccountWithGoogle(
                         idToken = tokenResult.idToken,
-                        onSuccess = onLogout,
+                        onSuccess = {
+                            showGoogleDeleteConfirm = false
+                            onLogout()
+                        },
                         onFailure = ::showTopError
                     )
                 }
@@ -738,22 +741,30 @@ fun ProfileScreen(
     if (showDeleteConfirm) {
         DeleteAccountDialog(
             password = deletePassword,
-            onPasswordChange = { },
+            onPasswordChange = { deletePassword = it },
             isDeleting = viewModel.isDeletingAccount,
             onConfirm = {
-                val password = deletePassword
-                deletePassword = ""
-                viewModel.deleteAccount(
-                    password = password,
-                    onSuccess = {
-                        onLogout()
-                    },
-                    onFailure = { message ->
-                        showTopError(message)
-                    }
-                )
+                if (!viewModel.isDeletingAccount) {
+                    val password = deletePassword
+                    viewModel.deleteAccount(
+                        password = password,
+                        onSuccess = {
+                            showDeleteConfirm = false
+                            deletePassword = ""
+                            onLogout()
+                        },
+                        onFailure = { message ->
+                            showTopError(message)
+                        }
+                    )
+                }
             },
-            onDismiss = { }
+            onDismiss = {
+                if (!viewModel.isDeletingAccount) {
+                    showDeleteConfirm = false
+                    deletePassword = ""
+                }
+            }
         )
     }
 
@@ -764,8 +775,8 @@ fun ProfileScreen(
             confirmText = "Delete Account",
             confirmColor = SolariTheme.colors.error,
             onConfirm = {
-                deleteAccountWithGoogleVerification()
                 showGoogleDeleteConfirm = false
+                deleteAccountWithGoogleVerification()
             },
             onDismiss = { showGoogleDeleteConfirm = false }
         )

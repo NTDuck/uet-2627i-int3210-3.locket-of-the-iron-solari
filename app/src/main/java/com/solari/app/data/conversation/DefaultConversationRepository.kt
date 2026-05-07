@@ -17,11 +17,20 @@ import com.solari.app.data.remote.conversation.ToggleConversationMuteRequestDto
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.Message
 import com.solari.app.ui.models.MessageReaction
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 
 class DefaultConversationRepository(
     private val conversationApi: ConversationApi,
     private val apiExecutor: ApiExecutor
 ) : ConversationRepository {
+    private val _clearedConversationIds = MutableStateFlow<Set<String>>(emptySet())
+
+    override val clearedConversationIds: StateFlow<Set<String>> =
+        _clearedConversationIds.asStateFlow()
+
     override suspend fun createConversation(targetUserId: String): ApiResult<String> {
         return when (
             val result = apiExecutor.execute {
@@ -141,7 +150,10 @@ class DefaultConversationRepository(
         return when (val result =
             apiExecutor.execute { conversationApi.clearConversationHistory(conversationId) }) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(Unit)
+            is ApiResult.Success -> {
+                _clearedConversationIds.update { it + conversationId }
+                ApiResult.Success(Unit)
+            }
         }
     }
 

@@ -15,6 +15,7 @@ import com.solari.app.ui.models.FriendRequest
 import com.solari.app.ui.models.User
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 private const val FriendRequestPageSize = 4
@@ -53,6 +54,7 @@ class ConversationViewModel(
         private set
 
     private var friendRequestsNextCursor by mutableStateOf<String?>(null)
+    private var consumedClearedConversationIds: Set<String> = emptySet()
 
     val visibleFriendRequests: List<FriendRequest>
         get() = if (isFriendRequestsExpanded) {
@@ -73,6 +75,16 @@ class ConversationViewModel(
         viewModelScope.launch {
             webSocketManager.events.collect { event -> handleWebSocketEvent(event) }
         }
+
+        viewModelScope.launch {
+            conversationRepository.clearedConversationIds.collectLatest { clearedIds ->
+                val newClearedIds = clearedIds - consumedClearedConversationIds
+                if (newClearedIds.isNotEmpty()) {
+                    conversations = conversations.filterNot { it.id in newClearedIds }
+                    consumedClearedConversationIds += newClearedIds
+                }
+            }
+        }
     }
 
     private fun handleWebSocketEvent(event: WebSocketEvent) {
@@ -90,6 +102,8 @@ class ConversationViewModel(
                         isUnread = isFromPartner
                     )
                     conversations = listOf(updated) + conversations.filter { it.id != targetId }
+                } else {
+                    refreshConversationsFromRealtime()
                 }
             }
 
