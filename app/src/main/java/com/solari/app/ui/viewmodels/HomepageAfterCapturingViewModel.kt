@@ -5,8 +5,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.feed.PostUploadCoordinator
+import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.OptimisticPostDraft
@@ -26,6 +26,12 @@ class HomepageAfterCapturingViewModel(
     var caption by mutableStateOf("")
         private set
 
+    var captionType by mutableStateOf("text")
+        private set
+
+    var captionMetadata by mutableStateOf<com.solari.app.ui.models.CaptionMetadata?>(null)
+        private set
+
     var errorMessage by mutableStateOf<String?>(null)
         private set
 
@@ -43,8 +49,10 @@ class HomepageAfterCapturingViewModel(
         }
     }
 
-    fun updateCaption(value: String) {
-        caption = value.take(48)
+    fun updateCaption(type: String, metadata: com.solari.app.ui.models.CaptionMetadata?, textFallback: String) {
+        captionType = type
+        captionMetadata = metadata
+        caption = textFallback.take(48)
     }
 
     fun loadFriends() {
@@ -70,6 +78,8 @@ class HomepageAfterCapturingViewModel(
         return postUploadCoordinator.startUpload(
             media = media,
             caption = caption,
+            captionType = captionType,
+            captionMetadata = captionMetadata,
             isPublic = isPublic,
             selectedFriendIds = selectedFriendIds
         )

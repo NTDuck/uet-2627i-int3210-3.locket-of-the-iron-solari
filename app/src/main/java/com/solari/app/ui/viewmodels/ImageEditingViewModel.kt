@@ -9,7 +9,7 @@ import androidx.lifecycle.ViewModel
 class ImageEditingViewModel : ViewModel() {
     var editedBitmap by mutableStateOf<Bitmap?>(null)
         private set
-        
+
     var hasChanges by mutableStateOf(false)
         private set
 
@@ -22,9 +22,5 @@ class ImageEditingViewModel : ViewModel() {
     fun updateBitmap(bitmap: Bitmap) {
         editedBitmap = bitmap
         hasChanges = true
-    }
-
-    fun resetChanges() {
-        hasChanges = false
     }
 }

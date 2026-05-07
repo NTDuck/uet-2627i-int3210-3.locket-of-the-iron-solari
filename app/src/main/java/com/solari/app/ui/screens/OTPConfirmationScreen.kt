@@ -41,11 +41,11 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,7 +68,12 @@ fun OTPConfirmationScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val codeFocusRequester = remember { FocusRequester() }
     var otpTextFieldValue by remember {
-        mutableStateOf(TextFieldValue(viewModel.otpCode, selection = TextRange(viewModel.otpCode.length)))
+        mutableStateOf(
+            TextFieldValue(
+                viewModel.otpCode,
+                selection = TextRange(viewModel.otpCode.length)
+            )
+        )
     }
     var isCodeFocused by remember { mutableStateOf(false) }
     var feedbackPillVisible by remember { mutableStateOf(false) }
@@ -172,8 +177,11 @@ fun OTPConfirmationScreen(
                         ) {
                             repeat(6) { index ->
                                 OtpSlot(
-                                    value = viewModel.otpCode.getOrNull(index)?.toString().orEmpty(),
-                                    isFocused = isCodeFocused && index == focusedOtpSlotIndex(viewModel.otpCode.length),
+                                    value = viewModel.otpCode.getOrNull(index)?.toString()
+                                        .orEmpty(),
+                                    isFocused = isCodeFocused && index == focusedOtpSlotIndex(
+                                        viewModel.otpCode.length
+                                    ),
                                     onClick = {
                                         codeFocusRequester.requestFocus()
                                         keyboardController?.show()
@@ -289,7 +297,9 @@ private fun OtpSlot(
     onClick: () -> Unit
 ) {
     val borderColor by animateColorAsState(
-        targetValue = if (isFocused) SolariTheme.colors.primary else SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.35f),
+        targetValue = if (isFocused) SolariTheme.colors.primary else SolariTheme.colors.onSurfaceVariant.copy(
+            alpha = 0.35f
+        ),
         animationSpec = tween(durationMillis = 60),
         label = "OtpSlotBorderColor"
     )

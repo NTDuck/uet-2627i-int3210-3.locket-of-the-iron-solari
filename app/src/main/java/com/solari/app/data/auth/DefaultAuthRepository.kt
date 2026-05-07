@@ -18,9 +18,9 @@ import com.solari.app.data.remote.auth.SignInResponseDto
 import com.solari.app.data.remote.auth.SignOutRequestDto
 import com.solari.app.data.remote.auth.SignUpRequestDto
 import com.solari.app.data.security.TokenCipher
-import java.security.GeneralSecurityException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.security.GeneralSecurityException
 
 class DefaultAuthRepository(
     private val authApi: AuthApi,
@@ -221,6 +221,7 @@ class DefaultAuthRepository(
                 response = result.data,
                 fallbackSignInMethod = currentSession.signInMethod
             )
+
             is ApiResult.Failure -> {
                 if (result.isInvalidSessionFailure()) {
                     authSessionDao.clear()

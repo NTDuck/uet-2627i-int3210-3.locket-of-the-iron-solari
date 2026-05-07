@@ -1,22 +1,17 @@
 package com.solari.app.ui.screens
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
-import android.graphics.Matrix as AndroidMatrix
-import android.graphics.Paint as AndroidPaint
-import android.graphics.Canvas as AndroidCanvas
-import android.graphics.Path as NativePath
 import android.graphics.RectF
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,7 +24,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -48,6 +42,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.RotateRight
+import androidx.compose.material.icons.filled.AutoFixNormal
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -57,7 +52,6 @@ import androidx.compose.material.icons.filled.Flip
 import androidx.compose.material.icons.filled.OpenInFull
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.AutoFixNormal
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -71,6 +65,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -88,8 +83,8 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PaintingStyle
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -112,7 +107,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
-import com.solari.app.R
+import androidx.core.graphics.withRotation
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
@@ -124,10 +119,14 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.util.UUID
+import kotlin.math.abs
 import kotlin.math.atan2
-import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sqrt
+import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Matrix as AndroidMatrix
+import android.graphics.Paint as AndroidPaint
+import android.graphics.Path as NativePath
 
 private enum class EditMode {
     Main, Crop, Draw, Text, Adjust
@@ -159,8 +158,8 @@ private class TextOverlay(
 ) {
     var text by mutableStateOf(text)
     var position by mutableStateOf(position)
-    var rotation by mutableStateOf(rotation)
-    var scale by mutableStateOf(scale)
+    var rotation by mutableFloatStateOf(rotation)
+    var scale by mutableFloatStateOf(scale)
     var color by mutableStateOf(color)
     var isPlaceholder by mutableStateOf(isPlaceholder)
 }
@@ -169,9 +168,9 @@ private val PresetColors = listOf(
     Color.White,
     Color.Gray,
     Color.Black,
-    Color(0xFF800080), // Purple
+    Color(0xFF800080),
     Color.Red,
-    Color(0xFFFFA500), // Orange
+    Color(0xFFFFA500),
     Color.Yellow,
     Color.Green,
     Color.Blue
@@ -191,13 +190,13 @@ fun ImageEditingScreen(
     var isLoading by remember { mutableStateOf(true) }
     var applyTrigger by remember { mutableStateOf(false) }
 
-    var cropRotation by remember { mutableStateOf(0f) }
-    var cropFlipH by remember { mutableStateOf(1f) }
-    var cropFlipV by remember { mutableStateOf(1f) }
+    var cropRotation by remember { mutableFloatStateOf(0f) }
+    var cropFlipH by remember { mutableFloatStateOf(1f) }
+    var cropFlipV by remember { mutableFloatStateOf(1f) }
 
     var drawColor by remember { mutableStateOf(Color.Red) }
     var drawTool by remember { mutableStateOf(DrawTool.Brush) }
-    var selectedEraserSize by remember { mutableStateOf(30f) }
+    var selectedEraserSize by remember { mutableFloatStateOf(30f) }
 
     var textColor by remember { mutableStateOf(Color.Red) }
 
@@ -208,13 +207,17 @@ fun ImageEditingScreen(
         if (initialMedia != null && baseBitmap == null) {
             withContext(Dispatchers.IO) {
                 try {
-                    val source = android.graphics.ImageDecoder.createSource(context.contentResolver, initialMedia.uri)
-                    val bitmap = android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-                        decoder.isMutableRequired = true
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                            decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                    val source = android.graphics.ImageDecoder.createSource(
+                        context.contentResolver,
+                        initialMedia.uri
+                    )
+                    val bitmap =
+                        android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
+                            decoder.isMutableRequired = true
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                decoder.allocator = android.graphics.ImageDecoder.ALLOCATOR_SOFTWARE
+                            }
                         }
-                    }
                     val softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
                     baseBitmap = softwareBitmap
                     currentBitmap = softwareBitmap
@@ -249,11 +252,18 @@ fun ImageEditingScreen(
                         onApply = {
                             coroutineScope.launch {
                                 val finalBitmap = currentBitmap ?: return@launch
-                                val file = File(context.cacheDir, "edited_${System.currentTimeMillis()}.jpg")
+                                val file = File(
+                                    context.cacheDir,
+                                    "edited_${System.currentTimeMillis()}.jpg"
+                                )
                                 withContext(Dispatchers.IO) {
                                     try {
                                         FileOutputStream(file).use { out ->
-                                            finalBitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+                                            finalBitmap.compress(
+                                                Bitmap.CompressFormat.JPEG,
+                                                95,
+                                                out
+                                            )
                                         }
                                     } catch (e: Exception) {
                                         e.printStackTrace()
@@ -269,7 +279,7 @@ fun ImageEditingScreen(
                 } else {
                     SubScreenTopBar(
                         onCancel = { currentMode = EditMode.Main },
-                        onApply = { applyTrigger = true }
+                        onApply = { }
                     )
                 }
             }
@@ -289,6 +299,7 @@ fun ImageEditingScreen(
                         onHFlip = { cropFlipH *= -1f },
                         onVFlip = { cropFlipV *= -1f }
                     )
+
                     EditMode.Draw -> DrawBottomRow(
                         selectedColor = drawColor,
                         onColorSelected = { drawColor = it },
@@ -297,10 +308,12 @@ fun ImageEditingScreen(
                         selectedEraserSize = selectedEraserSize,
                         onEraserSizeSelected = { selectedEraserSize = it }
                     )
+
                     EditMode.Text -> TextBottomRow(
                         selectedColor = textColor,
                         onColorSelected = { textColor = it }
                     )
+
                     EditMode.Adjust -> AdjustBottomRow(
                         activeType = adjustType,
                         onTypeSelected = { adjustType = it },
@@ -339,6 +352,7 @@ fun ImageEditingScreen(
                                     contentScale = ContentScale.Fit
                                 )
                             }
+
                             EditMode.Crop -> {
                                 CropWorkspace(
                                     bitmap = bitmap,
@@ -354,6 +368,7 @@ fun ImageEditingScreen(
                                     }
                                 )
                             }
+
                             EditMode.Draw -> {
                                 DrawWorkspace(
                                     bitmap = bitmap,
@@ -369,15 +384,12 @@ fun ImageEditingScreen(
                                     }
                                 )
                             }
+
                             EditMode.Text -> {
                                 TextWorkspace(
                                     bitmap = bitmap,
                                     selectedColor = textColor,
                                     applyTrigger = applyTrigger,
-                                    onCancel = {
-                                        currentMode = EditMode.Main
-                                        applyTrigger = false
-                                    },
                                     onApply = { edited ->
                                         currentBitmap = edited
                                         viewModel.updateBitmap(edited)
@@ -386,6 +398,7 @@ fun ImageEditingScreen(
                                     }
                                 )
                             }
+
                             EditMode.Adjust -> {
                                 AdjustWorkspace(
                                     bitmap = bitmap,
@@ -435,7 +448,9 @@ private fun EditingTopBar(
             Icon(
                 Icons.Default.Check,
                 contentDescription = "Apply",
-                tint = if (canApply) SolariTheme.colors.primary else SolariTheme.colors.primary.copy(alpha = 0.38f)
+                tint = if (canApply) SolariTheme.colors.primary else SolariTheme.colors.primary.copy(
+                    alpha = 0.38f
+                )
             )
         }
     }
@@ -457,7 +472,10 @@ private fun EditingBottomBar(
         Spacer(modifier = Modifier.width(32.dp))
         EditModeButton("Draw", Icons.Default.Brush, onClick = { onModeSelected(EditMode.Draw) })
         Spacer(modifier = Modifier.width(32.dp))
-        EditModeButton("Text", Icons.Default.TextFields, onClick = { onModeSelected(EditMode.Text) })
+        EditModeButton(
+            "Text",
+            Icons.Default.TextFields,
+            onClick = { onModeSelected(EditMode.Text) })
         Spacer(modifier = Modifier.width(32.dp))
         EditModeButton("Adjust", Icons.Default.Tune, onClick = { onModeSelected(EditMode.Adjust) })
     }
@@ -528,10 +546,14 @@ private fun CropWorkspace(
             val scaleX = transformedBitmap.width / imageRect.width()
             val scaleY = transformedBitmap.height / imageRect.height()
 
-            val left = ((cropRect.left - imageRect.left) * scaleX).toInt().coerceIn(0, transformedBitmap.width - 1)
-            val top = ((cropRect.top - imageRect.top) * scaleY).toInt().coerceIn(0, transformedBitmap.height - 1)
-            val right = ((cropRect.right - imageRect.left) * scaleX).toInt().coerceIn(left + 1, transformedBitmap.width)
-            val bottom = ((cropRect.bottom - imageRect.top) * scaleY).toInt().coerceIn(top + 1, transformedBitmap.height)
+            val left = ((cropRect.left - imageRect.left) * scaleX).toInt()
+                .coerceIn(0, transformedBitmap.width - 1)
+            val top = ((cropRect.top - imageRect.top) * scaleY).toInt()
+                .coerceIn(0, transformedBitmap.height - 1)
+            val right = ((cropRect.right - imageRect.left) * scaleX).toInt()
+                .coerceIn(left + 1, transformedBitmap.width)
+            val bottom = ((cropRect.bottom - imageRect.top) * scaleY).toInt()
+                .coerceIn(top + 1, transformedBitmap.height)
 
             val width = (right - left).coerceAtLeast(1)
             val height = (bottom - top).coerceAtLeast(1)
@@ -568,12 +590,12 @@ private fun CropWorkspace(
                 val newTop = cropRect.top.coerceIn(imageRect.top, imageRect.bottom - 100f)
                 val newRight = cropRect.right.coerceIn(newLeft + 100f, imageRect.right)
                 val newBottom = cropRect.bottom.coerceIn(newTop + 100f, imageRect.bottom)
-                
+
                 val size = min(newRight - newLeft, newBottom - newTop)
-                if (size != cropRect.width() || size != cropRect.height()) {
-                    cropRect = RectF(newLeft, newTop, newLeft + size, newTop + size)
+                cropRect = if (size != cropRect.width() || size != cropRect.height()) {
+                    RectF(newLeft, newTop, newLeft + size, newTop + size)
                 } else {
-                    cropRect = RectF(newLeft, newTop, newRight, newBottom)
+                    RectF(newLeft, newTop, newRight, newBottom)
                 }
             }
 
@@ -591,102 +613,179 @@ private fun CropWorkspace(
                     contentScale = ContentScale.Fit
                 )
 
-                Canvas(modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = { offset ->
-                                val hitSlop = 40.dp.toPx()
-                                draggingEdge = when {
-                                    Math.abs(offset.x - cropRect.left) < hitSlop && Math.abs(offset.y - cropRect.top) < hitSlop -> CropEdge.TopLeft
-                                    Math.abs(offset.x - cropRect.right) < hitSlop && Math.abs(offset.y - cropRect.top) < hitSlop -> CropEdge.TopRight
-                                    Math.abs(offset.x - cropRect.left) < hitSlop && Math.abs(offset.y - cropRect.bottom) < hitSlop -> CropEdge.BottomLeft
-                                    Math.abs(offset.x - cropRect.right) < hitSlop && Math.abs(offset.y - cropRect.bottom) < hitSlop -> CropEdge.BottomRight
-                                    Math.abs(offset.x - cropRect.left) < hitSlop -> CropEdge.Left
-                                    Math.abs(offset.x - cropRect.right) < hitSlop -> CropEdge.Right
-                                    Math.abs(offset.y - cropRect.top) < hitSlop -> CropEdge.Top
-                                    Math.abs(offset.y - cropRect.bottom) < hitSlop -> CropEdge.Bottom
-                                    else -> CropEdge.None
-                                }
-                            },
-                            onDrag = { change, dragAmount ->
-                                if (draggingEdge == CropEdge.None) return@detectDragGestures
-                                change.consume()
-                                val newRect = RectF(cropRect)
-                                
-                                when (draggingEdge) {
-                                    CropEdge.Left -> {
-                                        val delta = dragAmount.x
-                                        newRect.left = (newRect.left + delta).coerceIn(imageRect.left, newRect.right - 100f)
-                                        val newWidth = newRect.width()
-                                        newRect.bottom = (newRect.top + newWidth).coerceAtMost(imageRect.bottom)
-                                        if (newRect.bottom - newRect.top < newWidth) {
-                                            newRect.left = newRect.right - newRect.height()
+                Canvas(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            detectDragGestures(
+                                onDragStart = { offset ->
+                                    val hitSlop = 40.dp.toPx()
+                                    draggingEdge = when {
+                                        abs(offset.x - cropRect.left) < hitSlop && abs(
+                                            offset.y - cropRect.top
+                                        ) < hitSlop -> CropEdge.TopLeft
+
+                                        abs(offset.x - cropRect.right) < hitSlop && abs(
+                                            offset.y - cropRect.top
+                                        ) < hitSlop -> CropEdge.TopRight
+
+                                        abs(offset.x - cropRect.left) < hitSlop && abs(
+                                            offset.y - cropRect.bottom
+                                        ) < hitSlop -> CropEdge.BottomLeft
+
+                                        abs(offset.x - cropRect.right) < hitSlop && abs(
+                                            offset.y - cropRect.bottom
+                                        ) < hitSlop -> CropEdge.BottomRight
+
+                                        abs(offset.x - cropRect.left) < hitSlop -> CropEdge.Left
+                                        abs(offset.x - cropRect.right) < hitSlop -> CropEdge.Right
+                                        abs(offset.y - cropRect.top) < hitSlop -> CropEdge.Top
+                                        abs(offset.y - cropRect.bottom) < hitSlop -> CropEdge.Bottom
+                                        else -> CropEdge.None
+                                    }
+                                },
+                                onDrag = { change, dragAmount ->
+                                    if (draggingEdge == CropEdge.None) return@detectDragGestures
+                                    change.consume()
+                                    val newRect = RectF(cropRect)
+
+                                    when (draggingEdge) {
+                                        CropEdge.Left -> {
+                                            val delta = dragAmount.x
+                                            newRect.left = (newRect.left + delta).coerceIn(
+                                                imageRect.left,
+                                                newRect.right - 100f
+                                            )
+                                            val newWidth = newRect.width()
+                                            newRect.bottom =
+                                                (newRect.top + newWidth).coerceAtMost(imageRect.bottom)
+                                            if (newRect.bottom - newRect.top < newWidth) {
+                                                newRect.left = newRect.right - newRect.height()
+                                            }
                                         }
-                                    }
-                                    CropEdge.Right -> {
-                                        val delta = dragAmount.x
-                                        newRect.right = (newRect.right + delta).coerceIn(newRect.left + 100f, imageRect.right)
-                                        val newWidth = newRect.width()
-                                        newRect.bottom = (newRect.top + newWidth).coerceAtMost(imageRect.bottom)
-                                        if (newRect.bottom - newRect.top < newWidth) {
-                                            newRect.right = newRect.left + newRect.height()
+
+                                        CropEdge.Right -> {
+                                            val delta = dragAmount.x
+                                            newRect.right = (newRect.right + delta).coerceIn(
+                                                newRect.left + 100f,
+                                                imageRect.right
+                                            )
+                                            val newWidth = newRect.width()
+                                            newRect.bottom =
+                                                (newRect.top + newWidth).coerceAtMost(imageRect.bottom)
+                                            if (newRect.bottom - newRect.top < newWidth) {
+                                                newRect.right = newRect.left + newRect.height()
+                                            }
                                         }
-                                    }
-                                    CropEdge.Top -> {
-                                        val delta = dragAmount.y
-                                        newRect.top = (newRect.top + delta).coerceIn(imageRect.top, newRect.bottom - 100f)
-                                        val newHeight = newRect.height()
-                                        newRect.right = (newRect.left + newHeight).coerceAtMost(imageRect.right)
-                                        if (newRect.right - newRect.left < newHeight) {
-                                            newRect.top = newRect.bottom - newRect.width()
+
+                                        CropEdge.Top -> {
+                                            val delta = dragAmount.y
+                                            newRect.top = (newRect.top + delta).coerceIn(
+                                                imageRect.top,
+                                                newRect.bottom - 100f
+                                            )
+                                            val newHeight = newRect.height()
+                                            newRect.right =
+                                                (newRect.left + newHeight).coerceAtMost(imageRect.right)
+                                            if (newRect.right - newRect.left < newHeight) {
+                                                newRect.top = newRect.bottom - newRect.width()
+                                            }
                                         }
-                                    }
-                                    CropEdge.Bottom -> {
-                                        val delta = dragAmount.y
-                                        newRect.bottom = (newRect.bottom + delta).coerceIn(newRect.top + 100f, imageRect.bottom)
-                                        val newHeight = newRect.height()
-                                        newRect.right = (newRect.left + newHeight).coerceAtMost(imageRect.right)
-                                        if (newRect.right - newRect.left < newHeight) {
-                                            newRect.bottom = newRect.top + newRect.width()
+
+                                        CropEdge.Bottom -> {
+                                            val delta = dragAmount.y
+                                            newRect.bottom = (newRect.bottom + delta).coerceIn(
+                                                newRect.top + 100f,
+                                                imageRect.bottom
+                                            )
+                                            val newHeight = newRect.height()
+                                            newRect.right =
+                                                (newRect.left + newHeight).coerceAtMost(imageRect.right)
+                                            if (newRect.right - newRect.left < newHeight) {
+                                                newRect.bottom = newRect.top + newRect.width()
+                                            }
                                         }
+
+                                        CropEdge.TopLeft -> {
+                                            val delta =
+                                                if (abs(dragAmount.x) > abs(dragAmount.y)) dragAmount.x else dragAmount.y
+                                            val size = (newRect.width() - delta).coerceIn(
+                                                100f,
+                                                min(
+                                                    newRect.right - imageRect.left,
+                                                    newRect.bottom - imageRect.top
+                                                )
+                                            )
+                                            newRect.left = newRect.right - size
+                                            newRect.top = newRect.bottom - size
+                                        }
+
+                                        CropEdge.TopRight -> {
+                                            val delta =
+                                                if (abs(dragAmount.x) > abs(dragAmount.y)) dragAmount.x else -dragAmount.y
+                                            val size = (newRect.width() + delta).coerceIn(
+                                                100f,
+                                                min(
+                                                    imageRect.right - newRect.left,
+                                                    newRect.bottom - imageRect.top
+                                                )
+                                            )
+                                            newRect.right = newRect.left + size
+                                            newRect.top = newRect.bottom - size
+                                        }
+
+                                        CropEdge.BottomLeft -> {
+                                            val delta =
+                                                if (abs(dragAmount.x) > abs(dragAmount.y)) dragAmount.x else -dragAmount.y
+                                            val size = (newRect.width() - delta).coerceIn(
+                                                100f,
+                                                min(
+                                                    newRect.right - imageRect.left,
+                                                    newRect.bottom - imageRect.top
+                                                )
+                                            )
+                                            newRect.left = newRect.right - size
+                                            newRect.bottom = newRect.top + size
+                                        }
+
+                                        CropEdge.BottomRight -> {
+                                            val delta =
+                                                if (abs(dragAmount.x) > abs(dragAmount.y)) dragAmount.x else dragAmount.y
+                                            val size = (newRect.width() + delta).coerceIn(
+                                                100f,
+                                                min(
+                                                    imageRect.right - newRect.left,
+                                                    newRect.bottom - imageRect.top
+                                                )
+                                            )
+                                            newRect.right = newRect.left + size
+                                            newRect.bottom = newRect.top + size
+                                        }
+
+                                        else -> {}
                                     }
-                                    CropEdge.TopLeft -> {
-                                        val delta = if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else dragAmount.y
-                                        val size = (newRect.width() - delta).coerceIn(100f, min(newRect.right - imageRect.left, newRect.bottom - imageRect.top))
-                                        newRect.left = newRect.right - size
-                                        newRect.top = newRect.bottom - size
-                                    }
-                                    CropEdge.TopRight -> {
-                                        val delta = if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else -dragAmount.y
-                                        val size = (newRect.width() + delta).coerceIn(100f, min(imageRect.right - newRect.left, newRect.bottom - imageRect.top))
-                                        newRect.right = newRect.left + size
-                                        newRect.top = newRect.bottom - size
-                                    }
-                                    CropEdge.BottomLeft -> {
-                                        val delta = if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else -dragAmount.y
-                                        val size = (newRect.width() - delta).coerceIn(100f, min(newRect.right - imageRect.left, newRect.bottom - imageRect.top))
-                                        newRect.left = newRect.right - size
-                                        newRect.bottom = newRect.top + size
-                                    }
-                                    CropEdge.BottomRight -> {
-                                        val delta = if (Math.abs(dragAmount.x) > Math.abs(dragAmount.y)) dragAmount.x else dragAmount.y
-                                        val size = (newRect.width() + delta).coerceIn(100f, min(imageRect.right - newRect.left, newRect.bottom - imageRect.top))
-                                        newRect.right = newRect.left + size
-                                        newRect.bottom = newRect.top + size
-                                    }
-                                    else -> {}
-                                }
-                                cropRect = newRect
-                            },
-                            onDragEnd = { draggingEdge = CropEdge.None }
-                        )
-                    }
+                                    cropRect = newRect
+                                },
+                                onDragEnd = { draggingEdge = CropEdge.None }
+                            )
+                        }
                 ) {
                     drawRect(Color.Black.copy(alpha = 0.5f), size = Size(size.width, cropRect.top))
-                    drawRect(Color.Black.copy(alpha = 0.5f), topLeft = Offset(0f, cropRect.bottom), size = Size(size.width, size.height - cropRect.bottom))
-                    drawRect(Color.Black.copy(alpha = 0.5f), topLeft = Offset(0f, cropRect.top), size = Size(cropRect.left, cropRect.height()))
-                    drawRect(Color.Black.copy(alpha = 0.5f), topLeft = Offset(cropRect.right, cropRect.top), size = Size(size.width - cropRect.right, cropRect.height()))
+                    drawRect(
+                        Color.Black.copy(alpha = 0.5f),
+                        topLeft = Offset(0f, cropRect.bottom),
+                        size = Size(size.width, size.height - cropRect.bottom)
+                    )
+                    drawRect(
+                        Color.Black.copy(alpha = 0.5f),
+                        topLeft = Offset(0f, cropRect.top),
+                        size = Size(cropRect.left, cropRect.height())
+                    )
+                    drawRect(
+                        Color.Black.copy(alpha = 0.5f),
+                        topLeft = Offset(cropRect.right, cropRect.top),
+                        size = Size(size.width - cropRect.right, cropRect.height())
+                    )
 
                     drawRect(
                         color = Color.White,
@@ -694,21 +793,61 @@ private fun CropWorkspace(
                         size = Size(cropRect.width(), cropRect.height()),
                         style = Stroke(2.dp.toPx())
                     )
-                    
+
                     val handleSize = 10.dp.toPx()
                     val handleStroke = 3.dp.toPx()
-                    
-                    drawLine(Color.White, Offset(cropRect.left, cropRect.top), Offset(cropRect.left + handleSize, cropRect.top), handleStroke)
-                    drawLine(Color.White, Offset(cropRect.left, cropRect.top), Offset(cropRect.left, cropRect.top + handleSize), handleStroke)
-                    
-                    drawLine(Color.White, Offset(cropRect.right, cropRect.top), Offset(cropRect.right - handleSize, cropRect.top), handleStroke)
-                    drawLine(Color.White, Offset(cropRect.right, cropRect.top), Offset(cropRect.right, cropRect.top + handleSize), handleStroke)
-                    
-                    drawLine(Color.White, Offset(cropRect.left, cropRect.bottom), Offset(cropRect.left + handleSize, cropRect.bottom), handleStroke)
-                    drawLine(Color.White, Offset(cropRect.left, cropRect.bottom), Offset(cropRect.left, cropRect.bottom - handleSize), handleStroke)
-                    
-                    drawLine(Color.White, Offset(cropRect.right, cropRect.bottom), Offset(cropRect.right - handleSize, cropRect.bottom), handleStroke)
-                    drawLine(Color.White, Offset(cropRect.right, cropRect.bottom), Offset(cropRect.right, cropRect.bottom - handleSize), handleStroke)
+
+                    drawLine(
+                        Color.White,
+                        Offset(cropRect.left, cropRect.top),
+                        Offset(cropRect.left + handleSize, cropRect.top),
+                        handleStroke
+                    )
+                    drawLine(
+                        Color.White,
+                        Offset(cropRect.left, cropRect.top),
+                        Offset(cropRect.left, cropRect.top + handleSize),
+                        handleStroke
+                    )
+
+                    drawLine(
+                        Color.White,
+                        Offset(cropRect.right, cropRect.top),
+                        Offset(cropRect.right - handleSize, cropRect.top),
+                        handleStroke
+                    )
+                    drawLine(
+                        Color.White,
+                        Offset(cropRect.right, cropRect.top),
+                        Offset(cropRect.right, cropRect.top + handleSize),
+                        handleStroke
+                    )
+
+                    drawLine(
+                        Color.White,
+                        Offset(cropRect.left, cropRect.bottom),
+                        Offset(cropRect.left + handleSize, cropRect.bottom),
+                        handleStroke
+                    )
+                    drawLine(
+                        Color.White,
+                        Offset(cropRect.left, cropRect.bottom),
+                        Offset(cropRect.left, cropRect.bottom - handleSize),
+                        handleStroke
+                    )
+
+                    drawLine(
+                        Color.White,
+                        Offset(cropRect.right, cropRect.bottom),
+                        Offset(cropRect.right - handleSize, cropRect.bottom),
+                        handleStroke
+                    )
+                    drawLine(
+                        Color.White,
+                        Offset(cropRect.right, cropRect.bottom),
+                        Offset(cropRect.right, cropRect.bottom - handleSize),
+                        handleStroke
+                    )
                 }
             }
         }
@@ -732,7 +871,11 @@ private fun CropBottomRow(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            SubScreenActionButton("Rotate", Icons.AutoMirrored.Filled.RotateRight, onClick = onRotate)
+            SubScreenActionButton(
+                "Rotate",
+                Icons.AutoMirrored.Filled.RotateRight,
+                onClick = onRotate
+            )
             SubScreenActionButton("H-Flip", Icons.Default.Flip, onClick = onHFlip)
             SubScreenActionButton("V-Flip", Icons.Default.Flip, onClick = onVFlip)
         }
@@ -754,12 +897,16 @@ private fun DrawWorkspace(
     val paths = remember { mutableStateListOf<DrawPath>() }
     var currentPath by remember { mutableStateOf<NativePath?>(null) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
-    
+    var eraserCursorPosition by remember { mutableStateOf<Offset?>(null) }
+
     var drawCounter by remember { mutableIntStateOf(0) }
 
     val imageWidth = bitmap.width.toFloat()
     val imageHeight = bitmap.height.toFloat()
-    val screenScale = if (canvasSize.width > 0) min(canvasSize.width / imageWidth, canvasSize.height / imageHeight) else 1f
+    val screenScale = if (canvasSize.width > 0) min(
+        canvasSize.width / imageWidth,
+        canvasSize.height / imageHeight
+    ) else 1f
     val drawWidth = imageWidth * screenScale
     val drawHeight = imageHeight * screenScale
     val imgLeft = (canvasSize.width - drawWidth) / 2
@@ -777,16 +924,17 @@ private fun DrawWorkspace(
                 strokeJoin = AndroidPaint.Join.ROUND
                 strokeCap = AndroidPaint.Cap.ROUND
             }
-            
+
             paths.forEach { drawPath ->
                 paint.color = drawPath.color.toArgb()
                 paint.strokeWidth = drawPath.strokeWidth * scale
                 if (drawPath.isEraser) {
-                    paint.xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                    paint.xfermode =
+                        android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
                 } else {
                     paint.xfermode = null
                 }
-                
+
                 val matrix = AndroidMatrix()
                 matrix.postScale(scale, scale)
                 val scaledPath = NativePath(drawPath.path)
@@ -800,25 +948,41 @@ private fun DrawWorkspace(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onGloballyPositioned { canvasSize = it.size.toSize() }
+            .onGloballyPositioned { }
             .pointerInput(selectedColor, selectedTool, selectedEraserSize, imgLeft, imgTop) {
                 detectDragGestures(
                     onDragStart = { offset ->
                         val path = NativePath()
                         path.moveTo(offset.x - imgLeft, offset.y - imgTop)
                         currentPath = path
+                        eraserCursorPosition = if (selectedTool == DrawTool.Eraser) offset else null
                         drawCounter++
                     },
                     onDrag = { change, _ ->
                         change.consume()
                         currentPath?.lineTo(change.position.x - imgLeft, change.position.y - imgTop)
+                        eraserCursorPosition =
+                            if (selectedTool == DrawTool.Eraser) change.position else null
                         drawCounter++
                     },
                     onDragEnd = {
                         currentPath?.let {
-                            paths.add(DrawPath(it, selectedColor, if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f, selectedTool == DrawTool.Eraser))
+                            paths.add(
+                                DrawPath(
+                                    it,
+                                    selectedColor,
+                                    if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f,
+                                    selectedTool == DrawTool.Eraser
+                                )
+                            )
                         }
                         currentPath = null
+                        eraserCursorPosition = null
+                        drawCounter++
+                    },
+                    onDragCancel = {
+                        currentPath = null
+                        eraserCursorPosition = null
                         drawCounter++
                     }
                 )
@@ -826,11 +990,19 @@ private fun DrawWorkspace(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCounter
-            
+
             drawIntoCanvas { canvas ->
-                canvas.nativeCanvas.drawBitmap(bitmap, null, RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight), null)
-                
-                canvas.saveLayer(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height), Paint())
+                canvas.nativeCanvas.drawBitmap(
+                    bitmap,
+                    null,
+                    RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight),
+                    null
+                )
+
+                canvas.saveLayer(
+                    androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height),
+                    Paint()
+                )
 
                 canvas.translate(imgLeft, imgTop)
 
@@ -847,16 +1019,35 @@ private fun DrawWorkspace(
                     paint.strokeWidth = drawPath.strokeWidth
                     canvas.drawPath(drawPath.path.asComposePath(), paint)
                 }
-                
+
                 currentPath?.let { path ->
                     paint.color = selectedColor
-                    paint.blendMode = if (selectedTool == DrawTool.Eraser) BlendMode.Clear else BlendMode.SrcOver
-                    paint.strokeWidth = if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f
+                    paint.blendMode =
+                        if (selectedTool == DrawTool.Eraser) BlendMode.Clear else BlendMode.SrcOver
+                    paint.strokeWidth =
+                        if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f
                     canvas.drawPath(path.asComposePath(), paint)
                 }
-                
+
                 canvas.restore()
             }
+
+            eraserCursorPosition
+                ?.takeIf { selectedTool == DrawTool.Eraser }
+                ?.let { cursorPosition ->
+                    val radius = selectedEraserSize / 2f
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.18f),
+                        radius = radius,
+                        center = cursorPosition
+                    )
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.72f),
+                        radius = radius,
+                        center = cursorPosition,
+                        style = Stroke(width = 1.5.dp.toPx())
+                    )
+                }
         }
     }
 }
@@ -871,9 +1062,9 @@ private fun DrawBottomRow(
     onEraserSizeSelected: (Float) -> Unit
 ) {
     val eraserSizes = listOf(
-        "Small" to 15f,
-        "Medium" to 30f,
-        "Large" to 60f
+        "Small" to 30f,
+        "Medium" to 60f,
+        "Large" to 120f
     )
 
     Column(
@@ -891,11 +1082,15 @@ private fun DrawBottomRow(
             ) {
                 eraserSizes.forEach { (label, size) ->
                     val isSelected = selectedEraserSize == size
+                    val pillShape = RoundedCornerShape(20.dp)
                     Surface(
                         onClick = { onEraserSizeSelected(size) },
-                        modifier = Modifier.clip(RoundedCornerShape(20.dp)),
+                        shape = pillShape,
                         color = if (isSelected) SolariTheme.colors.primary.copy(alpha = 0.2f) else Color.Transparent,
-                        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, SolariTheme.colors.primary) else null
+                        border = if (isSelected) androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            SolariTheme.colors.primary
+                        ) else null
                     ) {
                         Box(modifier = Modifier.padding(12.dp, 6.dp, 12.dp, 6.dp)) {
                             Text(
@@ -926,9 +1121,17 @@ private fun DrawBottomRow(
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            ToolButton("Brush", Icons.Default.Brush, isSelected = selectedTool == DrawTool.Brush) { onToolSelected(DrawTool.Brush) }
+            ToolButton(
+                "Brush",
+                Icons.Default.Brush,
+                isSelected = selectedTool == DrawTool.Brush
+            ) { onToolSelected(DrawTool.Brush) }
             Spacer(modifier = Modifier.width(24.dp))
-            ToolButton("Eraser", Icons.Default.AutoFixNormal, isSelected = selectedTool == DrawTool.Eraser) { onToolSelected(DrawTool.Eraser) }
+            ToolButton(
+                "Eraser",
+                Icons.Default.AutoFixNormal,
+                isSelected = selectedTool == DrawTool.Eraser
+            ) { onToolSelected(DrawTool.Eraser) }
         }
         Spacer(modifier = Modifier.height(16.dp))
     }
@@ -939,7 +1142,6 @@ private fun TextWorkspace(
     bitmap: Bitmap,
     selectedColor: Color,
     applyTrigger: Boolean,
-    onCancel: () -> Unit,
     onApply: (Bitmap) -> Unit
 ) {
     var overlay by remember { mutableStateOf<TextOverlay?>(null) }
@@ -954,21 +1156,21 @@ private fun TextWorkspace(
             if (o.text != "..." && o.text.isNotEmpty()) {
                 val result = currentWorkingBitmap.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = AndroidCanvas(result)
-                
+
                 val imageWidth = currentWorkingBitmap.width.toFloat()
                 val imageHeight = currentWorkingBitmap.height.toFloat()
                 val containerWidth = canvasSize.width
                 val containerHeight = canvasSize.height
-                
+
                 val scale = min(containerWidth / imageWidth, containerHeight / imageHeight)
                 val drawWidth = imageWidth * scale
                 val drawHeight = imageHeight * scale
                 val left = (containerWidth - drawWidth) / 2
                 val top = (containerHeight - drawHeight) / 2
-                
+
                 val bitmapX = (o.position.x - left) / scale
                 val bitmapY = (o.position.y - top) / scale
-                
+
                 val paint = AndroidPaint().apply {
                     color = o.color.toArgb()
                     textSize = with(density) { 24.sp.toPx() } * o.scale / scale
@@ -976,15 +1178,14 @@ private fun TextWorkspace(
                     isAntiAlias = true
                     typeface = android.graphics.Typeface.DEFAULT_BOLD
                 }
-                
+
                 val fontMetrics = paint.fontMetrics
                 val verticalOffset = (fontMetrics.ascent + fontMetrics.descent) / 2f
                 val finalY = bitmapY - verticalOffset
 
-                canvas.save()
-                canvas.rotate(o.rotation, bitmapX, bitmapY)
-                canvas.drawText(o.text, bitmapX, finalY, paint)
-                canvas.restore()
+                canvas.withRotation(o.rotation, bitmapX, bitmapY) {
+                    drawText(o.text, bitmapX, finalY, paint)
+                }
                 currentWorkingBitmap = result
             }
         }
@@ -999,7 +1200,7 @@ private fun TextWorkspace(
             onApply(currentWorkingBitmap)
         }
     }
-    
+
     LaunchedEffect(selectedColor) {
         overlay?.color = selectedColor
     }
@@ -1062,7 +1263,12 @@ private fun TextWorkspace(
                         .align(Alignment.TopStart)
                         .size(24.dp)
                 ) {
-                    Icon(Icons.Default.Delete, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Icon(
+                        Icons.Default.Delete,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
 
                 IconButton(
@@ -1075,12 +1281,18 @@ private fun TextWorkspace(
                                 change.consume()
                                 val centerX = o.position.x
                                 val centerY = o.position.y
-                                val angle = atan2(change.position.y - centerY, change.position.x - centerX)
+                                val angle =
+                                    atan2(change.position.y - centerY, change.position.x - centerX)
                                 o.rotation = Math.toDegrees(angle.toDouble()).toFloat()
                             }
                         }
                 ) {
-                    Icon(Icons.AutoMirrored.Filled.RotateRight, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Icon(
+                        Icons.AutoMirrored.Filled.RotateRight,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
 
                 BasicTextField(
@@ -1100,10 +1312,10 @@ private fun TextWorkspace(
                         .padding(32.dp, 24.dp, 32.dp, 24.dp)
                         .focusRequester(focusRequester)
                         .onGloballyPositioned {
-                             if (o.text == "..." && o.isPlaceholder) {
-                                 focusRequester.requestFocus()
-                                 keyboardController?.show()
-                             }
+                            if (o.text == "..." && o.isPlaceholder) {
+                                focusRequester.requestFocus()
+                                keyboardController?.show()
+                            }
                         },
                     textStyle = TextStyle(
                         color = o.color,
@@ -1127,14 +1339,20 @@ private fun TextWorkspace(
                         .pointerInput(Unit) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                val dist = sqrt(dragAmount.x * dragAmount.x + dragAmount.y * dragAmount.y)
+                                val dist =
+                                    sqrt(dragAmount.x * dragAmount.x + dragAmount.y * dragAmount.y)
                                 if (dragAmount.x > 0 || dragAmount.y > 0) o.scale += dist * 0.005f
                                 else o.scale -= dist * 0.005f
                                 o.scale = o.scale.coerceIn(0.5f, 5f)
                             }
                         }
                 ) {
-                    Icon(Icons.Default.OpenInFull, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    Icon(
+                        Icons.Default.OpenInFull,
+                        null,
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
                 }
             }
         }
@@ -1177,34 +1395,38 @@ private fun AdjustWorkspace(
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = AndroidCanvas(result)
         val paint = AndroidPaint()
-        
+
         val cm = ColorMatrix()
-        
+
         val exposure = values[AdjustType.Exposure] ?: 0f
         val contrast = (values[AdjustType.Contrast] ?: 0f) + 1f
         val brightness = (values[AdjustType.Brightness] ?: 0f) * 255f
         val saturation = (values[AdjustType.Saturation] ?: 0f) + 1f
         val temperature = values[AdjustType.Temperature] ?: 0f
-        
-        cm.set(floatArrayOf(
-            contrast, 0f, 0f, 0f, brightness + exposure * 100,
-            0f, contrast, 0f, 0f, brightness + exposure * 100,
-            0f, 0f, contrast, 0f, brightness + exposure * 100,
-            0f, 0f, 0f, 1f, 0f
-        ))
-        
+
+        cm.set(
+            floatArrayOf(
+                contrast, 0f, 0f, 0f, brightness + exposure * 100,
+                0f, contrast, 0f, 0f, brightness + exposure * 100,
+                0f, 0f, contrast, 0f, brightness + exposure * 100,
+                0f, 0f, 0f, 1f, 0f
+            )
+        )
+
         val satCm = ColorMatrix()
         satCm.setSaturation(saturation)
         cm.postConcat(satCm)
-        
-        val tempCm = ColorMatrix(floatArrayOf(
-            1f + temperature * 0.1f, 0f, 0f, 0f, 0f,
-            0f, 1f, 0f, 0f, 0f,
-            0f, 0f, 1f - temperature * 0.1f, 0f, 0f,
-            0f, 0f, 0f, 1f, 0f
-        ))
+
+        val tempCm = ColorMatrix(
+            floatArrayOf(
+                1f + temperature * 0.1f, 0f, 0f, 0f, 0f,
+                0f, 1f, 0f, 0f, 0f,
+                0f, 0f, 1f - temperature * 0.1f, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f
+            )
+        )
         cm.postConcat(tempCm)
-        
+
         paint.colorFilter = ColorMatrixColorFilter(cm)
         canvas.drawBitmap(bitmap, 0f, 0f, paint)
         result
@@ -1256,7 +1478,7 @@ private fun AdjustBottomRow(
                 )
             }
         }
-        
+
         Slider(
             value = values[activeType] ?: 0f,
             onValueChange = { newVal ->
@@ -1300,10 +1522,18 @@ private fun SubScreenTopBar(onCancel: () -> Unit, onApply: () -> Unit) {
 
 @Composable
 private fun SubScreenActionButton(label: String, icon: ImageVector, onClick: () -> Unit) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable(onClick = onClick)) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.clickable(onClick = onClick)
+    ) {
         Icon(icon, null, tint = SolariTheme.colors.onBackground, modifier = Modifier.size(24.dp))
         Spacer(modifier = Modifier.height(4.dp))
-        Text(label, color = SolariTheme.colors.onBackground, fontSize = 10.sp, fontFamily = PlusJakartaSans)
+        Text(
+            label,
+            color = SolariTheme.colors.onBackground,
+            fontSize = 10.sp,
+            fontFamily = PlusJakartaSans
+        )
     }
 }
 
@@ -1314,7 +1544,11 @@ private fun ColorButton(color: Color, isSelected: Boolean, onClick: () -> Unit) 
             .size(32.dp)
             .clip(CircleShape)
             .background(color)
-            .border(2.dp, if (isSelected) SolariTheme.colors.primary else Color.Transparent, CircleShape)
+            .border(
+                2.dp,
+                if (isSelected) SolariTheme.colors.primary else Color.Transparent,
+                CircleShape
+            )
             .clickable(onClick = onClick)
     )
 }
@@ -1325,15 +1559,28 @@ private fun ToolButton(label: String, icon: ImageVector, isSelected: Boolean, on
         onClick = onClick,
         shape = RoundedCornerShape(20.dp),
         color = if (isSelected) SolariTheme.colors.primary.copy(alpha = 0.1f) else Color.Transparent,
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, SolariTheme.colors.primary) else null
+        border = if (isSelected) androidx.compose.foundation.BorderStroke(
+            1.dp,
+            SolariTheme.colors.primary
+        ) else null
     ) {
         Row(
             modifier = Modifier.padding(16.dp, 8.dp, 16.dp, 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(icon, null, tint = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground, modifier = Modifier.size(20.dp))
+            Icon(
+                icon,
+                null,
+                tint = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
+                modifier = Modifier.size(20.dp)
+            )
             Spacer(modifier = Modifier.width(8.dp))
-            Text(label, color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground, fontSize = 14.sp, fontFamily = PlusJakartaSans)
+            Text(
+                label,
+                color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
+                fontSize = 14.sp,
+                fontFamily = PlusJakartaSans
+            )
         }
     }
 }

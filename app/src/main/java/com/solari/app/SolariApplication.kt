@@ -1,9 +1,13 @@
 package com.solari.app
 
 import android.app.Application
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import com.solari.app.data.di.AppContainer
 
-class SolariApplication : Application() {
+class SolariApplication : Application(), ImageLoaderFactory {
     lateinit var appContainer: AppContainer
         private set
 
@@ -13,8 +17,27 @@ class SolariApplication : Application() {
         createNotificationChannels()
     }
 
+    override fun newImageLoader(): ImageLoader {
+        return ImageLoader.Builder(this)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.3)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizeBytes(250L * 1024 * 1024)
+                    .build()
+            }
+            .crossfade(false)
+            .respectCacheHeaders(false)
+            .build()
+    }
+
     private fun createNotificationChannels() {
-        val notificationManager = getSystemService(android.app.NotificationManager::class.java) ?: return
+        val notificationManager =
+            getSystemService(android.app.NotificationManager::class.java) ?: return
 
         val directMessagesChannel = android.app.NotificationChannel(
             "direct_messages",

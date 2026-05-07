@@ -13,7 +13,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 class TokenCipher {
     fun encrypt(plaintext: String): String {
-        val cipher = Cipher.getInstance(Transformation)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
 
         val iv = Base64.encodeToString(cipher.iv, Base64.NO_WRAP)
@@ -22,46 +22,45 @@ class TokenCipher {
             Base64.NO_WRAP
         )
 
-        return "$PayloadVersion:$iv:$ciphertext"
+        return "$PAYLOAD_VERSION:$iv:$ciphertext"
     }
 
     fun decrypt(payload: String): String {
         val parts = payload.split(":")
-        if (parts.size != 3 || parts[0] != PayloadVersion) {
+        if (parts.size != 3 || parts[0] != PAYLOAD_VERSION) {
             throw GeneralSecurityException("Unsupported token payload format.")
         }
 
         val iv = Base64.decode(parts[1], Base64.NO_WRAP)
         val ciphertext = Base64.decode(parts[2], Base64.NO_WRAP)
-        val cipher = Cipher.getInstance(Transformation)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(
             Cipher.DECRYPT_MODE,
             getOrCreateKey(),
-            GCMParameterSpec(GcmTagLengthBits, iv)
+            GCMParameterSpec(GCM_TAG_LENGTH_BITS, iv)
         )
 
         return String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8)
     }
 
     private fun getOrCreateKey(): SecretKey {
-        val keyStore = KeyStore.getInstance(AndroidKeyStore).apply {
+        val keyStore = KeyStore.getInstance(ANDROID_KEYSTORE).apply {
             load(null)
         }
 
-        val existingKey = keyStore.getKey(KeyAlias, null)
+        val existingKey = keyStore.getKey(KEY_ALIAS, null)
         if (existingKey is SecretKey) {
             return existingKey
         }
 
         val keyGenerator = KeyGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_AES,
-            AndroidKeyStore
+            ANDROID_KEYSTORE
         )
         val keySpec = KeyGenParameterSpec.Builder(
-            KeyAlias,
+            KEY_ALIAS,
             KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
         )
-            // GCM provides authenticated encryption, so corrupted ciphertext fails closed.
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
             .setRandomizedEncryptionRequired(true)
@@ -72,10 +71,10 @@ class TokenCipher {
     }
 
     private companion object {
-        const val AndroidKeyStore = "AndroidKeyStore"
-        const val KeyAlias = "solari.auth.session.v1"
-        const val PayloadVersion = "v1"
-        const val Transformation = "AES/GCM/NoPadding"
-        const val GcmTagLengthBits = 128
+        const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        const val KEY_ALIAS = "solari.auth.session.v1"
+        const val PAYLOAD_VERSION = "v1"
+        const val TRANSFORMATION = "AES/GCM/NoPadding"
+        const val GCM_TAG_LENGTH_BITS = 128
     }
 }

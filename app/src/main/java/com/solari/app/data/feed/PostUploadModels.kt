@@ -1,8 +1,12 @@
 package com.solari.app.data.feed
 
+import com.solari.app.ui.models.CaptionMetadata
+
 data class InitiatePostUploadRequest(
     val contentType: String,
     val caption: String?,
+    val captionType: String? = null,
+    val captionMetadata: CaptionMetadata? = null,
     val audienceType: String,
     val viewerIds: List<String>,
     val width: Int,

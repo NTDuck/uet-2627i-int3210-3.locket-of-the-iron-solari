@@ -63,8 +63,18 @@ fun SolariTextField(
                 .then(textFieldModifier)
                 .fillMaxWidth()
                 .height(56.dp),
-            textStyle = TextStyle(fontFamily = PlusJakartaSans, fontSize = textFontSize, color = Color.White),
-            placeholder = { Text(text = placeholder, color = Color.Gray, fontFamily = PlusJakartaSans) },
+            textStyle = TextStyle(
+                fontFamily = PlusJakartaSans,
+                fontSize = textFontSize,
+                color = Color.White
+            ),
+            placeholder = {
+                Text(
+                    text = placeholder,
+                    color = Color.Gray,
+                    fontFamily = PlusJakartaSans
+                )
+            },
             visualTransformation = if (isPassword && !isPasswordVisible) {
                 PasswordVisualTransformation()
             } else {

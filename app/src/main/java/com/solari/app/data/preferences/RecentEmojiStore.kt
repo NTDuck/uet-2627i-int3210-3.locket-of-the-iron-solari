@@ -7,11 +7,10 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 
 private val Context.recentEmojiDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "solari_recent_emojis"
@@ -32,17 +31,13 @@ class RecentEmojiStore(context: Context) {
             preferences[RecentEmojisKey].toEmojiList()
         }
 
-    suspend fun getRecentEmojis(): List<String> {
-        return recentEmojis.first()
-    }
-
     suspend fun recordEmoji(emoji: String): List<String> {
         var updatedEmojis = emptyList<String>()
         dataStore.edit { preferences ->
             updatedEmojis = preferences[RecentEmojisKey]
                 .toEmojiList()
                 .withRecordedEmoji(emoji)
-            preferences[RecentEmojisKey] = updatedEmojis.joinToString(Separator)
+            preferences[RecentEmojisKey] = updatedEmojis.joinToString(SEPARATOR)
         }
 
         return updatedEmojis
@@ -60,7 +55,7 @@ class RecentEmojiStore(context: Context) {
 
     private fun String?.toEmojiList(): List<String> {
         return this
-            ?.split(Separator)
+            ?.split(SEPARATOR)
             ?.filter { it.isNotBlank() }
             .orEmpty()
     }
@@ -71,14 +66,14 @@ class RecentEmojiStore(context: Context) {
             this@withRecordedEmoji
                 .asSequence()
                 .filterNot { it == emoji }
-                .take(MaxRecentEmojis - 1)
+                .take(MAX_RECENT_EMOJIS - 1)
                 .forEach(::add)
         }
     }
 
     private companion object {
         val RecentEmojisKey = stringPreferencesKey("recent_emojis")
-        const val Separator = "\u001F"
-        const val MaxRecentEmojis = 28
+        const val SEPARATOR = "\u001F"
+        const val MAX_RECENT_EMOJIS = 28
     }
 }

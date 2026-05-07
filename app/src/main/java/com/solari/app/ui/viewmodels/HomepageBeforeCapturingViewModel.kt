@@ -9,11 +9,11 @@ import androidx.lifecycle.viewModelScope
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.preferences.UserPreferencesStore
 import com.solari.app.data.user.UserRepository
-import java.util.TimeZone
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import java.util.TimeZone
 
 class HomepageBeforeCapturingViewModel(
     private val userRepository: UserRepository,

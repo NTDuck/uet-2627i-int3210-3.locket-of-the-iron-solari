@@ -24,7 +24,10 @@ suspend fun requestGoogleIdToken(
     serverClientId: String
 ): GoogleIdTokenResult {
     if (serverClientId.isBlank()) {
-        Log.d(GoogleSignInLogTag, "Google sign-in failed before credential request: missing server client ID.")
+        Log.d(
+            GoogleSignInLogTag,
+            "Google sign-in failed before credential request: missing server client ID."
+        )
         return GoogleIdTokenResult.Failure("Google sign-in is not configured.")
     }
 

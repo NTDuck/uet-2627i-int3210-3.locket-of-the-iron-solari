@@ -1,17 +1,25 @@
 package com.solari.app.ui.components
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.annotation.DrawableRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,14 +39,26 @@ fun SolariBottomNavBar(
     val items = listOf(
         NavNavItem(SolariRoute.Screen.CameraBefore.name, imageVector = Icons.Outlined.PhotoCamera),
         NavNavItem(SolariRoute.Screen.Feed.name, drawableRes = R.drawable.grid),
-        NavNavItem(SolariRoute.Screen.Conversations.name, imageVector = Icons.Outlined.ChatBubbleOutline),
+        NavNavItem(
+            SolariRoute.Screen.Conversations.name,
+            imageVector = Icons.Outlined.ChatBubbleOutline
+        ),
         NavNavItem(SolariRoute.Screen.Profile.name, imageVector = Icons.Outlined.PersonOutline)
     )
 
     val normalizedSelectedRoute = when {
-        selectedRoute.startsWith(SolariRoute.Screen.CameraBefore.name) || selectedRoute.startsWith(SolariRoute.Screen.CameraAfter.name) -> SolariRoute.Screen.CameraBefore.name
-        selectedRoute.startsWith(SolariRoute.Screen.Feed.name) || selectedRoute.startsWith(SolariRoute.Screen.FeedBrowse.name) -> SolariRoute.Screen.Feed.name
-        selectedRoute.startsWith(SolariRoute.Screen.Conversations.name) || selectedRoute.startsWith(SolariRoute.Screen.Chat.name) -> SolariRoute.Screen.Conversations.name
+        selectedRoute.startsWith(SolariRoute.Screen.CameraBefore.name) || selectedRoute.startsWith(
+            SolariRoute.Screen.CameraAfter.name
+        ) -> SolariRoute.Screen.CameraBefore.name
+
+        selectedRoute.startsWith(SolariRoute.Screen.Feed.name) || selectedRoute.startsWith(
+            SolariRoute.Screen.FeedBrowse.name
+        ) -> SolariRoute.Screen.Feed.name
+
+        selectedRoute.startsWith(SolariRoute.Screen.Conversations.name) || selectedRoute.startsWith(
+            SolariRoute.Screen.Chat.name
+        ) -> SolariRoute.Screen.Conversations.name
+
         selectedRoute.startsWith(SolariRoute.Screen.Profile.name) -> SolariRoute.Screen.Profile.name
         else -> selectedRoute
     }

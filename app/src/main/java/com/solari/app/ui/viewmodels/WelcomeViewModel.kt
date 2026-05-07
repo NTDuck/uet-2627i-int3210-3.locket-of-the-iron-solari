@@ -75,7 +75,7 @@ class WelcomeViewModel(
 
                 is ApiResult.Failure -> {
                     Log.d(
-                        GoogleSignInLogTag,
+                        GOOGLE_SIGNIN_LOG_TAG,
                         "Backend Google sign-in failed. statusCode=${result.statusCode}, type=${result.type}, message=${result.message}",
                         result.cause
                     )
@@ -117,6 +117,6 @@ class WelcomeViewModel(
     }
 
     private companion object {
-        const val GoogleSignInLogTag = "SolariGoogleSignIn"
+        const val GOOGLE_SIGNIN_LOG_TAG = "SolariGoogleSignIn"
     }
 }

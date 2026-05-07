@@ -16,8 +16,7 @@ class SettingsViewModel(
     private val userPreferencesStore: UserPreferencesStore
 ) : ViewModel() {
     var isDarkMode by mutableStateOf(true)
-    var isNotificationsEnabled by mutableStateOf(false)
-    
+
     var currentLightTheme by mutableStateOf(SolariThemeVariant.DEFAULT_LIGHT)
     var currentDarkTheme by mutableStateOf(SolariThemeVariant.DEFAULT_DARK)
 
@@ -38,10 +37,6 @@ class SettingsViewModel(
         viewModelScope.launch {
             userPreferencesStore.updateDarkMode(enabled)
         }
-    }
-
-    fun toggleNotifications(enabled: Boolean) {
-        isNotificationsEnabled = enabled
     }
 
     fun setTheme(variant: SolariThemeVariant) {

@@ -9,5 +9,4 @@
     android:targetCellHeight="2"
     android:updatePeriodMillis="3600000"
     android:widgetCategory="home_screen"
-    android:resizeMode="horizontal|vertical">
-</appwidget-provider>
+    android:resizeMode="horizontal|vertical"></appwidget-provider>

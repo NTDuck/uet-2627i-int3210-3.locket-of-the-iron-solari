@@ -2,10 +2,11 @@ package com.solari.app.ui.screens
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.graphics.PathMeasure
 import android.content.pm.PackageManager
+import android.graphics.PathMeasure
 import android.net.Uri
 import android.util.Log
+import android.util.Rational
 import android.view.Surface
 import android.webkit.MimeTypeMap
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -20,7 +21,6 @@ import androidx.camera.core.MirrorMode
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.core.ViewPort
-import android.util.Rational
 import androidx.camera.extensions.ExtensionMode
 import androidx.camera.extensions.ExtensionsManager
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -33,26 +33,26 @@ import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateZoom
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -85,8 +85,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -94,13 +94,14 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.solari.app.ui.models.CapturedMedia
+import com.solari.app.ui.models.CapturedMediaSource
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.createCaptureCacheFile
 import com.solari.app.ui.util.scaledClickable
@@ -131,11 +132,7 @@ private enum class CaptureMode {
 @Composable
 fun HomepageBeforeCapturingScreen(
     viewModel: HomepageBeforeCapturingViewModel,
-    onNavigateBack: () -> Unit,
-    onCapture: (CapturedMedia) -> Unit,
-    onNavigateToFeed: () -> Unit,
-    onNavigateToChat: () -> Unit,
-    onNavigateToProfile: () -> Unit
+    onCapture: (CapturedMedia) -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -221,7 +218,8 @@ fun HomepageBeforeCapturingScreen(
                 CapturedMedia(
                     uri = cachedUri,
                     contentType = mimeType,
-                    isVideo = false
+                    isVideo = false,
+                    source = CapturedMediaSource.Gallery
                 )
             )
         }
@@ -273,8 +271,8 @@ fun HomepageBeforeCapturingScreen(
                 .setTargetRotation(rotation)
                 .build()
                 .also {
-                it.setSurfaceProvider(previewView.surfaceProvider)
-            }
+                    it.surfaceProvider = previewView.surfaceProvider
+                }
             imageCapture.targetRotation = rotation
             videoCapture.targetRotation = rotation
 
@@ -282,7 +280,8 @@ fun HomepageBeforeCapturingScreen(
                 .requireLensFacing(lensFacing)
                 .build()
             val (cameraSelector, extensionMode) = runCatching {
-                val extensionsManager = ExtensionsManager.getInstanceAsync(context, cameraProvider).get()
+                val extensionsManager =
+                    ExtensionsManager.getInstanceAsync(context, cameraProvider).get()
                 val extensionMode = PreferredExtensionModes.firstOrNull { mode ->
                     extensionsManager.isExtensionAvailable(baseCameraSelector, mode)
                 }
@@ -295,11 +294,16 @@ fun HomepageBeforeCapturingScreen(
                     ) to extensionMode
                 }
             }.getOrElse { error ->
-                Log.w("HomepageBeforeCapture", "Camera extensions unavailable; using base camera", error)
+                Log.w(
+                    "HomepageBeforeCapture",
+                    "Camera extensions unavailable; using base camera",
+                    error
+                )
                 baseCameraSelector to null
             }
 
-            val viewPort = previewView.viewPort ?: ViewPort.Builder(Rational(1, 1), rotation).build()
+            val viewPort =
+                previewView.viewPort ?: ViewPort.Builder(Rational(1, 1), rotation).build()
             val useCaseGroup = UseCaseGroup.Builder()
                 .addUseCase(preview)
                 .addUseCase(imageCapture)
@@ -316,7 +320,11 @@ fun HomepageBeforeCapturingScreen(
                 )
             } catch (error: Exception) {
                 if (extensionMode != null) {
-                    Log.w("HomepageBeforeCapture", "Extension bind failed; retrying base camera", error)
+                    Log.w(
+                        "HomepageBeforeCapture",
+                        "Extension bind failed; retrying base camera",
+                        error
+                    )
                     runCatching {
                         cameraProvider.unbindAll()
                         boundCamera = cameraProvider.bindToLifecycle(
@@ -325,7 +333,11 @@ fun HomepageBeforeCapturingScreen(
                             useCaseGroup
                         )
                     }.onFailure { fallbackError ->
-                        Log.e("HomepageBeforeCapture", "Failed to bind camera use cases", fallbackError)
+                        Log.e(
+                            "HomepageBeforeCapture",
+                            "Failed to bind camera use cases",
+                            fallbackError
+                        )
                     }
                 } else {
                     Log.e("HomepageBeforeCapture", "Failed to bind camera use cases", error)
@@ -335,14 +347,17 @@ fun HomepageBeforeCapturingScreen(
     }
 
     fun launchTimedCapture(captureAction: () -> Unit) {
-        if (timerValue <= 0) {
+        // Read the latest timer value directly from the ViewModel to ensure
+        // changes take effect immediately, even if the composable hasn't recomposed.
+        val currentTimerValue = viewModel.timerValue
+        if (currentTimerValue <= 0) {
             captureAction()
             return
         }
 
         scope.launch {
             isTimerRunning = true
-            countdownValue = timerValue
+            countdownValue = currentTimerValue
             while (countdownValue > 0) {
                 delay(1_000)
                 countdownValue -= 1
@@ -856,26 +871,26 @@ private fun GridOverlay() {
 
         drawLine(
             color = lineColor,
-            start = androidx.compose.ui.geometry.Offset(firstX, 0f),
-            end = androidx.compose.ui.geometry.Offset(firstX, size.height),
+            start = Offset(firstX, 0f),
+            end = Offset(firstX, size.height),
             strokeWidth = strokeWidth
         )
         drawLine(
             color = lineColor,
-            start = androidx.compose.ui.geometry.Offset(secondX, 0f),
-            end = androidx.compose.ui.geometry.Offset(secondX, size.height),
+            start = Offset(secondX, 0f),
+            end = Offset(secondX, size.height),
             strokeWidth = strokeWidth
         )
         drawLine(
             color = lineColor,
-            start = androidx.compose.ui.geometry.Offset(0f, firstY),
-            end = androidx.compose.ui.geometry.Offset(size.width, firstY),
+            start = Offset(0f, firstY),
+            end = Offset(size.width, firstY),
             strokeWidth = strokeWidth
         )
         drawLine(
             color = lineColor,
-            start = androidx.compose.ui.geometry.Offset(0f, secondY),
-            end = androidx.compose.ui.geometry.Offset(size.width, secondY),
+            start = Offset(0f, secondY),
+            end = Offset(size.width, secondY),
             strokeWidth = strokeWidth
         )
     }

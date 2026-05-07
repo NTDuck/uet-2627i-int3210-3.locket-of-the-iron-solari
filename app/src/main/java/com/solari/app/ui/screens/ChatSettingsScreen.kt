@@ -2,7 +2,17 @@ package com.solari.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -12,11 +22,20 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -35,17 +54,14 @@ fun ChatSettingsScreen(
     viewModel: ChatSettingsViewModel,
     onNavigateBack: () -> Unit,
     onClearHistoryComplete: (String) -> Unit,
-    onNavigateToCamera: () -> Unit,
-    onNavigateToFeed: () -> Unit,
-    onNavigateToChat: () -> Unit,
-    onNavigateToProfile: () -> Unit
 ) {
     val isAllLoading = viewModel.isLoading &&
             viewModel.username == null &&
             viewModel.isMuted == null
     val partner = viewModel.partner ?: initialPartner
     val displayName = if (viewModel.isReadOnly) "Someone" else partner?.displayName.orEmpty()
-    val displayUsername = if (viewModel.isReadOnly) "someone" else viewModel.username ?: partner?.username.orEmpty()
+    val displayUsername =
+        if (viewModel.isReadOnly) "someone" else viewModel.username ?: partner?.username.orEmpty()
     val displayAvatarUrl = if (viewModel.isReadOnly) null else partner?.profileImageUrl
     var showClearHistoryConfirm by remember { mutableStateOf(false) }
     var showBlockConfirm by remember { mutableStateOf(false) }
@@ -82,15 +98,16 @@ fun ChatSettingsScreen(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
                         tint = SolariTheme.colors.primary
-                        )
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                        text = "Chat Settings",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = SolariTheme.colors.onBackground
-                        )            }
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Chat Settings",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = SolariTheme.colors.onBackground
+                )
+            }
         }
     ) { innerPadding ->
         Box(
@@ -190,7 +207,11 @@ fun ChatSettingsScreen(
                     title = "Clear Chat History",
                     onClick = { showClearHistoryConfirm = true },
                     trailing = {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant)
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = null,
+                            tint = SolariTheme.colors.onSurfaceVariant
+                        )
                     }
                 )
 
@@ -203,7 +224,11 @@ fun ChatSettingsScreen(
                         titleColor = SolariTheme.colors.error,
                         onClick = { showBlockConfirm = true },
                         trailing = {
-                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant)
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = SolariTheme.colors.onSurfaceVariant
+                            )
                         }
                     )
                 }
@@ -232,10 +257,10 @@ fun ChatSettingsScreen(
             message = "This removes the visible message history on your side.",
             confirmText = "Clear",
             onConfirm = {
-                showClearHistoryConfirm = false
                 viewModel.clearChatHistory(chatId) {
                     onClearHistoryComplete("Chat history cleared")
                 }
+                showClearHistoryConfirm = false
             },
             onDismiss = { showClearHistoryConfirm = false }
         )
@@ -247,8 +272,8 @@ fun ChatSettingsScreen(
             message = "${partner?.displayName ?: "This user"} will no longer be able to interact with you.",
             confirmText = "Block",
             onConfirm = {
-                showBlockConfirm = false
                 viewModel.blockPartner(onBlocked = onNavigateBack)
+                showBlockConfirm = false
             },
             onDismiss = { showBlockConfirm = false }
         )

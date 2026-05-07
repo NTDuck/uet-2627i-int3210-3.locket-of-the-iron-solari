@@ -25,7 +25,8 @@ class FeedViewModel(
     private val userRepository: UserRepository,
     private val friendRepository: FriendRepository,
     private val conversationRepository: ConversationRepository,
-    private val postUploadCoordinator: PostUploadCoordinator
+    private val postUploadCoordinator: PostUploadCoordinator,
+    private val userPreferencesStore: com.solari.app.data.preferences.UserPreferencesStore
 ) : ViewModel() {
     var posts by mutableStateOf<List<Post>>(emptyList())
         private set
@@ -63,8 +64,10 @@ class FeedViewModel(
     var hasReachedEnd by mutableStateOf(false)
         private set
 
+    var deletedPostIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
     private var nextCursor: String? = null
-    private var registeredViewPostIds by mutableStateOf<Set<String>>(emptySet())
     private var remotePosts: List<Post> = emptyList()
     private var uploadEntries: List<PostUploadEntry> = emptyList()
 
@@ -72,6 +75,16 @@ class FeedViewModel(
         viewModelScope.launch {
             postUploadCoordinator.uploads.collectLatest { uploads ->
                 uploadEntries = uploads
+                applyDisplayPosts()
+            }
+        }
+
+        viewModelScope.launch {
+            feedRepository.deletedPostIds.collectLatest { deletedIds ->
+                deletedPostIds = deletedIds
+                remotePosts = remotePosts.filterNot { it.id in deletedIds }
+                postActivities = postActivities.filterKeys { it !in deletedIds }
+                loadingPostActivityIds = loadingPostActivityIds - deletedIds
                 applyDisplayPosts()
             }
         }
@@ -111,12 +124,14 @@ class FeedViewModel(
                     is ApiResult.Success -> {
                         currentUser = userResult.data
                     }
+
                     is ApiResult.Failure -> errorMessage = userResult.message
                 }
 
                 when (val friendsResult = friendRepository.getFriends()) {
                     is ApiResult.Success -> users = friendsResult.data
-                    is ApiResult.Failure -> if (errorMessage == null) errorMessage = friendsResult.message
+                    is ApiResult.Failure -> if (errorMessage == null) errorMessage =
+                        friendsResult.message
                 }
             } else {
                 isFetchingNextPage = true
@@ -132,13 +147,18 @@ class FeedViewModel(
                     val newPosts = feedResult.data.posts
                     nextCursor = feedResult.data.nextCursor
                     hasReachedEnd = nextCursor == null
+                    viewModelScope.launch {
+                        userPreferencesStore.updateLastFeedViewedTimestamp(System.currentTimeMillis())
+                    }
 
                     var postsToDisplay = newPosts
                     if (resetPagination && targetPostId != null && newPosts.none { it.id == targetPostId }) {
                         when (val postResult = feedRepository.getPost(targetPostId)) {
                             is ApiResult.Success -> {
-                                postsToDisplay = listOf(postResult.data) + newPosts.filter { it.id != targetPostId }
+                                postsToDisplay =
+                                    listOf(postResult.data) + newPosts.filter { it.id != targetPostId }
                             }
+
                             is ApiResult.Failure -> {
                                 // Fallback to just newPosts if fetching target fails
                             }
@@ -151,14 +171,16 @@ class FeedViewModel(
                         val existingIds = remotePosts.map { it.id }.toSet()
                         remotePosts + newPosts.filter { it.id !in existingIds }
                     }
-                    
+
                     val livePostIds = newPosts.map { it.id }.toSet()
                     postUploadCoordinator.removeSyncedUploads(livePostIds)
                     applyDisplayPosts()
-                    
-                    val displayedPostIds = posts.map(Post::id).toSet()
-                    postActivities = postActivities.filterKeys { it in displayedPostIds }
+
+                    if (postActivities.size > 100) {
+                        postActivities = postActivities.toList().takeLast(100).toMap()
+                    }
                 }
+
                 is ApiResult.Failure -> if (errorMessage == null) errorMessage = feedResult.message
             }
 
@@ -170,11 +192,13 @@ class FeedViewModel(
         viewModelScope.launch {
             when (val result = feedRepository.deletePost(postId)) {
                 is ApiResult.Success -> {
+                    postUploadCoordinator.removePost(postId)
                     remotePosts = remotePosts.filter { it.id != postId }
                     applyDisplayPosts()
                     postActivities = postActivities - postId
                     loadingPostActivityIds = loadingPostActivityIds - postId
                 }
+
                 is ApiResult.Failure -> errorMessage = result.message
             }
         }
@@ -219,27 +243,6 @@ class FeedViewModel(
         }
     }
 
-    fun registerPostView(post: Post) {
-        val currentUserId = currentUser?.id ?: return
-        if (post.uploadStatus != PostUploadStatus.None ||
-            post.author.id == currentUserId ||
-            post.id in registeredViewPostIds
-        ) {
-            return
-        }
-
-        registeredViewPostIds = registeredViewPostIds + post.id
-        viewModelScope.launch {
-            when (val result = feedRepository.registerPostView(post.id)) {
-                is ApiResult.Success -> Unit
-                is ApiResult.Failure -> {
-                    registeredViewPostIds = registeredViewPostIds - post.id
-                    errorMessage = result.message
-                }
-            }
-        }
-    }
-
     fun sendPostReaction(
         post: Post,
         emoji: String,
@@ -254,6 +257,7 @@ class FeedViewModel(
                     successMessage = "Reacted to ${post.author.displayName}'s post"
                     onSent()
                 }
+
                 is ApiResult.Failure -> errorMessage = result.message
             }
         }
@@ -270,7 +274,8 @@ class FeedViewModel(
         }
 
         viewModelScope.launch {
-            when (val conversationResult = conversationRepository.createConversation(post.author.id)) {
+            when (val conversationResult =
+                conversationRepository.createConversation(post.author.id)) {
                 is ApiResult.Failure -> errorMessage = conversationResult.message
                 is ApiResult.Success -> {
                     when (
@@ -285,6 +290,7 @@ class FeedViewModel(
                             successMessage = "Replied to ${post.author.displayName}'s post"
                             onSent()
                         }
+
                         is ApiResult.Failure -> errorMessage = messageResult.message
                     }
                 }
@@ -297,7 +303,7 @@ class FeedViewModel(
         successMessage = null
     }
 
-    fun addOptimisticPost(draft: OptimisticPostDraft) = Unit
+    fun addOptimisticPost() = Unit
 
     private fun applyDisplayPosts() {
         val user = currentUser
@@ -310,8 +316,10 @@ class FeedViewModel(
                     entry.remotePost ?: entry.draft.toPost(user)
                 }
         }
-        val uploadPostIds = uploadPosts.map(Post::id).toSet()
-        val allPosts = uploadPosts + remotePosts.filterNot { it.id in uploadPostIds }
+        val visibleUploadPosts = uploadPosts.filterNot { it.id in deletedPostIds }
+        val uploadPostIds = visibleUploadPosts.map(Post::id).toSet()
+        val allPosts =
+            visibleUploadPosts + remotePosts.filterNot { it.id in uploadPostIds || it.id in deletedPostIds }
 
         val filteredPosts = if (authorFilterIds.isEmpty()) {
             allPosts
@@ -335,6 +343,8 @@ class FeedViewModel(
             mediaType = contentType,
             timestamp = createdAt,
             caption = caption,
+            captionType = captionType,
+            captionMetadata = captionMetadata,
             uploadStatus = uploadStatus,
             uploadError = uploadError
         )

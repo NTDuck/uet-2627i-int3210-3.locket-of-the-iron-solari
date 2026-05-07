@@ -12,7 +12,21 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -20,10 +34,36 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Logout
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.People
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,13 +102,9 @@ import kotlinx.coroutines.withContext
 fun ProfileScreen(
     viewModel: ProfileViewModel,
     settingsViewModel: SettingsViewModel,
-    onNavigateBack: () -> Unit,
     onNavigateToChangePassword: () -> Unit,
     onNavigateToChangeTheme: () -> Unit,
     onNavigateToManageFriends: () -> Unit,
-    onNavigateToCamera: () -> Unit,
-    onNavigateToFeed: () -> Unit,
-    onNavigateToChat: () -> Unit,
     onLogout: () -> Unit,
     externalFeedbackMessage: String? = null,
     onExternalFeedbackConsumed: () -> Unit = {}
@@ -86,10 +122,12 @@ fun ProfileScreen(
     var pillIsSuccess by remember { mutableStateOf(false) }
     var topPillVisible by remember { mutableStateOf(false) }
     var topPillMessage by remember { mutableStateOf("") }
-    var topPillEventId by remember { mutableStateOf(0) }
+    var topPillIsSuccess by remember { mutableStateOf(false) }
+    var topPillEventId by remember { mutableIntStateOf(0) }
     var suppressNextBottomError by remember { mutableStateOf(false) }
+    var routeNextProfileEditFeedbackToTop by remember { mutableStateOf(false) }
 
-    var editingField by remember { mutableStateOf<String?>(null) } // "displayName", "email"
+    var editingField by remember { mutableStateOf<String?>(null) }
     var tempValue by remember { mutableStateOf("") }
 
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -109,11 +147,13 @@ fun ProfileScreen(
             viewModel.clearMessages()
         }
     }
+
     fun openAvatarPicker() {
         avatarPicker.launch(
             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
         )
     }
+
     fun updateSelectedAvatar() {
         val avatarUri = selectedAvatarUri ?: return
         val previousAvatarPreviewUri = committedAvatarPreviewUri
@@ -145,11 +185,17 @@ fun ProfileScreen(
             )
         }
     }
-    fun showTopError(message: String) {
-        suppressNextBottomError = true
+
+    fun showTopFeedback(message: String, isSuccess: Boolean) {
         topPillMessage = message
+        topPillIsSuccess = isSuccess
         topPillVisible = true
         topPillEventId += 1
+    }
+
+    fun showTopError(message: String) {
+        suppressNextBottomError = true
+        showTopFeedback(message = message, isSuccess = false)
     }
 
     fun deleteAccountWithGoogleVerification() {
@@ -186,6 +232,13 @@ fun ProfileScreen(
                 suppressNextBottomError = false
                 return@LaunchedEffect
             }
+
+            if (routeNextProfileEditFeedbackToTop) {
+                routeNextProfileEditFeedbackToTop = false
+                showTopFeedback(message = feedbackMessage, isSuccess = isSuccessFeedback)
+                return@LaunchedEffect
+            }
+
             pillMessage = feedbackMessage
             pillIsSuccess = isSuccessFeedback
             pillVisible = true
@@ -299,10 +352,18 @@ fun ProfileScreen(
                                     .size(32.dp)
                                     .scaledClickable(pressedScale = 1.2f) { openAvatarPicker() }
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(SolariTheme.colors.primary, RoundedCornerShape(8.dp)),
+                                    .background(
+                                        SolariTheme.colors.primary,
+                                        RoundedCornerShape(8.dp)
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Default.Edit, contentDescription = "Edit Avatar", tint = SolariTheme.colors.onPrimary, modifier = Modifier.size(16.dp))
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Edit Avatar",
+                                    tint = SolariTheme.colors.onPrimary,
+                                    modifier = Modifier.size(16.dp)
+                                )
                             }
                         }
                         AnimatedVisibility(visible = selectedAvatarUri != null) {
@@ -323,7 +384,10 @@ fun ProfileScreen(
                                         fontSize = 13.sp,
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                        modifier = Modifier.padding(
+                                            horizontal = 16.dp,
+                                            vertical = 8.dp
+                                        )
                                     )
                                 }
 
@@ -339,7 +403,10 @@ fun ProfileScreen(
                                         fontSize = 13.sp,
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                        modifier = Modifier.padding(
+                                            horizontal = 16.dp,
+                                            vertical = 8.dp
+                                        )
                                     )
                                 }
                             }
@@ -378,6 +445,7 @@ fun ProfileScreen(
                             value = tempValue,
                             onValueChange = { tempValue = it },
                             onDone = {
+                                routeNextProfileEditFeedbackToTop = true
                                 viewModel.updateEmail(tempValue)
                                 editingField = null
                                 focusManager.clearFocus()
@@ -410,6 +478,7 @@ fun ProfileScreen(
                             value = tempValue,
                             onValueChange = { tempValue = it },
                             onDone = {
+                                routeNextProfileEditFeedbackToTop = true
                                 viewModel.updateDisplayName(tempValue)
                                 editingField = null
                                 focusManager.clearFocus()
@@ -474,7 +543,13 @@ fun ProfileScreen(
                         icon = Icons.Default.People,
                         title = "Manage Friends",
                         onClick = onNavigateToManageFriends,
-                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant) }
+                        trailing = {
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = SolariTheme.colors.onSurfaceVariant
+                            )
+                        }
                     )
                 }
 
@@ -497,7 +572,13 @@ fun ProfileScreen(
                             icon = Icons.Default.Lock,
                             title = "Change Password",
                             onClick = onNavigateToChangePassword,
-                            trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant) }
+                            trailing = {
+                                Icon(
+                                    Icons.Default.ChevronRight,
+                                    contentDescription = null,
+                                    tint = SolariTheme.colors.onSurfaceVariant
+                                )
+                            }
                         )
                     }
 
@@ -509,7 +590,13 @@ fun ProfileScreen(
                         icon = Icons.Default.Palette,
                         title = "Change Theme",
                         onClick = onNavigateToChangeTheme,
-                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant) }
+                        trailing = {
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = SolariTheme.colors.onSurfaceVariant
+                            )
+                        }
                     )
                 }
 
@@ -539,22 +626,37 @@ fun ProfileScreen(
                         icon = Icons.Default.Widgets,
                         title = "Add the Widget",
                         onClick = {
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                val appWidgetManager = android.appwidget.AppWidgetManager.getInstance(context)
-                                val myProvider = android.content.ComponentName(context, com.solari.app.widget.SolariWidgetProvider::class.java)
+                            val appWidgetManager =
+                                android.appwidget.AppWidgetManager.getInstance(context)
+                            val myProvider = android.content.ComponentName(
+                                context,
+                                com.solari.app.widget.SolariWidgetProvider::class.java
+                            )
 
-                                if (appWidgetManager.isRequestPinAppWidgetSupported) {
-                                    val successCallback = android.app.PendingIntent.getBroadcast(
+                            if (appWidgetManager.isRequestPinAppWidgetSupported) {
+                                val successCallback = android.app.PendingIntent.getBroadcast(
+                                    context,
+                                    0,
+                                    android.content.Intent(
                                         context,
-                                        0,
-                                        android.content.Intent(context, com.solari.app.widget.WidgetPinReceiver::class.java),
-                                        android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-                                    )
-                                    appWidgetManager.requestPinAppWidget(myProvider, null, successCallback)
-                                }
+                                        com.solari.app.widget.WidgetPinReceiver::class.java
+                                    ),
+                                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                                )
+                                appWidgetManager.requestPinAppWidget(
+                                    myProvider,
+                                    null,
+                                    successCallback
+                                )
                             }
                         },
-                        trailing = { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant) }
+                        trailing = {
+                            Icon(
+                                Icons.Default.ChevronRight,
+                                contentDescription = null,
+                                tint = SolariTheme.colors.onSurfaceVariant
+                            )
+                        }
                     )
                 }
 
@@ -628,7 +730,7 @@ fun ProfileScreen(
         ) {
             ProfileFeedbackPill(
                 message = topPillMessage,
-                isSuccess = false
+                isSuccess = topPillIsSuccess
             )
         }
     }
@@ -636,11 +738,10 @@ fun ProfileScreen(
     if (showDeleteConfirm) {
         DeleteAccountDialog(
             password = deletePassword,
-            onPasswordChange = { deletePassword = it },
+            onPasswordChange = { },
             isDeleting = viewModel.isDeletingAccount,
             onConfirm = {
                 val password = deletePassword
-                showDeleteConfirm = false
                 deletePassword = ""
                 viewModel.deleteAccount(
                     password = password,
@@ -652,10 +753,7 @@ fun ProfileScreen(
                     }
                 )
             },
-            onDismiss = {
-                showDeleteConfirm = false
-                deletePassword = ""
-            }
+            onDismiss = { }
         )
     }
 
@@ -666,8 +764,8 @@ fun ProfileScreen(
             confirmText = "Delete Account",
             confirmColor = SolariTheme.colors.error,
             onConfirm = {
-                showGoogleDeleteConfirm = false
                 deleteAccountWithGoogleVerification()
+                showGoogleDeleteConfirm = false
             },
             onDismiss = { showGoogleDeleteConfirm = false }
         )
@@ -679,9 +777,9 @@ fun ProfileScreen(
             message = "Your profile will show your username instead.",
             confirmText = "Remove Display Name",
             onConfirm = {
-                showRemoveDisplayNameConfirm = false
                 viewModel.clearMessages()
                 viewModel.removeDisplayName()
+                showRemoveDisplayNameConfirm = false
             },
             onDismiss = { showRemoveDisplayNameConfirm = false }
         )
@@ -693,12 +791,12 @@ fun ProfileScreen(
             message = "Your current avatar will be removed and the default avatar will be shown.",
             confirmText = "Remove Avatar",
             onConfirm = {
-                showRemoveAvatarConfirm = false
                 viewModel.clearMessages()
                 viewModel.removeAvatar {
                     selectedAvatarUri = null
                     committedAvatarPreviewUri = null
                 }
+                showRemoveAvatarConfirm = false
             },
             onDismiss = { showRemoveAvatarConfirm = false }
         )
@@ -711,14 +809,10 @@ fun ProfileScreen(
             confirmText = if (viewModel.isSigningOut) "Logging Out..." else "Log Out",
             onConfirm = {
                 if (viewModel.isSigningOut) return@SolariConfirmationDialog
-                showLogoutConfirm = false
                 viewModel.signOut(onSuccess = onLogout)
+                showLogoutConfirm = false
             },
-            onDismiss = {
-                if (!viewModel.isSigningOut) {
-                    showLogoutConfirm = false
-                }
-            }
+            onDismiss = { showLogoutConfirm = false }
         )
     }
 }
@@ -929,8 +1023,8 @@ private fun ProfileFeedbackPill(
     message: String,
     isSuccess: Boolean
 ) {
-    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.error.copy(alpha = 0.2f)
-    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.error
+    val backgroundColor = if (isSuccess) SolariTheme.colors.onSuccess else SolariTheme.colors.error
+    val iconTint = if (isSuccess) SolariTheme.colors.success else SolariTheme.colors.onError
 
     Surface(
         color = backgroundColor,
@@ -966,7 +1060,12 @@ private fun ProfileFeedbackPill(
 }
 
 @Composable
-fun EditableField(label: String, value: String, onValueChange: (String) -> Unit, onDone: () -> Unit) {
+fun EditableField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    onDone: () -> Unit
+) {
     val editFieldClickSource = remember { MutableInteractionSource() }
 
     Row(
@@ -983,8 +1082,20 @@ fun EditableField(label: String, value: String, onValueChange: (String) -> Unit,
             value = value,
             onValueChange = onValueChange,
             modifier = Modifier.weight(1f),
-            textStyle = TextStyle(fontFamily = PlusJakartaSans, fontSize = 16.sp, fontWeight = FontWeight.Medium),
-            label = { Text(label, color = SolariTheme.colors.secondary, fontSize = 13.sp, fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold) },
+            textStyle = TextStyle(
+                fontFamily = PlusJakartaSans,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium
+            ),
+            label = {
+                Text(
+                    label,
+                    color = SolariTheme.colors.secondary,
+                    fontSize = 13.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { onDone() }),
@@ -1036,11 +1147,27 @@ fun ProfileInfoBox(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Column {
-                Text(label, color = SolariTheme.colors.secondary, fontSize = 13.sp, fontFamily = PlusJakartaSans, fontWeight = FontWeight.Bold)
-                Text(value, color = SolariTheme.colors.onSurface, fontSize = 16.sp, fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium)
+                Text(
+                    label,
+                    color = SolariTheme.colors.secondary,
+                    fontSize = 13.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    value,
+                    color = SolariTheme.colors.onSurface,
+                    fontSize = 16.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Medium
+                )
             }
             if (onClick != null) {
-                Icon(Icons.Default.ChevronRight, contentDescription = null, tint = SolariTheme.colors.onSurfaceVariant)
+                Icon(
+                    Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = SolariTheme.colors.onSurfaceVariant
+                )
             }
         }
     }
@@ -1070,9 +1197,19 @@ fun SettingsRow(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(icon, contentDescription = null, tint = if (titleColor == null) SolariTheme.colors.primary else actualTitleColor)
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = if (titleColor == null) SolariTheme.colors.primary else actualTitleColor
+                )
                 Spacer(modifier = Modifier.width(12.dp))
-                Text(title, color = actualTitleColor, fontSize = 16.sp, fontFamily = PlusJakartaSans, fontWeight = FontWeight.Medium)
+                Text(
+                    title,
+                    color = actualTitleColor,
+                    fontSize = 16.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Medium
+                )
             }
             trailing()
         }

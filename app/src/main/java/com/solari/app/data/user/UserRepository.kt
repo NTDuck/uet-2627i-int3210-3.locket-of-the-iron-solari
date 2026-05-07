@@ -7,7 +7,7 @@ import com.solari.app.ui.models.User
 data class ProfileAvatarUpload(
     val fileName: String,
     val mimeType: String,
-    val bytes: ByteArray
+    @Suppress("ArrayInDataClass") val bytes: ByteArray
 )
 
 sealed interface DeleteAccountVerification {

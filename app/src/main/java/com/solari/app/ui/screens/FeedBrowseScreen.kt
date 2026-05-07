@@ -2,10 +2,22 @@ package com.solari.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -15,9 +27,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Public
-import androidx.compose.material3.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -29,12 +54,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import androidx.compose.animation.core.tween
 import com.solari.app.navigation.SolariRoute
+import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariBottomNavBar
-import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SortSelection
+import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
@@ -43,20 +68,23 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 
 private const val FeedBrowseScrollTopButtonThresholdIndex = 24
+private const val FeedBrowseGridColumnCount = 3
+private val FeedBrowseThumbnailCornerRadius = 8.dp
 
-@OptIn(ExperimentalMaterial3Api::class, androidx.compose.animation.ExperimentalSharedTransitionApi::class)
+
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    androidx.compose.animation.ExperimentalSharedTransitionApi::class
+)
 @Composable
 fun FeedBrowseScreen(
     viewModel: FeedBrowseViewModel,
     initialAuthorId: String? = null,
-    sharedTransitionScope: androidx.compose.animation.SharedTransitionScope,
-    animatedVisibilityScope: androidx.compose.animation.AnimatedVisibilityScope,
-    onNavigateBack: () -> Unit,
     onNavigateToFeed: () -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToProfile: () -> Unit,
-    onNavigateToPost: (postId: String, authorIds: Set<String>, sort: String) -> Unit
+    onNavigateToPost: (post: Post, posts: List<Post>, authorIds: Set<String>, sort: String, enableSharedTransition: Boolean) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
     val posts = viewModel.posts
@@ -77,20 +105,8 @@ fun FeedBrowseScreen(
     val visibleFriends = remember(friends, currentUser?.id) {
         friends.filterNot { it.id == currentUser?.id }
     }
-    
-    val filteredSortedPosts = remember(posts, selectedSort, selectedFriendIds) {
-        val filteredPosts = if (selectedFriendIds.isEmpty()) {
-            posts
-        } else {
-            posts.filter { it.author.id in selectedFriendIds }
-        }
 
-        when (selectedSort) {
-            "newest" -> filteredPosts.sortedByDescending { it.timestamp }
-            "oldest" -> filteredPosts.sortedBy { it.timestamp }
-            else -> filteredPosts
-        }
-    }
+    val context = LocalContext.current
 
     LaunchedEffect(initialAuthorId) {
         viewModel.applyInitialAuthorFilter(initialAuthorId)
@@ -119,7 +135,7 @@ fun FeedBrowseScreen(
     fun scrollFeedListToTop() {
         viewModel.resetFeedListScroll()
         coroutineScope.launch {
-            feedListState.animateScrollToItem(0)
+            feedListState.scrollToItem(0)
         }
     }
 
@@ -139,15 +155,39 @@ fun FeedBrowseScreen(
             }
     }
 
+    LaunchedEffect(feedListState) {
+        snapshotFlow {
+            feedListState.firstVisibleItemIndex to feedListState.firstVisibleItemScrollOffset
+        }
+            .distinctUntilChanged()
+            .collect { (firstVisibleItemIndex, firstVisibleItemScrollOffset) ->
+                viewModel.updateFeedListScroll(
+                    firstVisibleItemIndex = firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = firstVisibleItemScrollOffset
+                )
+            }
+    }
+
     val currentSortSelection = when (selectedSort) {
         "oldest" -> SortSelection.Oldest
         else -> SortSelection.Newest
     }
 
-    LaunchedEffect(selectedSort, selectedFriendIds) {
-        if (posts.isNotEmpty()) {
-            scrollFeedListToTop()
+    fun navigateToFirstGridPost() {
+        val firstPost = posts.firstOrNull()
+        if (firstPost == null) {
+            onNavigateToFeed()
+            return
         }
+
+        if (firstPost.uploadStatus == PostUploadStatus.None) {
+            viewModel.registerPostView(firstPost.id)
+        }
+        viewModel.updateFeedListScroll(
+            firstVisibleItemIndex = feedListState.firstVisibleItemIndex,
+            firstVisibleItemScrollOffset = feedListState.firstVisibleItemScrollOffset
+        )
+        onNavigateToPost(firstPost, posts, selectedFriendIds, selectedSort, false)
     }
 
     Scaffold(
@@ -158,7 +198,7 @@ fun FeedBrowseScreen(
                 onNavigate = { routeName ->
                     when (routeName) {
                         SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
-                        SolariRoute.Screen.Feed.name -> onNavigateToFeed()
+                        SolariRoute.Screen.Feed.name -> navigateToFirstGridPost()
                         SolariRoute.Screen.Conversations.name -> onNavigateToChat()
                         SolariRoute.Screen.Profile.name -> onNavigateToProfile()
                     }
@@ -319,40 +359,54 @@ fun FeedBrowseScreen(
                 Box(modifier = Modifier.fillMaxSize()) {
                     LazyVerticalGrid(
                         state = feedListState,
-                        columns = GridCells.Fixed(3),
+                        columns = GridCells.Fixed(FeedBrowseGridColumnCount),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 24.dp)
                     ) {
-                        items(filteredSortedPosts, key = { it.id }) { post ->
+                        items(posts, key = { post -> post.id }) { post ->
+                            val thumbnailUrl = post.thumbnailUrl.ifBlank { post.imageUrl }
+
                             Box(
                                 modifier = Modifier
                                     .animateItem()
                                     .aspectRatio(1f)
-                                    .scaledClickable(pressedScale = 0.9f) {
+                                    .scaledClickable(
+                                        pressedScale = 0.9f
+                                    ) {
                                         if (post.uploadStatus == PostUploadStatus.None) {
                                             viewModel.registerPostView(post.id)
                                         }
-                                        onNavigateToPost(post.id, selectedFriendIds, selectedSort)
+                                        viewModel.updateFeedListScroll(
+                                            firstVisibleItemIndex = feedListState.firstVisibleItemIndex,
+                                            firstVisibleItemScrollOffset = feedListState.firstVisibleItemScrollOffset
+                                        )
+                                        onNavigateToPost(
+                                            post,
+                                            posts,
+                                            selectedFriendIds,
+                                            selectedSort,
+                                            false
+                                        )
                                     }
-                                    .clip(RoundedCornerShape(8.dp))
+                                    .clip(RoundedCornerShape(FeedBrowseThumbnailCornerRadius))
                                     .background(SolariTheme.colors.surface)
                             ) {
-                                with(sharedTransitionScope) {
+                                if (thumbnailUrl.isNotBlank()) {
+                                    val thumbnailRequest =
+                                        remember(context, post.id, thumbnailUrl) {
+                                            ImageRequest.Builder(context)
+                                                .data(thumbnailUrl)
+                                                .memoryCacheKey("thumb_${post.id}")
+                                                .crossfade(false)
+                                                .build()
+                                        }
+
                                     AsyncImage(
-                                        model = ImageRequest.Builder(LocalContext.current)
-                                            .data(post.thumbnailUrl.ifBlank { post.imageUrl })
-                                            .crossfade(true)
-                                            .build(),
+                                        model = thumbnailRequest,
                                         contentDescription = "Browse Image",
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .sharedElement(
-                                                rememberSharedContentState(key = "post_image_${post.id}"),
-                                                animatedVisibilityScope = animatedVisibilityScope,
-                                                boundsTransform = { _, _ -> tween(durationMillis = 500) }
-                                            ),
+                                        modifier = Modifier.fillMaxSize(),
                                         contentScale = ContentScale.Crop
                                     )
                                 }
@@ -368,7 +422,9 @@ fun FeedBrowseScreen(
                                         ) {
                                             CircularProgressIndicator(
                                                 color = SolariTheme.colors.onBackground,
-                                                trackColor = SolariTheme.colors.onBackground.copy(alpha = 0.18f),
+                                                trackColor = SolariTheme.colors.onBackground.copy(
+                                                    alpha = 0.18f
+                                                ),
                                                 modifier = Modifier.size(24.dp),
                                                 strokeWidth = 2.dp
                                             )
@@ -397,16 +453,18 @@ fun FeedBrowseScreen(
                         }
 
                         if (viewModel.isFetchingNextPage) {
-                            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                            item(span = { GridItemSpan(maxLineSpan) }) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(16.dp),
+                                        .padding(vertical = 24.dp),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     CircularProgressIndicator(
                                         color = SolariTheme.colors.primary,
-                                        modifier = Modifier.size(24.dp)
+                                        trackColor = SolariTheme.colors.surface,
+                                        modifier = Modifier.size(28.dp),
+                                        strokeWidth = 2.5.dp
                                     )
                                 }
                             }

@@ -49,7 +49,7 @@ data class Message(
     val repliedMessagePreview: String? = null,
     val reactions: List<MessageReaction> = emptyList(),
     val deliveryState: MessageDeliveryState = MessageDeliveryState.Sent
-): Serializable
+) : Serializable
 
 enum class MessageDeliveryState : Serializable {
     Sending,
@@ -66,4 +66,4 @@ data class Reply(
     val userId: String,
     val text: String,
     val timestamp: Long = System.currentTimeMillis()
-): Serializable
+) : Serializable

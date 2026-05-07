@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.encodeToJsonElement
 import okhttp3.OkHttpClient
@@ -25,17 +24,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.min
 
-/**
- * Manages a single persistent WebSocket connection to the backend.
- *
- * Design decisions:
- * - Uses a dedicated OkHttpClient with short timeouts and no interceptors
- *   (auth is handled via query-less header on the upgrade request).
- * - Exponential backoff with jitter for reconnection (1s -> 2s -> 4s -> ... -> 30s cap).
- * - SharedFlow with replay=0 and extraBufferCapacity=64 so events are not dropped
- *   when collectors are briefly suspended (e.g. during recomposition).
- * - Thread-safe via AtomicBoolean/AtomicInteger guards + single coroutine scope.
- */
 class WebSocketManager(
     private val baseUrl: String,
     private val authSessionDao: AuthSessionDao,
@@ -53,7 +41,7 @@ class WebSocketManager(
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(0, TimeUnit.MINUTES) // WebSocket keep-alive relies on pings, not read timeout
+        .readTimeout(0, TimeUnit.MINUTES)
         .writeTimeout(10, TimeUnit.SECONDS)
         .pingInterval(30, TimeUnit.SECONDS)
         .build()
@@ -64,10 +52,6 @@ class WebSocketManager(
     private val consecutiveFailures = AtomicInteger(0)
     private val isIntentionallyClosed = AtomicBoolean(false)
 
-    /**
-     * Opens (or re-opens) the WebSocket connection.
-     * Safe to call multiple times; concurrent calls are coalesced.
-     */
     fun connect() {
         if (isConnecting.getAndSet(true)) return
         isIntentionallyClosed.set(false)
@@ -78,7 +62,7 @@ class WebSocketManager(
             try {
                 val accessToken = resolveAccessToken()
                 if (accessToken == null) {
-                    Log.w(Tag, "No valid access token; skipping WebSocket connection")
+                    Log.w(TAG, "No valid access token; skipping WebSocket connection")
                     isConnecting.set(false)
                     return@launch
                 }
@@ -89,30 +73,26 @@ class WebSocketManager(
                     .header("Authorization", "Bearer $accessToken")
                     .build()
 
-                // Close any existing connection before opening a new one
-                webSocket?.close(NormalClosureCode, "Reconnecting")
+                webSocket?.close(NORMAL_CLOSURE_CODE, "Reconnecting")
                 webSocket = client.newWebSocket(request, Listener())
-                Log.d(Tag, "WebSocket connection initiated to $wsUrl")
+                Log.d(TAG, "WebSocket connection initiated to $wsUrl")
             } catch (e: Exception) {
-                Log.e(Tag, "WebSocket connect error: ${e.message}")
+                Log.e(TAG, "WebSocket connect error: ${e.message}")
                 isConnecting.set(false)
                 scheduleReconnect()
             }
         }
     }
 
-    /**
-     * Gracefully closes the WebSocket. No reconnect will be attempted.
-     */
     fun disconnect() {
         isIntentionallyClosed.set(true)
         reconnectJob?.cancel()
         reconnectJob = null
-        webSocket?.close(NormalClosureCode, "Client disconnect")
+        webSocket?.close(NORMAL_CLOSURE_CODE, "Client disconnect")
         webSocket = null
         consecutiveFailures.set(0)
         isConnecting.set(false)
-        Log.d(Tag, "WebSocket disconnected intentionally")
+        Log.d(TAG, "WebSocket disconnected intentionally")
     }
 
     fun sendTypingState(
@@ -122,7 +102,7 @@ class WebSocketManager(
     ): Boolean {
         val socket = webSocket
         if (socket == null) {
-            Log.d(Tag, "Skipping typing state send; WebSocket is not connected")
+            Log.d(TAG, "Skipping typing state send; WebSocket is not connected")
             return false
         }
 
@@ -144,11 +124,14 @@ class WebSocketManager(
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
             val failures = consecutiveFailures.getAndIncrement()
-            val baseDelay = min(InitialReconnectDelayMs * (1L shl min(failures, MaxBackoffShift)), MaxReconnectDelayMs)
+            val baseDelay = min(
+                INITIAL_RECONNECT_DELAY_MS * (1L shl min(failures, MAX_BACKOFF_SHIFT)),
+                MAX_RECONNECT_DELAY_MS
+            )
             // Add jitter: 0-25% of the base delay
             val jitter = (baseDelay * 0.25 * Math.random()).toLong()
             val delayMs = baseDelay + jitter
-            Log.d(Tag, "Scheduling reconnect in ${delayMs}ms (attempt ${failures + 1})")
+            Log.d(TAG, "Scheduling reconnect in ${delayMs}ms (attempt ${failures + 1})")
             delay(delayMs)
             isConnecting.set(false)
             connect()
@@ -160,9 +143,6 @@ class WebSocketManager(
         return runCatching { tokenCipher.decrypt(session.accessTokenCiphertext) }.getOrNull()
     }
 
-    /**
-     * Converts the REST base URL (http/https) to the corresponding WebSocket URL (ws/wss).
-     */
     private fun buildWsUrl(): String {
         val trimmed = baseUrl.trimEnd('/')
         val wsBase = when {
@@ -175,7 +155,7 @@ class WebSocketManager(
 
     private inner class Listener : WebSocketListener() {
         override fun onOpen(webSocket: WebSocket, response: Response) {
-            Log.d(Tag, "WebSocket connected (HTTP ${response.code})")
+            Log.d(TAG, "WebSocket connected (HTTP ${response.code})")
             isConnecting.set(false)
             consecutiveFailures.set(0)
         }
@@ -184,24 +164,27 @@ class WebSocketManager(
             val event = eventParser.parse(text) ?: return
             val emitted = _events.tryEmit(event)
             if (!emitted) {
-                Log.w(Tag, "WebSocket event buffer full; dropping event: ${event::class.simpleName}")
+                Log.w(
+                    TAG,
+                    "WebSocket event buffer full; dropping event: ${event::class.simpleName}"
+                )
             }
         }
 
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
-            Log.d(Tag, "WebSocket closing: $code $reason")
+            Log.d(TAG, "WebSocket closing: $code $reason")
             webSocket.close(code, reason)
         }
 
         override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-            Log.d(Tag, "WebSocket closed: $code $reason")
+            Log.d(TAG, "WebSocket closed: $code $reason")
             isConnecting.set(false)
             this@WebSocketManager.webSocket = null
             scheduleReconnect()
         }
 
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-            Log.e(Tag, "WebSocket failure: ${t.message} (HTTP ${response?.code})")
+            Log.e(TAG, "WebSocket failure: ${t.message} (HTTP ${response?.code})")
             isConnecting.set(false)
             this@WebSocketManager.webSocket = null
             scheduleReconnect()
@@ -209,11 +192,10 @@ class WebSocketManager(
     }
 
     private companion object {
-        const val Tag = "WebSocketManager"
-        const val NormalClosureCode = 1000
-        const val InitialReconnectDelayMs = 1_000L
-        const val MaxReconnectDelayMs = 30_000L
-        // Cap exponent to avoid overflow: 2^4 = 16, so max base = 16_000ms before cap
-        const val MaxBackoffShift = 4
+        const val TAG = "WebSocketManager"
+        const val NORMAL_CLOSURE_CODE = 1000
+        const val INITIAL_RECONNECT_DELAY_MS = 1_000L
+        const val MAX_RECONNECT_DELAY_MS = 30_000L
+        const val MAX_BACKOFF_SHIFT = 4
     }
 }

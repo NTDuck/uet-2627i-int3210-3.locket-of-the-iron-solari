@@ -46,6 +46,7 @@ class BlockedAccountsViewModel(
                     blockedUsers = blockedUsers.filterNot { it.user.id == userId }
                     errorMessage = null
                 }
+
                 is ApiResult.Failure -> errorMessage = result.message
             }
         }

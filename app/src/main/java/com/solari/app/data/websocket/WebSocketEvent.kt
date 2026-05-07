@@ -3,10 +3,6 @@ package com.solari.app.data.websocket
 import com.solari.app.ui.models.Message
 import com.solari.app.ui.models.MessageReaction
 
-/**
- * Strongly-typed domain events emitted by [WebSocketManager].
- * ViewModels collect from a SharedFlow of these events and apply UI updates.
- */
 sealed interface WebSocketEvent {
 
     data class NewMessage(

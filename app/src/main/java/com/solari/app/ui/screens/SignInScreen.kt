@@ -2,11 +2,21 @@ package com.solari.app.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.*
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -19,30 +29,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.solari.app.ui.components.SolariButton
 import com.solari.app.ui.components.SolariBackButton
+import com.solari.app.ui.components.SolariButton
 import com.solari.app.ui.components.SolariTextField
-import com.solari.app.data.auth.AuthRepository
-import com.solari.app.data.auth.AuthSession
-import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.SignInViewModel
-import com.solari.app.data.auth.AuthSessionInvalidationEvent
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.flowOf
 
 @Composable
 fun SignInScreen(
@@ -207,111 +207,4 @@ fun SignInScreen(
             }
         }
     }
-}
-
-@Preview(
-    name = "Sign In Screen",
-    showBackground = true,
-    backgroundColor = 0xFF111316
-)
-@Composable
-private fun SignInScreenPreview() {
-    val previewViewModel = remember {
-        SignInViewModel(PreviewAuthRepository()).apply {
-            onEmailOrUsernameChanged("alex@solari.app")
-            onPasswordChanged("password")
-        }
-    }
-
-    SolariTheme {
-        SignInScreen(
-            viewModel = previewViewModel,
-            onNavigateBack = {},
-            onNavigateToSignUp = {},
-            onNavigateToForgotPassword = {},
-            onSignInComplete = {}
-        )
-    }
-}
-
-private class PreviewAuthRepository : AuthRepository {
-    override val currentSession: Flow<AuthSession?> = flowOf(null)
-    override val sessionInvalidationEvents: StateFlow<AuthSessionInvalidationEvent?> =
-        MutableStateFlow(null)
-
-    override suspend fun signUp(
-        username: String,
-        email: String,
-        password: String
-    ): ApiResult<Unit> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not sign up."
-        )
-    }
-
-    override suspend fun signIn(
-        identifier: String,
-        password: String
-    ): ApiResult<AuthSession> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not sign in."
-        )
-    }
-
-    override suspend fun signInWithGoogle(idToken: String): ApiResult<AuthSession> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not sign in with Google."
-        )
-    }
-
-    override suspend fun requestPasswordReset(email: String): ApiResult<Unit> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not request password reset codes."
-        )
-    }
-
-    override suspend fun verifyPasswordResetCode(email: String, code: String): ApiResult<Unit> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not verify password reset codes."
-        )
-    }
-
-    override suspend fun completePasswordReset(
-        email: String,
-        newPassword: String
-    ): ApiResult<Unit> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not complete password resets."
-        )
-    }
-
-    override suspend fun restoreSession(): ApiResult<AuthSession> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not restore sessions."
-        )
-    }
-
-    override suspend fun signOut(deviceToken: String?): ApiResult<Unit> {
-        return ApiResult.Success(Unit)
-    }
-
-    override suspend fun getCurrentSession(): AuthSession? = null
-
-    override suspend fun clearSession() = Unit
-
-    override fun clearSessionInvalidation() = Unit
 }

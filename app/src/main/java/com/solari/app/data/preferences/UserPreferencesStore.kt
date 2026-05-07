@@ -10,17 +10,18 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.solari.app.ui.theme.SolariThemeVariant
-import java.io.IOException
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
+import java.io.IOException
 
 private val Context.userPreferencesDataStore: DataStore<Preferences> by preferencesDataStore(
     name = "solari_user_preferences"
 )
 
 class UserPreferencesStore(context: Context) {
-    private val dataStore = context.applicationContext.userPreferencesDataStore
+    private val applicationContext = context.applicationContext
+    private val dataStore = applicationContext.userPreferencesDataStore
 
     val userPreferencesFlow: Flow<UserPreferences> = dataStore.data
         .catch { error ->
@@ -40,7 +41,8 @@ class UserPreferencesStore(context: Context) {
                     runCatching { SolariThemeVariant.valueOf(it) }.getOrNull()
                 } ?: SolariThemeVariant.DEFAULT_DARK,
                 isFlashEnabled = preferences[IsFlashEnabledKey] ?: false,
-                timerValue = preferences[TimerValueKey] ?: 0
+                timerValue = preferences[TimerValueKey] ?: 0,
+                lastFeedViewedTimestamp = preferences[LastFeedViewedTimestampKey] ?: 0L
             )
         }
 
@@ -73,16 +75,25 @@ class UserPreferencesStore(context: Context) {
         }
     }
 
-    suspend fun updateLightTheme(variant: SolariThemeVariant) {
+    suspend fun updateLastFeedViewedTimestamp(timestamp: Long) {
         dataStore.edit { preferences ->
-            preferences[CurrentLightThemeKey] = variant.name
+            preferences[LastFeedViewedTimestampKey] = timestamp
         }
-    }
-
-    suspend fun updateDarkTheme(variant: SolariThemeVariant) {
-        dataStore.edit { preferences ->
-            preferences[CurrentDarkThemeKey] = variant.name
+        val intent = android.content.Intent(
+            applicationContext,
+            com.solari.app.widget.SolariWidgetProvider::class.java
+        ).apply {
+            action = android.appwidget.AppWidgetManager.ACTION_APPWIDGET_UPDATE
         }
+        val ids = android.appwidget.AppWidgetManager.getInstance(applicationContext)
+            .getAppWidgetIds(
+                android.content.ComponentName(
+                    applicationContext,
+                    com.solari.app.widget.SolariWidgetProvider::class.java
+                )
+            )
+        intent.putExtra(android.appwidget.AppWidgetManager.EXTRA_APPWIDGET_IDS, ids)
+        applicationContext.sendBroadcast(intent)
     }
 
     private companion object {
@@ -91,6 +102,8 @@ class UserPreferencesStore(context: Context) {
         val CurrentDarkThemeKey = stringPreferencesKey("current_dark_theme")
         val IsFlashEnabledKey = booleanPreferencesKey("is_flash_enabled")
         val TimerValueKey = intPreferencesKey("timer_value")
+        val LastFeedViewedTimestampKey =
+            androidx.datastore.preferences.core.longPreferencesKey("last_feed_viewed_timestamp")
     }
 }
 
@@ -99,5 +112,6 @@ data class UserPreferences(
     val currentLightTheme: SolariThemeVariant,
     val currentDarkTheme: SolariThemeVariant,
     val isFlashEnabled: Boolean,
-    val timerValue: Int
+    val timerValue: Int,
+    val lastFeedViewedTimestamp: Long
 )

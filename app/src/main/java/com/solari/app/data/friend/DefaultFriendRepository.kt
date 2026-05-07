@@ -74,14 +74,16 @@ class DefaultFriendRepository(
     }
 
     override suspend fun acceptFriendRequest(requestId: String): ApiResult<Unit> {
-        return when (val result = apiExecutor.execute { friendApi.acceptFriendRequest(requestId) }) {
+        return when (val result =
+            apiExecutor.execute { friendApi.acceptFriendRequest(requestId) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(Unit)
         }
     }
 
     override suspend fun deleteFriendRequest(requestId: String): ApiResult<Unit> {
-        return when (val result = apiExecutor.execute { friendApi.deleteFriendRequest(requestId) }) {
+        return when (val result =
+            apiExecutor.execute { friendApi.deleteFriendRequest(requestId) }) {
             is ApiResult.Failure -> result
             is ApiResult.Success -> ApiResult.Success(Unit)
         }

@@ -1,15 +1,26 @@
 package com.solari.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.material3.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -23,29 +34,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.credentials.CredentialManager
 import com.solari.app.BuildConfig
 import com.solari.app.R
-import com.solari.app.data.auth.AuthRepository
-import com.solari.app.data.auth.AuthSession
-import com.solari.app.data.auth.AuthSessionInvalidationEvent
-import com.solari.app.data.network.ApiResult
-import com.solari.app.ui.components.SolariButton
-import com.solari.app.ui.components.SolariFeedbackPill
 import com.solari.app.ui.auth.GoogleIdTokenResult
 import com.solari.app.ui.auth.requestGoogleIdToken
+import com.solari.app.ui.components.SolariButton
+import com.solari.app.ui.components.SolariFeedbackPill
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.WelcomeViewModel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 @Composable
@@ -215,106 +217,5 @@ fun WelcomeScreen(
                 }
             }
         }
-    }
-}
-
-private class WelcomePreviewAuthRepository : AuthRepository {
-    override val currentSession: Flow<AuthSession?> = flowOf(null)
-    override val sessionInvalidationEvents: StateFlow<AuthSessionInvalidationEvent?> =
-        MutableStateFlow(null)
-
-    override suspend fun signUp(
-        username: String,
-        email: String,
-        password: String
-    ): ApiResult<Unit> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not sign up."
-        )
-    }
-
-    override suspend fun signIn(
-        identifier: String,
-        password: String
-    ): ApiResult<AuthSession> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not sign in."
-        )
-    }
-
-    override suspend fun signInWithGoogle(idToken: String): ApiResult<AuthSession> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not sign in with Google."
-        )
-    }
-
-    override suspend fun requestPasswordReset(email: String): ApiResult<Unit> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not request password reset codes."
-        )
-    }
-
-    override suspend fun verifyPasswordResetCode(email: String, code: String): ApiResult<Unit> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not verify password reset codes."
-        )
-    }
-
-    override suspend fun completePasswordReset(
-        email: String,
-        newPassword: String
-    ): ApiResult<Unit> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not complete password resets."
-        )
-    }
-
-    override suspend fun restoreSession(): ApiResult<AuthSession> {
-        return ApiResult.Failure(
-            statusCode = null,
-            type = "PREVIEW",
-            message = "Preview mode does not restore sessions."
-        )
-    }
-
-    override suspend fun signOut(deviceToken: String?): ApiResult<Unit> {
-        return ApiResult.Success(Unit)
-    }
-
-    override suspend fun getCurrentSession(): AuthSession? = null
-
-    override suspend fun clearSession() = Unit
-
-    override fun clearSessionInvalidation() = Unit
-}
-
-@Preview(
-    name = "Welcome Screen",
-    showBackground = true,
-    backgroundColor = 0xFF111316
-)
-@Composable
-private fun WelcomeScreenPreview() {
-    val previewViewModel = remember { WelcomeViewModel(WelcomePreviewAuthRepository()) }
-
-    SolariTheme {
-        WelcomeScreen(
-            viewModel = previewViewModel,
-            onNavigateToSignUp = {},
-            onNavigateToSignIn = {},
-            onGoogleSignInComplete = {}
-        )
     }
 }

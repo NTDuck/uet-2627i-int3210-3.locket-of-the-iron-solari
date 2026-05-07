@@ -222,6 +222,7 @@ private fun FriendInvitePreviewState.primaryButtonColor(): Color {
         FriendInviteRelationship.None,
         FriendInviteRelationship.PendingOutgoing,
         FriendInviteRelationship.Blocked -> SolariTheme.colors.primary
+
         FriendInviteRelationship.Friend -> SolariTheme.colors.error
     }
 }

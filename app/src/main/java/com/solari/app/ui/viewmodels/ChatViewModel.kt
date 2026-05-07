@@ -44,7 +44,7 @@ class ChatViewModel(
     private val referencedPostsById = mutableMapOf<String, Post>()
     private val replyPreviewByMessageId = mutableMapOf<String, String>()
     private val pendingReplyPreviewMessageIds = mutableSetOf<String>()
-    // Monotonically increasing version per message; stale API callbacks are discarded when version has advanced
+
     private val reactionVersionByMessageId = mutableMapOf<String, Long>()
 
     var conversation by mutableStateOf<Conversation?>(null)
@@ -55,7 +55,7 @@ class ChatViewModel(
 
     var currentUserId by mutableStateOf<String?>(null)
         private set
-    
+
     var messageText by mutableStateOf("")
 
     var errorMessage by mutableStateOf<String?>(null)
@@ -154,7 +154,6 @@ class ChatViewModel(
 
             is WebSocketEvent.ConversationRead -> {
                 if (event.conversationId != activeChatId) return
-                // Only update partnerLastReadAt when the reader is the partner, not the current user
                 val myId = currentUser?.id ?: currentUserId
                 if (event.userId == myId) return
                 conversation = currentConversation.copy(
@@ -271,11 +270,12 @@ class ChatViewModel(
                 }
 
                 if (preview != null) {
-                    val effectivePreview = if (replyPreviewByMessageId[repliedMessageId] == MessageUnsentPreviewText) {
-                        MessageUnsentPreviewText
-                    } else {
-                        preview
-                    }
+                    val effectivePreview =
+                        if (replyPreviewByMessageId[repliedMessageId] == MessageUnsentPreviewText) {
+                            MessageUnsentPreviewText
+                        } else {
+                            preview
+                        }
                     replyPreviewByMessageId[repliedMessageId] = effectivePreview
                     applyReplyPreview(
                         conversationId = conversationId,
@@ -404,7 +404,9 @@ class ChatViewModel(
                         errorMessage = null
                     }
 
-                    conversationResult is ApiResult.Failure -> errorMessage = conversationResult.message
+                    conversationResult is ApiResult.Failure -> errorMessage =
+                        conversationResult.message
+
                     messagesResult is ApiResult.Failure -> errorMessage = messagesResult.message
                 }
             } catch (throwable: Throwable) {
@@ -510,7 +512,8 @@ class ChatViewModel(
 
             try {
                 if (previousConversation?.isDraft == true) {
-                    when (val createResult = conversationRepository.createConversation(previousConversation.otherUser.id)) {
+                    when (val createResult =
+                        conversationRepository.createConversation(previousConversation.otherUser.id)) {
                         is ApiResult.Success -> {
                             targetChatId = createResult.data
                             createdConversationId = createResult.data
@@ -601,7 +604,7 @@ class ChatViewModel(
             }
         }
     }
-    
+
     fun unsendMessage(chatId: String, messageId: String) {
         if (conversation?.isReadOnly == true) return
         val previousConversation = conversation
@@ -664,6 +667,7 @@ class ChatViewModel(
                         replaceMessageReaction(messageId, result.data)
                     }
                 }
+
                 is ApiResult.Failure -> {
                     if (reactionVersionByMessageId[messageId] == version) {
                         if (currentUserReaction != null) {
@@ -811,6 +815,7 @@ class ChatViewModel(
                 currentUser = userResult.data
                 currentUserId = userResult.data.id
             }
+
             is ApiResult.Failure -> errorMessage = userResult.message
         }
     }
@@ -930,7 +935,8 @@ class ChatViewModel(
     private fun Message.withUiOnlyFieldsFrom(localMessage: Message): Message {
         return copy(
             repliedMessagePreview = repliedMessagePreview ?: localMessage.repliedMessagePreview,
-            referencedPostThumbnailUrl = referencedPostThumbnailUrl ?: localMessage.referencedPostThumbnailUrl
+            referencedPostThumbnailUrl = referencedPostThumbnailUrl
+                ?: localMessage.referencedPostThumbnailUrl
         )
     }
 
