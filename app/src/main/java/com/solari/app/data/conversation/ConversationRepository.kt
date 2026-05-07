@@ -4,6 +4,7 @@ import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.Message
 import com.solari.app.ui.models.MessageReaction
+import kotlinx.coroutines.flow.StateFlow
 
 data class ConversationMessagesPage(
     val messages: List<Message>,
@@ -12,6 +13,8 @@ data class ConversationMessagesPage(
 )
 
 interface ConversationRepository {
+    val clearedConversationIds: StateFlow<Set<String>>
+
     suspend fun createConversation(targetUserId: String): ApiResult<String>
 
     suspend fun getConversations(): ApiResult<List<Conversation>>

@@ -118,6 +118,7 @@ fun FriendManagementScreen(
     var sortSelection by remember { mutableStateOf(SortSelection.Default) }
     var friendPendingUnfriend by remember { mutableStateOf<User?>(null) }
     var friendPendingBlock by remember { mutableStateOf<User?>(null) }
+    var friendPendingRemoveNickname by remember { mutableStateOf<User?>(null) }
     var nicknameDialogState by remember { mutableStateOf<NicknameDialogState?>(null) }
     var isUserRefreshing by remember { mutableStateOf(false) }
     var feedbackPillVisible by remember { mutableStateOf(false) }
@@ -430,7 +431,7 @@ fun FriendManagementScreen(
                                         action = NicknameAction.Update
                                     )
                                 },
-                                onRemoveNickname = viewModel::removeNickname,
+                                onRemoveNickname = { friendPendingRemoveNickname = it },
                                 onMessage = { friend ->
                                     viewModel.openConversation(friend, onNavigateToConversation)
                                 },
@@ -493,6 +494,19 @@ fun FriendManagementScreen(
         )
     }
 
+    friendPendingRemoveNickname?.let { friend ->
+        SolariConfirmationDialog(
+            title = "Remove nickname?",
+            message = "${friend.displayName} will be shown by their profile name again.",
+            confirmText = "Remove Nickname",
+            onConfirm = {
+                viewModel.removeNickname(friend)
+                friendPendingRemoveNickname = null
+            },
+            onDismiss = { friendPendingRemoveNickname = null }
+        )
+    }
+
     nicknameDialogState?.let { state ->
         NicknameDialog(
             state = state,
@@ -501,8 +515,11 @@ fun FriendManagementScreen(
                     NicknameAction.Set -> viewModel.setNickname(state.friend, nickname)
                     NicknameAction.Update -> viewModel.updateNickname(state.friend, nickname)
                 }
+                if (nickname.isNotBlank()) {
+                    nicknameDialogState = null
+                }
             },
-            onDismiss = { }
+            onDismiss = { nicknameDialogState = null }
         )
     }
 }
