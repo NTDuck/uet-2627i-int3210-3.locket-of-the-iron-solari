@@ -362,8 +362,9 @@ fun ConversationScreen(
             confirmText = "Unsend",
             onConfirm = {
                 viewModel.cancelFriendRequest(request.id)
+                requestPendingCancel = null
             },
-            onDismiss = { }
+            onDismiss = { requestPendingCancel = null }
         )
     }
 }

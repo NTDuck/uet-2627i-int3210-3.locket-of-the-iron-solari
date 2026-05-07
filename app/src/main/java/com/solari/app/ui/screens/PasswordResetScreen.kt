@@ -236,8 +236,9 @@ fun PasswordResetScreen(
             confirmColor = MaterialTheme.colorScheme.primary,
             onConfirm = {
                 viewModel.submit()
+                showConfirmation = false
             },
-            onDismiss = { }
+            onDismiss = { showConfirmation = false }
         )
     }
 

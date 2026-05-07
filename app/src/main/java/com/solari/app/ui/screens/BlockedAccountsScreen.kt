@@ -177,8 +177,9 @@ fun BlockedAccountsScreen(
             confirmText = "Unblock",
             onConfirm = {
                 viewModel.unblockUser(account.user.id)
+                pendingUnblock = null
             },
-            onDismiss = { }
+            onDismiss = { pendingUnblock = null }
         )
     }
 }

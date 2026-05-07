@@ -474,8 +474,9 @@ fun FriendManagementScreen(
             confirmText = "Unfriend",
             onConfirm = {
                 viewModel.unfriend(friend)
+                friendPendingUnfriend = null
             },
-            onDismiss = { }
+            onDismiss = { friendPendingUnfriend = null }
         )
     }
 
@@ -486,8 +487,9 @@ fun FriendManagementScreen(
             confirmText = "Block",
             onConfirm = {
                 viewModel.blockFriend(friend)
+                friendPendingBlock = null
             },
-            onDismiss = { }
+            onDismiss = { friendPendingBlock = null }
         )
     }
 

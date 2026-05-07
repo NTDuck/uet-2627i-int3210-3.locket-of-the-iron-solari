@@ -765,8 +765,9 @@ fun ProfileScreen(
             confirmColor = SolariTheme.colors.error,
             onConfirm = {
                 deleteAccountWithGoogleVerification()
+                showGoogleDeleteConfirm = false
             },
-            onDismiss = { }
+            onDismiss = { showGoogleDeleteConfirm = false }
         )
     }
 
@@ -778,8 +779,9 @@ fun ProfileScreen(
             onConfirm = {
                 viewModel.clearMessages()
                 viewModel.removeDisplayName()
+                showRemoveDisplayNameConfirm = false
             },
-            onDismiss = { }
+            onDismiss = { showRemoveDisplayNameConfirm = false }
         )
     }
 
@@ -794,8 +796,9 @@ fun ProfileScreen(
                     selectedAvatarUri = null
                     committedAvatarPreviewUri = null
                 }
+                showRemoveAvatarConfirm = false
             },
-            onDismiss = { }
+            onDismiss = { showRemoveAvatarConfirm = false }
         )
     }
 
@@ -807,8 +810,9 @@ fun ProfileScreen(
             onConfirm = {
                 if (viewModel.isSigningOut) return@SolariConfirmationDialog
                 viewModel.signOut(onSuccess = onLogout)
+                showLogoutConfirm = false
             },
-            onDismiss = {}
+            onDismiss = { showLogoutConfirm = false }
         )
     }
 }

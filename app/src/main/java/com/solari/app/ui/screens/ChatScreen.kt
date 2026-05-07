@@ -1450,8 +1450,9 @@ private fun ChatBubble(
             confirmText = "Unsend",
             onConfirm = {
                 onUnsendMessage(message)
+                isConfirmingUnsend = false
             },
-            onDismiss = { }
+            onDismiss = { isConfirmingUnsend = false }
         )
     }
 }

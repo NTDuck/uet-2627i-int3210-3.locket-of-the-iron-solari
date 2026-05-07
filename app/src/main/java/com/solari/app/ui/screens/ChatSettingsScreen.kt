@@ -260,8 +260,9 @@ fun ChatSettingsScreen(
                 viewModel.clearChatHistory(chatId) {
                     onClearHistoryComplete("Chat history cleared")
                 }
+                showClearHistoryConfirm = false
             },
-            onDismiss = { }
+            onDismiss = { showClearHistoryConfirm = false }
         )
     }
 
@@ -272,8 +273,9 @@ fun ChatSettingsScreen(
             confirmText = "Block",
             onConfirm = {
                 viewModel.blockPartner(onBlocked = onNavigateBack)
+                showBlockConfirm = false
             },
-            onDismiss = { }
+            onDismiss = { showBlockConfirm = false }
         )
     }
 }
