@@ -660,7 +660,11 @@ fun ConversationItem(
                     }
                     Text(
                         text = lastMessagePreview,
-                        color = if (conversation.isUnread) SolariTheme.colors.onBackground else SolariTheme.colors.onSurfaceVariant,
+                        color = (if (conversation.isUnread) {
+                            SolariTheme.colors.onBackground
+                        } else {
+                            SolariTheme.colors.onSurfaceVariant
+                        }).copy(alpha = 0.7f),
                         fontSize = 13.sp,
                         maxLines = 1,
                         fontFamily = PlusJakartaSans,

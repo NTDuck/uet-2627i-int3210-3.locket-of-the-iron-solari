@@ -681,7 +681,7 @@ private fun FriendListItem(
             )
             Text(
                 text = handle,
-                color = SolariTheme.colors.onSurfaceVariant,
+                color = SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.7f),
                 fontSize = 13.sp,
                 lineHeight = 13.sp,
                 fontFamily = PlusJakartaSans,
