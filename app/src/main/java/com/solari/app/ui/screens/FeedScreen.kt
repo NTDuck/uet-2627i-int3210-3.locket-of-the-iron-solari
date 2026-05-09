@@ -1868,7 +1868,7 @@ private fun FeedActivitySheet(
                         )
                     }
                     .clip(RoundedCornerShape(topStart = 29.dp, topEnd = 29.dp))
-                    .background(SolariTheme.colors.surface)
+                    .background(SolariTheme.colors.navBarColor)
                     .clickable(
                         interactionSource = sheetInteractionSource,
                         indication = null,
@@ -1884,12 +1884,14 @@ private fun FeedActivitySheet(
                         .pointerInput(onDismiss) {
                             detectVerticalDragGestures(
                                 onDragStart = {
+                                    isSheetDragging = true
                                 },
                                 onVerticalDrag = { _, dragAmount ->
                                     sheetDragOffsetPx = (sheetDragOffsetPx + dragAmount)
                                         .coerceAtLeast(0f)
                                 },
                                 onDragEnd = {
+                                    isSheetDragging = false
                                     if (sheetDragOffsetPx > 80f) {
                                         onDismiss()
                                     } else {
@@ -1897,6 +1899,7 @@ private fun FeedActivitySheet(
                                     }
                                 },
                                 onDragCancel = {
+                                    isSheetDragging = false
                                     sheetDragOffsetPx = 0f
                                 }
                             )

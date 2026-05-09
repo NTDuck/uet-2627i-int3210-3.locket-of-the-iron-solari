@@ -79,13 +79,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Paint
-import androidx.compose.ui.graphics.PaintingStyle
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
-import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
@@ -149,19 +143,17 @@ private data class DrawPath(
 
 private class TextOverlay(
     val id: String = UUID.randomUUID().toString(),
-    text: String = "...",
+    text: String = "",
     position: Offset = Offset.Zero,
     rotation: Float = 0f,
     scale: Float = 1f,
-    color: Color = Color.Red,
-    isPlaceholder: Boolean = true
+    color: Color = Color.Red
 ) {
     var text by mutableStateOf(text)
     var position by mutableStateOf(position)
     var rotation by mutableFloatStateOf(rotation)
     var scale by mutableFloatStateOf(scale)
     var color by mutableStateOf(color)
-    var isPlaceholder by mutableStateOf(isPlaceholder)
 }
 
 private val PresetColors = listOf(
@@ -279,7 +271,7 @@ fun ImageEditingScreen(
                 } else {
                     SubScreenTopBar(
                         onCancel = { currentMode = EditMode.Main },
-                        onApply = { }
+                        onApply = { applyTrigger = true }
                     )
                 }
             }
@@ -637,6 +629,9 @@ private fun CropWorkspace(
                                             offset.y - cropRect.bottom
                                         ) < hitSlop -> CropEdge.BottomRight
 
+                                        offset.x > cropRect.left && offset.x < cropRect.right &&
+                                            offset.y > cropRect.top && offset.y < cropRect.bottom -> CropEdge.Inside
+
                                         abs(offset.x - cropRect.left) < hitSlop -> CropEdge.Left
                                         abs(offset.x - cropRect.right) < hitSlop -> CropEdge.Right
                                         abs(offset.y - cropRect.top) < hitSlop -> CropEdge.Top
@@ -741,7 +736,7 @@ private fun CropWorkspace(
                                                 100f,
                                                 min(
                                                     newRect.right - imageRect.left,
-                                                    newRect.bottom - imageRect.top
+                                                    imageRect.bottom - newRect.top
                                                 )
                                             )
                                             newRect.left = newRect.right - size
@@ -755,11 +750,22 @@ private fun CropWorkspace(
                                                 100f,
                                                 min(
                                                     imageRect.right - newRect.left,
-                                                    newRect.bottom - imageRect.top
+                                                    imageRect.bottom - newRect.top
                                                 )
                                             )
                                             newRect.right = newRect.left + size
                                             newRect.bottom = newRect.top + size
+                                        }
+
+                                        CropEdge.Inside -> {
+                                            val dx = dragAmount.x
+                                            val dy = dragAmount.y
+                                            val w = newRect.width()
+                                            val h = newRect.height()
+                                            newRect.left = (newRect.left + dx).coerceIn(imageRect.left, imageRect.right - w)
+                                            newRect.top = (newRect.top + dy).coerceIn(imageRect.top, imageRect.bottom - h)
+                                            newRect.right = newRect.left + w
+                                            newRect.bottom = newRect.top + h
                                         }
 
                                         else -> {}
@@ -883,7 +889,7 @@ private fun CropBottomRow(
     }
 }
 
-private enum class CropEdge { None, Left, Top, Right, Bottom, TopLeft, TopRight, BottomLeft, BottomRight }
+private enum class CropEdge { None, Left, Top, Right, Bottom, TopLeft, TopRight, BottomLeft, BottomRight, Inside }
 
 @Composable
 private fun DrawWorkspace(
@@ -915,7 +921,6 @@ private fun DrawWorkspace(
     LaunchedEffect(applyTrigger) {
         if (applyTrigger) {
             val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-            val canvas = AndroidCanvas(result)
             val scale = bitmap.width / drawWidth
 
             val paint = AndroidPaint().apply {
@@ -925,22 +930,29 @@ private fun DrawWorkspace(
                 strokeCap = AndroidPaint.Cap.ROUND
             }
 
+            val layerBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
+            val layerCanvas = AndroidCanvas(layerBitmap)
+
             paths.forEach { drawPath ->
-                paint.color = drawPath.color.toArgb()
                 paint.strokeWidth = drawPath.strokeWidth * scale
                 if (drawPath.isEraser) {
                     paint.xfermode =
                         android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
                 } else {
                     paint.xfermode = null
+                    paint.color = drawPath.color.toArgb()
                 }
-
                 val matrix = AndroidMatrix()
                 matrix.postScale(scale, scale)
                 val scaledPath = NativePath(drawPath.path)
                 scaledPath.transform(matrix)
-                canvas.drawPath(scaledPath, paint)
+                layerCanvas.drawPath(scaledPath, paint)
             }
+
+            val resultCanvas = AndroidCanvas(result)
+            resultCanvas.drawBitmap(layerBitmap, 0f, 0f, null)
+            layerBitmap.recycle()
+
             onApply(result)
         }
     }
@@ -948,7 +960,7 @@ private fun DrawWorkspace(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onGloballyPositioned { }
+            .onGloballyPositioned { canvasSize = it.size.toSize() }
             .pointerInput(selectedColor, selectedTool, selectedEraserSize, imgLeft, imgTop) {
                 detectDragGestures(
                     onDragStart = { offset ->
@@ -992,44 +1004,69 @@ private fun DrawWorkspace(
             drawCounter
 
             drawIntoCanvas { canvas ->
-                canvas.nativeCanvas.drawBitmap(
+                val nativeCanvas = canvas.nativeCanvas
+
+                nativeCanvas.drawBitmap(
                     bitmap,
                     null,
                     RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight),
                     null
                 )
 
-                canvas.saveLayer(
-                    androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height),
-                    Paint()
-                )
+                val layerW = drawWidth.toInt().coerceAtLeast(1)
+                val layerH = drawHeight.toInt().coerceAtLeast(1)
+                val layerBitmap = Bitmap.createBitmap(layerW, layerH, Bitmap.Config.ARGB_8888)
+                val layerCanvas = AndroidCanvas(layerBitmap)
 
-                canvas.translate(imgLeft, imgTop)
-
-                val paint = Paint().apply {
-                    strokeWidth = 10f
-                    style = PaintingStyle.Stroke
-                    strokeJoin = StrokeJoin.Round
-                    strokeCap = StrokeCap.Round
+                val paint = AndroidPaint().apply {
+                    isAntiAlias = true
+                    style = AndroidPaint.Style.STROKE
+                    strokeJoin = AndroidPaint.Join.ROUND
+                    strokeCap = AndroidPaint.Cap.ROUND
                 }
 
+                val scale = drawWidth / bitmap.width.toFloat()
+
                 paths.forEach { drawPath ->
-                    paint.color = drawPath.color
-                    paint.blendMode = if (drawPath.isEraser) BlendMode.Clear else BlendMode.SrcOver
-                    paint.strokeWidth = drawPath.strokeWidth
-                    canvas.drawPath(drawPath.path.asComposePath(), paint)
+                    paint.strokeWidth = drawPath.strokeWidth * scale
+                    if (drawPath.isEraser) {
+                        paint.xfermode =
+                            android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                    } else {
+                        paint.xfermode = null
+                        paint.color = drawPath.color.toArgb()
+                    }
+                    val matrix = AndroidMatrix()
+                    matrix.postScale(scale, scale)
+                    val scaledPath = NativePath(drawPath.path)
+                    scaledPath.transform(matrix)
+                    layerCanvas.drawPath(scaledPath, paint)
                 }
 
                 currentPath?.let { path ->
-                    paint.color = selectedColor
-                    paint.blendMode =
-                        if (selectedTool == DrawTool.Eraser) BlendMode.Clear else BlendMode.SrcOver
                     paint.strokeWidth =
-                        if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f
-                    canvas.drawPath(path.asComposePath(), paint)
+                        (if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f) * scale
+                    if (selectedTool == DrawTool.Eraser) {
+                        paint.xfermode =
+                            android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                    } else {
+                        paint.xfermode = null
+                        paint.color = selectedColor.toArgb()
+                    }
+                    val matrix = AndroidMatrix()
+                    matrix.postScale(scale, scale)
+                    val scaledPath = NativePath(path)
+                    scaledPath.transform(matrix)
+                    layerCanvas.drawPath(scaledPath, paint)
                 }
 
-                canvas.restore()
+                nativeCanvas.drawBitmap(
+                    layerBitmap,
+                    null,
+                    RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight),
+                    null
+                )
+                layerBitmap.recycle()
             }
 
             eraserCursorPosition
@@ -1149,11 +1186,11 @@ private fun TextWorkspace(
     var currentWorkingBitmap by remember { mutableStateOf(bitmap) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
-
     val density = LocalDensity.current
+
     val bakeText = {
         overlay?.let { o ->
-            if (o.text != "..." && o.text.isNotEmpty()) {
+            if (o.text.isNotEmpty()) {
                 val result = currentWorkingBitmap.copy(Bitmap.Config.ARGB_8888, true)
                 val canvas = AndroidCanvas(result)
 
@@ -1214,7 +1251,7 @@ private fun TextWorkspace(
                     if (overlay == null) {
                         overlay = TextOverlay(position = offset, color = selectedColor)
                     } else {
-                        if (overlay?.text != "..." && overlay?.text?.isNotEmpty() == true) {
+                        if (overlay?.text?.isNotEmpty() == true) {
                             bakeText()
                         } else {
                             overlay = null
@@ -1233,6 +1270,9 @@ private fun TextWorkspace(
 
         overlay?.let { o ->
             var boxSize by remember(o.id) { mutableStateOf(Size.Zero) }
+            val handlePadding = 8.dp
+            val handleSize = 28.dp
+
             Box(
                 modifier = Modifier
                     .offset {
@@ -1255,13 +1295,13 @@ private fun TextWorkspace(
                     }
                     .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
                     .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                    .padding(8.dp)
+                    .padding(handlePadding)
             ) {
                 IconButton(
                     onClick = { overlay = null },
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .size(24.dp)
+                        .size(handleSize)
                 ) {
                     Icon(
                         Icons.Default.Delete,
@@ -1271,48 +1311,24 @@ private fun TextWorkspace(
                     )
                 }
 
-                IconButton(
-                    onClick = { },
+                RotateHandle(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .size(24.dp)
-                        .pointerInput(Unit) {
-                            detectDragGestures { change, _ ->
-                                change.consume()
-                                val centerX = o.position.x
-                                val centerY = o.position.y
-                                val angle =
-                                    atan2(change.position.y - centerY, change.position.x - centerX)
-                                o.rotation = Math.toDegrees(angle.toDouble()).toFloat()
-                            }
-                        }
-                ) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.RotateRight,
-                        null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+                        .size(handleSize),
+                    boxSize = boxSize,
+                    handlePaddingPx = with(density) { handlePadding.toPx() },
+                    handleSizePx = with(density) { handleSize.toPx() },
+                    onRotate = { deltaDegrees -> o.rotation += deltaDegrees }
+                )
 
                 BasicTextField(
                     value = o.text,
-                    onValueChange = { newVal ->
-                        if (o.isPlaceholder && newVal.isNotEmpty() && newVal != "...") {
-                            o.text = newVal.removeSuffix("...")
-                            o.isPlaceholder = false
-                        } else if (!o.isPlaceholder && newVal.isEmpty()) {
-                            o.text = "..."
-                            o.isPlaceholder = true
-                        } else {
-                            o.text = newVal
-                        }
-                    },
+                    onValueChange = { newVal -> o.text = newVal },
                     modifier = Modifier
                         .padding(32.dp, 24.dp, 32.dp, 24.dp)
                         .focusRequester(focusRequester)
                         .onGloballyPositioned {
-                            if (o.text == "..." && o.isPlaceholder) {
+                            if (o.text.isEmpty()) {
                                 focusRequester.requestFocus()
                                 keyboardController?.show()
                             }
@@ -1331,31 +1347,122 @@ private fun TextWorkspace(
                     })
                 )
 
-                IconButton(
-                    onClick = { },
+                ScaleHandle(
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
-                        .size(24.dp)
-                        .pointerInput(Unit) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                val dist =
-                                    sqrt(dragAmount.x * dragAmount.x + dragAmount.y * dragAmount.y)
-                                if (dragAmount.x > 0 || dragAmount.y > 0) o.scale += dist * 0.005f
-                                else o.scale -= dist * 0.005f
-                                o.scale = o.scale.coerceIn(0.5f, 5f)
-                            }
-                        }
-                ) {
-                    Icon(
-                        Icons.Default.OpenInFull,
-                        null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
+                        .size(handleSize),
+                    boxSize = boxSize,
+                    handlePaddingPx = with(density) { handlePadding.toPx() },
+                    handleSizePx = with(density) { handleSize.toPx() },
+                    onScale = { scaleFactor ->
+                        o.scale = (o.scale * scaleFactor).coerceIn(0.5f, 5f)
+                    }
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun RotateHandle(
+    modifier: Modifier,
+    boxSize: Size,
+    handlePaddingPx: Float,
+    handleSizePx: Float,
+    onRotate: (Float) -> Unit
+) {
+    Box(
+        modifier = modifier
+            .pointerInput(boxSize) {
+                var lastAngle = Float.NaN
+
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        val touchX = boxSize.width - handlePaddingPx - handleSizePx + offset.x
+                        val touchY = handlePaddingPx + offset.y
+                        val centerX = boxSize.width / 2f
+                        val centerY = boxSize.height / 2f
+                        lastAngle = atan2(touchY - centerY, touchX - centerX)
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        if (lastAngle.isNaN()) return@detectDragGestures
+                        val touchX = boxSize.width - handlePaddingPx - handleSizePx + change.position.x
+                        val touchY = handlePaddingPx + change.position.y
+                        val centerX = boxSize.width / 2f
+                        val centerY = boxSize.height / 2f
+                        val newAngle = atan2(touchY - centerY, touchX - centerX)
+                        var deltaAngle = newAngle - lastAngle
+                        if (deltaAngle > Math.PI.toFloat()) deltaAngle -= (2 * Math.PI).toFloat()
+                        if (deltaAngle < -Math.PI.toFloat()) deltaAngle += (2 * Math.PI).toFloat()
+                        onRotate(Math.toDegrees(deltaAngle.toDouble()).toFloat())
+                        lastAngle = newAngle
+                    },
+                    onDragEnd = { lastAngle = Float.NaN },
+                    onDragCancel = { lastAngle = Float.NaN }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.AutoMirrored.Filled.RotateRight,
+            null,
+            tint = Color.White,
+            modifier = Modifier.size(16.dp)
+        )
+    }
+}
+
+@Composable
+private fun ScaleHandle(
+    modifier: Modifier,
+    boxSize: Size,
+    handlePaddingPx: Float,
+    handleSizePx: Float,
+    onScale: (Float) -> Unit
+) {
+    Box(
+        modifier = modifier
+            .pointerInput(boxSize) {
+                var lastDist = Float.NaN
+
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        val touchX = boxSize.width - handlePaddingPx - handleSizePx + offset.x
+                        val touchY = boxSize.height - handlePaddingPx - handleSizePx + offset.y
+                        val centerX = boxSize.width / 2f
+                        val centerY = boxSize.height / 2f
+                        lastDist = sqrt(
+                            (touchX - centerX) * (touchX - centerX) +
+                                    (touchY - centerY) * (touchY - centerY)
+                        )
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        if (lastDist.isNaN() || lastDist < 1f) return@detectDragGestures
+                        val touchX = boxSize.width - handlePaddingPx - handleSizePx + change.position.x
+                        val touchY = boxSize.height - handlePaddingPx - handleSizePx + change.position.y
+                        val centerX = boxSize.width / 2f
+                        val centerY = boxSize.height / 2f
+                        val newDist = sqrt(
+                            (touchX - centerX) * (touchX - centerX) +
+                                    (touchY - centerY) * (touchY - centerY)
+                        )
+                        onScale(newDist / lastDist)
+                        lastDist = newDist
+                    },
+                    onDragEnd = { lastDist = Float.NaN },
+                    onDragCancel = { lastDist = Float.NaN }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            Icons.Default.OpenInFull,
+            null,
+            tint = Color.White,
+            modifier = Modifier.size(16.dp)
+        )
     }
 }
 
