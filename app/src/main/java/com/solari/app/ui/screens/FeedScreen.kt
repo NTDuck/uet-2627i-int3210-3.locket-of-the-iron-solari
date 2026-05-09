@@ -2660,7 +2660,7 @@ private fun FeedBrowseButton(
     ) {
         Text(
             text = "View all photos",
-            color = SolariTheme.colors.onSurfaceVariant,
+            color = SolariTheme.colors.onPrimary,
             fontSize = 16.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold

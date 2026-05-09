@@ -62,7 +62,6 @@ class WebSocketManager(
             try {
                 val accessToken = resolveAccessToken()
                 if (accessToken == null) {
-                    Log.w(TAG, "No valid access token; skipping WebSocket connection")
                     isConnecting.set(false)
                     return@launch
                 }
@@ -128,7 +127,6 @@ class WebSocketManager(
                 INITIAL_RECONNECT_DELAY_MS * (1L shl min(failures, MAX_BACKOFF_SHIFT)),
                 MAX_RECONNECT_DELAY_MS
             )
-            // Add jitter: 0-25% of the base delay
             val jitter = (baseDelay * 0.25 * Math.random()).toLong()
             val delayMs = baseDelay + jitter
             Log.d(TAG, "Scheduling reconnect in ${delayMs}ms (attempt ${failures + 1})")

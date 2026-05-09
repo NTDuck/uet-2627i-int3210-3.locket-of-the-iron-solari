@@ -186,7 +186,7 @@ fun FriendManagementScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 19.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(top = 0.dp, bottom = 22.dp)
                 ) {
                     item {
