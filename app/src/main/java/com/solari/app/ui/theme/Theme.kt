@@ -336,7 +336,7 @@ data class SolariColors(
     val onBackground: Color = Color(0xFFE7E7E7),
     val onSurface: Color = Color(0xFFE7E7E7),
     val onSurfaceVariant: Color = Color(0xFFE7E7E7),
-    val navBarColor: Color = Color.Black,
+    val navBarColor: Color = background,
     val error: Color = Color(0xFFE57373),
     val onError: Color = Color(0xFFE7E7E7),
     val success: Color = Color(0xFF77E0A1),

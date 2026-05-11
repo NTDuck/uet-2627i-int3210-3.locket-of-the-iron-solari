@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -37,11 +38,12 @@ import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -74,10 +76,8 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.core.net.toUri
-import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SolariAvatar
-import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.Conversation
@@ -153,24 +153,8 @@ fun FriendManagementScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
-            containerColor = SolariTheme.colors.background,
-            bottomBar = {
-                SolariBottomNavBar(
-                    selectedRoute = SolariRoute.Screen.Conversations.name,
-                    onNavigate = { routeName ->
-                        when (routeName) {
-                            SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
-                            SolariRoute.Screen.Feed.name -> onNavigateToFeed()
-                            SolariRoute.Screen.Conversations.name -> onNavigateToChat()
-                            SolariRoute.Screen.Profile.name -> onNavigateToProfile()
-                        }
-                    }
-                )
-            }
-        ) { innerPadding ->
-            PullToRefreshBox(
+    Box(modifier = Modifier.fillMaxSize().navigationBarsPadding().padding(top = 24.dp, bottom = 59.dp)) {
+        PullToRefreshBox(
                 isRefreshing = isUserRefreshing,
                 onRefresh = {
                     isUserRefreshing = true
@@ -179,7 +163,6 @@ fun FriendManagementScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(SolariTheme.colors.background)
-                    .padding(innerPadding)
                     .statusBarsPadding()
             ) {
                 LazyColumn(
@@ -349,23 +332,25 @@ fun FriendManagementScreen(
                     }
 
                     item {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(46.dp)
-                                .clip(RoundedCornerShape(5.dp))
-                                .background(SolariTheme.colors.surface)
-                                .clickable(onClick = onNavigateToBlockedAccounts)
-                                .padding(horizontal = 16.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            Text(
-                                text = "View blocked accounts",
-                                color = SolariTheme.colors.onBackground,
-                                fontSize = 13.sp,
-                                fontFamily = PlusJakartaSans,
-                                fontWeight = FontWeight.Bold
-                            )
+                        CompositionLocalProvider(LocalContentColor provides Color.White) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(46.dp)
+                                    .clip(RoundedCornerShape(5.dp))
+                                    .background(SolariTheme.colors.surface)
+                                    .clickable(onClick = onNavigateToBlockedAccounts)
+                                    .padding(horizontal = 16.dp),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                Text(
+                                    text = "View blocked accounts",
+                                    color = SolariTheme.colors.onBackground,
+                                    fontSize = 13.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
 
@@ -441,7 +426,6 @@ fun FriendManagementScreen(
                                 modifier = Modifier.animateItem()
                             )
                         }
-                    }
                 }
             }
         }

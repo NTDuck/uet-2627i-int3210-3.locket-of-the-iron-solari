@@ -308,6 +308,7 @@ fun ProfileScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(SolariTheme.colors.background)
+            .padding(top = 24.dp)
     ) {
         PullToRefreshBox(
             isRefreshing = viewModel.isLoading,
@@ -438,7 +439,7 @@ fun ProfileScreen(
                     ProfileInfoBox(label = "USERNAME", value = "@${user.username}")
                 }
 
-                item { Spacer(modifier = Modifier.height(16.dp)) }
+                item { Spacer(modifier = Modifier.height(8.dp)) }
 
                 // Email
                 item {
@@ -471,7 +472,7 @@ fun ProfileScreen(
                     }
                 }
 
-                item { Spacer(modifier = Modifier.height(16.dp)) }
+                item { Spacer(modifier = Modifier.height(8.dp)) }
 
                 // Display Name
                 item {

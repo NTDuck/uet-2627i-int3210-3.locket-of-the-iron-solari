@@ -139,6 +139,7 @@ fun ConversationScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(SolariTheme.colors.background)
+            .padding(top = 24.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AnimatedVisibility(

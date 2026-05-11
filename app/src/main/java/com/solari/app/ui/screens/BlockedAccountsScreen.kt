@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -23,7 +24,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -38,9 +38,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
-import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.models.BlockedUser
 import com.solari.app.ui.theme.PlusJakartaSans
@@ -79,33 +77,18 @@ fun BlockedAccountsScreen(
         }
     }
 
-    Scaffold(
-        containerColor = BlockedBackground,
-        bottomBar = {
-            SolariBottomNavBar(
-                selectedRoute = SolariRoute.Screen.Conversations.name,
-                onNavigate = { routeName ->
-                    when (routeName) {
-                        SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
-                        SolariRoute.Screen.Feed.name -> onNavigateToFeed()
-                        SolariRoute.Screen.Conversations.name -> onNavigateToChat()
-                        SolariRoute.Screen.Profile.name -> onNavigateToProfile()
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        PullToRefreshBox(
-            isRefreshing = isUserRefreshing,
-            onRefresh = {
-                isUserRefreshing = true
-                viewModel.refresh()
-            },
-            modifier = Modifier
-                .fillMaxSize()
-                .background(BlockedBackground)
-                .padding(innerPadding)
-        ) {
+    PullToRefreshBox(
+        isRefreshing = isUserRefreshing,
+        onRefresh = {
+            isUserRefreshing = true
+            viewModel.refresh()
+        },
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BlockedBackground)
+            .navigationBarsPadding()
+            .padding(top = 24.dp, bottom = 59.dp)
+    ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 BlockedAccountsHeader(onNavigateBack = onNavigateBack)
 
@@ -165,7 +148,6 @@ fun BlockedAccountsScreen(
                             )
                         }
                     }
-                }
             }
         }
     }

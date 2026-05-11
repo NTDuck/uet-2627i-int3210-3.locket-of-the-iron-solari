@@ -109,9 +109,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
-import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
-import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.models.Message
 import com.solari.app.ui.models.MessageDeliveryState
@@ -307,19 +305,6 @@ fun ChatScreen(
 
     Scaffold(
         containerColor = ChatBackground,
-        bottomBar = {
-            SolariBottomNavBar(
-                selectedRoute = SolariRoute.Screen.Chat.name,
-                onNavigate = { route ->
-                    when (route) {
-                        SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
-                        SolariRoute.Screen.Feed.name -> onNavigateToFeed()
-                        SolariRoute.Screen.Profile.name -> onNavigateToProfile()
-                        SolariRoute.Screen.Conversations.name -> onNavigateBack()
-                    }
-                }
-            )
-        }
     ) { innerPadding ->
         val scaffoldBottomPadding = innerPadding.calculateBottomPadding()
         val targetContentBottomPadding = max(

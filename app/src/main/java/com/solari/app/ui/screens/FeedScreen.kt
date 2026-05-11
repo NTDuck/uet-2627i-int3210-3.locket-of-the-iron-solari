@@ -511,6 +511,7 @@ fun FeedScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(SolariTheme.colors.background)
+            .padding(top = 24.dp)
     ) {
         if (posts.isEmpty()) {
             PullToRefreshBox(

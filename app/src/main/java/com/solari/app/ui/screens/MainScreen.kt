@@ -2,11 +2,12 @@ package com.solari.app.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -15,14 +16,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.solari.app.navigation.SolariRoute
-import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.models.Post
+import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.ConversationViewModel
 import com.solari.app.ui.viewmodels.FeedViewModel
 import com.solari.app.ui.viewmodels.HomepageBeforeCapturingViewModel
@@ -114,50 +116,15 @@ fun MainScreen(
 
     val viewModelStoreOwner = androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner.current
 
-    Scaffold(
-        bottomBar = {
-            SolariBottomNavBar(
-                selectedRoute = routes[pagerState.currentPage].name,
-                onNavigate = { routeName ->
-                    val index = routes.indexOfFirst { it.name == routeName }
-                    if (index != -1) {
-                        if (index == 1 && viewModelStoreOwner != null) {
-                            val feedViewModel: FeedViewModel = ViewModelProvider(
-                                viewModelStoreOwner,
-                                viewModelFactory
-                            )[FeedViewModel::class.java]
-                            feedViewModel.resetFilters()
-                        }
-
-                        if (
-                            routeName == SolariRoute.Screen.Feed.name &&
-                            pagerState.currentPage == 1
-                        ) {
-                            onNavigateToFeedBrowse(null)
-                        } else {
-                            scope.launch {
-                                // Skip animation when jumping over intermediate pages
-                                // to avoid briefly showing screens in between.
-                                val distance = kotlin.math.abs(index - pagerState.currentPage)
-                                if (distance > 1) {
-                                    pagerState.scrollToPage(index)
-                                } else {
-                                    pagerState.animateScrollToPage(index)
-                                }
-                            }
-                        }
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            userScrollEnabled = !isFeedActivityPanelVisible
-        ) { page ->
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SolariTheme.colors.background)
+            .navigationBarsPadding()
+            .padding(bottom = 59.dp),
+        userScrollEnabled = !isFeedActivityPanelVisible
+    ) { page ->
             when (page) {
                 0 -> {
                     val viewModel: HomepageBeforeCapturingViewModel =
@@ -216,7 +183,6 @@ fun MainScreen(
                         onNavigateToManageFriends = onNavigateToManageFriends,
                         onLogout = onLogout
                     )
-                }
             }
         }
     }
