@@ -243,7 +243,7 @@ fun ConversationScreen(
                                 onAccept = { viewModel.acceptFriendRequest(request.id) },
                                 onDecline = { viewModel.declineFriendRequest(request.id) },
                                 onCancel = { requestPendingCancel = request },
-                                modifier = Modifier.animateItem()
+                                modifier = Modifier.animateItem(fadeOutSpec = null)
                             )
                         }
 
