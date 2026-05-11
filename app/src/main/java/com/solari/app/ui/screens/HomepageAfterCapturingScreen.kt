@@ -358,37 +358,41 @@ fun HomepageAfterCapturingScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 24.dp, start = 24.dp, end = 24.dp),
+                    .padding(top = 24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.height(48.dp))
 
-                CapturePreviewCard(
-                    mediaUri = media?.uri,
-                    isVideo = media?.isVideo == true,
-                    customCaptionText = customCaptionText,
-                    onCustomCaptionChange = { customCaptionText = it },
-                    locationText = locationText,
-                    onLocationTextChange = { locationText = it },
-                    ratingValue = ratingValue,
-                    onRatingValueChange = { ratingValue = it },
-                    ratingReviewText = ratingReviewText,
-                    onRatingReviewTextChange = { ratingReviewText = it },
-                    selectedWeatherCondition = selectedWeatherCondition,
-                    weatherTempCText = weatherTempCText,
-                    onWeatherTempCTextChange = { weatherTempCText = it },
-                    onOpenWeatherSheet = { isWeatherSheetOpen = true },
-                    pagerState = pagerState,
-                    focusRequester = focusRequester,
-                    onDownload = ::downloadPreviewMedia,
-                    onCaptionBoundsChanged = { captionBounds = it },
-                    onCaptionFocusChanged = { isFocused -> isCaptionFocused = isFocused },
-                    onCaptionDone = ::clearCaptionFocus,
-                    onZoomStateChanged = { isZooming = it },
-                    canTransformMedia = canTransformMedia,
-                    mediaTransform = mediaTransform,
-                    onMediaTransformChange = { mediaTransform = it }
-                )
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                ) {
+                    CapturePreviewCard(
+                        mediaUri = media?.uri,
+                        isVideo = media?.isVideo == true,
+                        customCaptionText = customCaptionText,
+                        onCustomCaptionChange = { customCaptionText = it },
+                        locationText = locationText,
+                        onLocationTextChange = { locationText = it },
+                        ratingValue = ratingValue,
+                        onRatingValueChange = { ratingValue = it },
+                        ratingReviewText = ratingReviewText,
+                        onRatingReviewTextChange = { ratingReviewText = it },
+                        selectedWeatherCondition = selectedWeatherCondition,
+                        weatherTempCText = weatherTempCText,
+                        onWeatherTempCTextChange = { weatherTempCText = it },
+                        onOpenWeatherSheet = { isWeatherSheetOpen = true },
+                        pagerState = pagerState,
+                        focusRequester = focusRequester,
+                        onDownload = ::downloadPreviewMedia,
+                        onCaptionBoundsChanged = { captionBounds = it },
+                        onCaptionFocusChanged = { isFocused -> isCaptionFocused = isFocused },
+                        onCaptionDone = ::clearCaptionFocus,
+                        onZoomStateChanged = { isZooming = it },
+                        canTransformMedia = canTransformMedia,
+                        mediaTransform = mediaTransform,
+                        onMediaTransformChange = { mediaTransform = it }
+                    )
+                }
 
                 Row(
                     modifier = Modifier.padding(top = 16.dp),
@@ -422,13 +426,13 @@ fun HomepageAfterCapturingScreen(
                             lineHeight = 18.sp,
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.align(Alignment.Start)
+                            modifier = Modifier.align(Alignment.Start).padding(start = 24.dp)
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
                         LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().graphicsLayer { clip = false },
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             contentPadding = PaddingValues(end = 6.dp)
                         ) {
@@ -753,7 +757,7 @@ private fun CapturePreviewCard(
                                     translationX = mediaTransform.offset.x
                                     translationY = mediaTransform.offset.y
                                 },
-                            contentScale = ContentScale.FillBounds
+                            contentScale = ContentScale.Crop
                         )
                     } else {
                         AsyncImage(
@@ -1354,7 +1358,7 @@ private fun VisibilityAllItem(
     total: Int,
     onClick: () -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(start = 24.dp)) {
         Box(
             modifier = Modifier
                 .size(56.dp)

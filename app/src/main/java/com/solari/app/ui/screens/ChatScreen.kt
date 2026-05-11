@@ -72,6 +72,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -213,7 +214,7 @@ private class ChatMessageListState(
     initialMessageCount: Int,
     initialLastMessageId: String?
 ) {
-    var previousMessageCount by mutableStateOf(initialMessageCount)
+    var previousMessageCount by mutableIntStateOf(initialMessageCount)
     var previousLastMessageId by mutableStateOf(initialLastMessageId)
     var lastBottomVisibleMessageId by mutableStateOf(initialLastMessageId)
     var shouldKeepChatPinnedToBottom by mutableStateOf(false)

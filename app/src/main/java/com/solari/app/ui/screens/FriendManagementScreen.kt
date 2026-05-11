@@ -265,7 +265,7 @@ fun FriendManagementScreen(
                                     Icon(
                                         imageVector = Icons.Outlined.PersonAdd,
                                         contentDescription = null,
-                                        tint = SolariTheme.colors.onSurface,
+                                        tint = SolariTheme.colors.onBackground,
                                         modifier = Modifier.size(16.dp)
                                     )
 
@@ -288,7 +288,7 @@ fun FriendManagementScreen(
                                                 if (requestText.isEmpty()) {
                                                     Text(
                                                         text = "username/email",
-                                                        color = SolariTheme.colors.onSurfaceVariant,
+                                                        color = SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.6f),
                                                         fontSize = 12.sp,
                                                         fontFamily = PlusJakartaSans,
                                                         fontWeight = FontWeight.Medium
@@ -315,7 +315,7 @@ fun FriendManagementScreen(
                                     .weight(0.75f)
                                     .height(36.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .background(SolariTheme.colors.surfaceVariant)
+                                    .background(SolariTheme.colors.primary)
                                     .clickable(enabled = !viewModel.isSendingRequest) {
                                         focusManager.clearFocus(force = true)
                                         keyboardController?.hide()
@@ -328,7 +328,7 @@ fun FriendManagementScreen(
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     if (viewModel.isSendingRequest) {
                                         CircularProgressIndicator(
-                                            color = SolariTheme.colors.onBackground,
+                                            color = SolariTheme.colors.onPrimary,
                                             trackColor = SolariTheme.colors.surfaceVariant,
                                             strokeWidth = 2.dp,
                                             modifier = Modifier.size(14.dp)
@@ -337,7 +337,7 @@ fun FriendManagementScreen(
                                     }
                                     Text(
                                         text = "Send request",
-                                        color = SolariTheme.colors.onBackground,
+                                        color = SolariTheme.colors.onPrimary,
                                         fontSize = 12.sp,
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = FontWeight.Bold
@@ -361,7 +361,7 @@ fun FriendManagementScreen(
                         ) {
                             Text(
                                 text = "View blocked accounts",
-                                color = SolariTheme.colors.secondary,
+                                color = SolariTheme.colors.onBackground,
                                 fontSize = 13.sp,
                                 fontFamily = PlusJakartaSans,
                                 fontWeight = FontWeight.Bold
@@ -568,7 +568,7 @@ private fun FriendManagementFeedbackPill(
 private fun FriendManagementSectionTitle(text: String) {
     Text(
         text = text,
-        color = SolariTheme.colors.onSurface,
+        color = SolariTheme.colors.secondary,
         fontSize = 15.sp,
         fontFamily = PlusJakartaSans,
         fontWeight = FontWeight.Bold

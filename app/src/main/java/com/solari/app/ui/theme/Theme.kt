@@ -359,7 +359,8 @@ val DefaultSolariLight = SolariColors(
     onSurface = Color.Black,
     onSurfaceVariant = Color.Black,
     error = Color(0xFFB00020),
-    onError = Color.White
+    onError = Color.White,
+    navBarColor = Color.White
 )
 
 val V_0X96FColors = SolariColors(

@@ -170,9 +170,8 @@ fun ConversationScreen(
                         .fillMaxSize()
                         .padding(horizontal = 19.dp),
                     verticalArrangement = Arrangement.spacedBy(13.dp),
-                    contentPadding = PaddingValues(bottom = 120.dp)
+                    contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    // Manage Friends Button aligned to the right
                     item {
                         Box(
                             modifier = Modifier.fillMaxWidth(),
@@ -209,7 +208,6 @@ fun ConversationScreen(
                         }
                     }
 
-                    // Friend requests section: inline spinner or list
                     if (viewModel.isLoadingFriendRequests) {
                         item {
                             Box(
@@ -274,7 +272,6 @@ fun ConversationScreen(
                         }
                     }
 
-                    // Conversations section header (always visible)
                     item {
                         Row(
                             modifier = Modifier
@@ -300,7 +297,6 @@ fun ConversationScreen(
                         }
                     }
 
-                    // Conversations section: inline spinner or list
                     if (viewModel.isLoadingConversations) {
                         item {
                             Box(
@@ -604,7 +600,6 @@ fun ConversationItem(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Unread indicator
             if (conversation.isUnread) {
                 Box(
                     modifier = Modifier
