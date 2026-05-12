@@ -72,6 +72,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -108,9 +109,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
-import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
-import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.models.Message
 import com.solari.app.ui.models.MessageDeliveryState
@@ -213,7 +212,7 @@ private class ChatMessageListState(
     initialMessageCount: Int,
     initialLastMessageId: String?
 ) {
-    var previousMessageCount by mutableStateOf(initialMessageCount)
+    var previousMessageCount by mutableIntStateOf(initialMessageCount)
     var previousLastMessageId by mutableStateOf(initialLastMessageId)
     var lastBottomVisibleMessageId by mutableStateOf(initialLastMessageId)
     var shouldKeepChatPinnedToBottom by mutableStateOf(false)
@@ -306,19 +305,6 @@ fun ChatScreen(
 
     Scaffold(
         containerColor = ChatBackground,
-        bottomBar = {
-            SolariBottomNavBar(
-                selectedRoute = SolariRoute.Screen.Chat.name,
-                onNavigate = { route ->
-                    when (route) {
-                        SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
-                        SolariRoute.Screen.Feed.name -> onNavigateToFeed()
-                        SolariRoute.Screen.Profile.name -> onNavigateToProfile()
-                        SolariRoute.Screen.Conversations.name -> onNavigateBack()
-                    }
-                }
-            )
-        }
     ) { innerPadding ->
         val scaffoldBottomPadding = innerPadding.calculateBottomPadding()
         val targetContentBottomPadding = max(
@@ -1786,12 +1772,14 @@ fun EmojiPickerPopup(
                     ) {
                         EmojiPickerHandle(
                             onDragStart = {
+                                isSheetDragging = true
                             },
                             onDrag = { dragAmount ->
                                 sheetDragOffsetPx =
                                     (sheetDragOffsetPx + dragAmount).coerceAtLeast(0f)
                             },
                             onDragEnd = {
+                                isSheetDragging = false
                                 if (sheetDragOffsetPx > 80f) {
                                     dismissWithAnimation()
                                 } else {
@@ -1799,6 +1787,7 @@ fun EmojiPickerPopup(
                                 }
                             },
                             onDragCancel = {
+                                isSheetDragging = false
                                 sheetDragOffsetPx = 0f
                             }
                         )

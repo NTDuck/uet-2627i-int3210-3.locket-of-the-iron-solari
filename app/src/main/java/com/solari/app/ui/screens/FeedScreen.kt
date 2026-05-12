@@ -511,6 +511,7 @@ fun FeedScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(SolariTheme.colors.background)
+            .padding(top = 24.dp)
     ) {
         if (posts.isEmpty()) {
             PullToRefreshBox(
@@ -1868,7 +1869,7 @@ private fun FeedActivitySheet(
                         )
                     }
                     .clip(RoundedCornerShape(topStart = 29.dp, topEnd = 29.dp))
-                    .background(SolariTheme.colors.surface)
+                    .background(SolariTheme.colors.navBarColor)
                     .clickable(
                         interactionSource = sheetInteractionSource,
                         indication = null,
@@ -1884,12 +1885,14 @@ private fun FeedActivitySheet(
                         .pointerInput(onDismiss) {
                             detectVerticalDragGestures(
                                 onDragStart = {
+                                    isSheetDragging = true
                                 },
                                 onVerticalDrag = { _, dragAmount ->
                                     sheetDragOffsetPx = (sheetDragOffsetPx + dragAmount)
                                         .coerceAtLeast(0f)
                                 },
                                 onDragEnd = {
+                                    isSheetDragging = false
                                     if (sheetDragOffsetPx > 80f) {
                                         onDismiss()
                                     } else {
@@ -1897,6 +1900,7 @@ private fun FeedActivitySheet(
                                     }
                                 },
                                 onDragCancel = {
+                                    isSheetDragging = false
                                     sheetDragOffsetPx = 0f
                                 }
                             )
@@ -2660,7 +2664,7 @@ private fun FeedBrowseButton(
     ) {
         Text(
             text = "View all photos",
-            color = SolariTheme.colors.onSurfaceVariant,
+            color = SolariTheme.colors.onPrimary,
             fontSize = 16.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold

@@ -510,7 +510,7 @@ fun HomepageBeforeCapturingScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(SolariTheme.colors.background)
-            .padding(horizontal = 24.dp)
+            .padding(start = 24.dp, end = 24.dp, top = 36.dp)
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {

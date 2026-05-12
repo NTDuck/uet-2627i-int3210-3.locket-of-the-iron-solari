@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -67,9 +68,8 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -125,9 +125,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
-import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.SolariAvatar
-import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariFeedbackPill
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.CapturedMediaSource
@@ -318,77 +316,60 @@ fun HomepageAfterCapturingScreen(
 
     var isZooming by remember { mutableStateOf(false) }
 
-    Scaffold(
-        containerColor = SolariTheme.colors.background,
-        bottomBar = {
-            AnimatedVisibility(
-                visible = !isZooming,
-                enter = fadeIn(),
-                exit = fadeOut()
-            ) {
-                SolariBottomNavBar(
-                    selectedRoute = SolariRoute.Screen.CameraAfter.name,
-                    onNavigate = { routeName ->
-                        when (routeName) {
-                            SolariRoute.Screen.CameraBefore.name -> Unit
-                            SolariRoute.Screen.Feed.name -> onNavigateToFeed()
-                            SolariRoute.Screen.Conversations.name -> onNavigateToChat()
-                            SolariRoute.Screen.Profile.name -> onNavigateToProfile()
-                        }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SolariTheme.colors.background)
+            .navigationBarsPadding()
+            .padding(bottom = 59.dp)
+            .pointerInput(captionBounds) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    if (!isInsideCaption(down.position)) {
+                        clearCaptionFocus()
                     }
-                )
-            }
-        }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(SolariTheme.colors.background)
-                .padding(innerPadding)
-                .pointerInput(captionBounds) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        if (!isInsideCaption(down.position)) {
-                            clearCaptionFocus()
-                        }
-                        waitForUpOrCancellation(pass = PointerEventPass.Final)
-                    }
+                    waitForUpOrCancellation(pass = PointerEventPass.Final)
                 }
-        ) {
-            Column(
+            }
+    ) {
+        Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 24.dp, start = 24.dp, end = 24.dp),
+                    .padding(top = 36.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Spacer(modifier = Modifier.height(48.dp))
 
-                CapturePreviewCard(
-                    mediaUri = media?.uri,
-                    isVideo = media?.isVideo == true,
-                    customCaptionText = customCaptionText,
-                    onCustomCaptionChange = { customCaptionText = it },
-                    locationText = locationText,
-                    onLocationTextChange = { locationText = it },
-                    ratingValue = ratingValue,
-                    onRatingValueChange = { ratingValue = it },
-                    ratingReviewText = ratingReviewText,
-                    onRatingReviewTextChange = { ratingReviewText = it },
-                    selectedWeatherCondition = selectedWeatherCondition,
-                    weatherTempCText = weatherTempCText,
-                    onWeatherTempCTextChange = { weatherTempCText = it },
-                    onOpenWeatherSheet = { isWeatherSheetOpen = true },
-                    pagerState = pagerState,
-                    focusRequester = focusRequester,
-                    onDownload = ::downloadPreviewMedia,
-                    onCaptionBoundsChanged = { captionBounds = it },
-                    onCaptionFocusChanged = { isFocused -> isCaptionFocused = isFocused },
-                    onCaptionDone = ::clearCaptionFocus,
-                    onZoomStateChanged = { isZooming = it },
-                    canTransformMedia = canTransformMedia,
-                    mediaTransform = mediaTransform,
-                    onMediaTransformChange = { mediaTransform = it }
-                )
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp)
+                ) {
+                    CapturePreviewCard(
+                        mediaUri = media?.uri,
+                        isVideo = media?.isVideo == true,
+                        customCaptionText = customCaptionText,
+                        onCustomCaptionChange = { customCaptionText = it },
+                        locationText = locationText,
+                        onLocationTextChange = { locationText = it },
+                        ratingValue = ratingValue,
+                        onRatingValueChange = { ratingValue = it },
+                        ratingReviewText = ratingReviewText,
+                        onRatingReviewTextChange = { ratingReviewText = it },
+                        selectedWeatherCondition = selectedWeatherCondition,
+                        weatherTempCText = weatherTempCText,
+                        onWeatherTempCTextChange = { weatherTempCText = it },
+                        onOpenWeatherSheet = { isWeatherSheetOpen = true },
+                        pagerState = pagerState,
+                        focusRequester = focusRequester,
+                        onDownload = ::downloadPreviewMedia,
+                        onCaptionBoundsChanged = { captionBounds = it },
+                        onCaptionFocusChanged = { isFocused -> isCaptionFocused = isFocused },
+                        onCaptionDone = ::clearCaptionFocus,
+                        onZoomStateChanged = { isZooming = it },
+                        canTransformMedia = canTransformMedia,
+                        mediaTransform = mediaTransform,
+                        onMediaTransformChange = { mediaTransform = it }
+                    )
+                }
 
                 Row(
                     modifier = Modifier.padding(top = 16.dp),
@@ -422,13 +403,13 @@ fun HomepageAfterCapturingScreen(
                             lineHeight = 18.sp,
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.align(Alignment.Start)
+                            modifier = Modifier.align(Alignment.Start).padding(start = 24.dp)
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
                         LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().graphicsLayer { clip = false },
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                             contentPadding = PaddingValues(end = 6.dp)
                         ) {
@@ -515,29 +496,7 @@ fun HomepageAfterCapturingScreen(
                                 }
                             )
                         }
-                    }
                 }
-            }
-
-            AnimatedVisibility(
-                visible = topPillVisible,
-                enter = slideInVertically(
-                    animationSpec = tween(durationMillis = 260),
-                    initialOffsetY = { -it * 2 }
-                ) + fadeIn(animationSpec = tween(durationMillis = 180)),
-                exit = slideOutVertically(
-                    animationSpec = tween(durationMillis = 220),
-                    targetOffsetY = { -it * 2 }
-                ) + fadeOut(animationSpec = tween(durationMillis = 160)),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(top = 12.dp, start = 24.dp, end = 24.dp)
-            ) {
-                SolariFeedbackPill(
-                    message = topPillMessage,
-                    isSuccess = topPillIsSuccess
-                )
             }
         }
     }
@@ -753,7 +712,7 @@ private fun CapturePreviewCard(
                                     translationX = mediaTransform.offset.x
                                     translationY = mediaTransform.offset.y
                                 },
-                            contentScale = ContentScale.FillBounds
+                            contentScale = ContentScale.Crop
                         )
                     } else {
                         AsyncImage(
@@ -1354,7 +1313,7 @@ private fun VisibilityAllItem(
     total: Int,
     onClick: () -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(start = 24.dp)) {
         Box(
             modifier = Modifier
                 .size(56.dp)

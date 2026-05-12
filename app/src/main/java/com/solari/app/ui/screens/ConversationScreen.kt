@@ -139,6 +139,7 @@ fun ConversationScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(SolariTheme.colors.background)
+            .padding(top = 24.dp)
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             AnimatedVisibility(
@@ -170,9 +171,8 @@ fun ConversationScreen(
                         .fillMaxSize()
                         .padding(horizontal = 19.dp),
                     verticalArrangement = Arrangement.spacedBy(13.dp),
-                    contentPadding = PaddingValues(bottom = 120.dp)
+                    contentPadding = PaddingValues(bottom = 24.dp)
                 ) {
-                    // Manage Friends Button aligned to the right
                     item {
                         Box(
                             modifier = Modifier.fillMaxWidth(),
@@ -209,7 +209,6 @@ fun ConversationScreen(
                         }
                     }
 
-                    // Friend requests section: inline spinner or list
                     if (viewModel.isLoadingFriendRequests) {
                         item {
                             Box(
@@ -244,7 +243,7 @@ fun ConversationScreen(
                                 onAccept = { viewModel.acceptFriendRequest(request.id) },
                                 onDecline = { viewModel.declineFriendRequest(request.id) },
                                 onCancel = { requestPendingCancel = request },
-                                modifier = Modifier.animateItem()
+                                modifier = Modifier.animateItem(fadeOutSpec = null)
                             )
                         }
 
@@ -274,7 +273,6 @@ fun ConversationScreen(
                         }
                     }
 
-                    // Conversations section header (always visible)
                     item {
                         Row(
                             modifier = Modifier
@@ -300,7 +298,6 @@ fun ConversationScreen(
                         }
                     }
 
-                    // Conversations section: inline spinner or list
                     if (viewModel.isLoadingConversations) {
                         item {
                             Box(
@@ -604,7 +601,6 @@ fun ConversationItem(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Unread indicator
             if (conversation.isUnread) {
                 Box(
                     modifier = Modifier
@@ -660,7 +656,11 @@ fun ConversationItem(
                     }
                     Text(
                         text = lastMessagePreview,
-                        color = if (conversation.isUnread) SolariTheme.colors.onBackground else SolariTheme.colors.onSurfaceVariant,
+                        color = (if (conversation.isUnread) {
+                            SolariTheme.colors.onBackground
+                        } else {
+                            SolariTheme.colors.onSurfaceVariant
+                        }).copy(alpha = 0.7f),
                         fontSize = 13.sp,
                         maxLines = 1,
                         fontFamily = PlusJakartaSans,

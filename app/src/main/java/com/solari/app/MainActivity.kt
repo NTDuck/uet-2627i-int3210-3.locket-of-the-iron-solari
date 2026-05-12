@@ -27,6 +27,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -55,11 +56,13 @@ import androidx.navigation.NavController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.solari.app.data.di.AppContainer
 import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.FriendInvitePreviewDialog
+import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariFeedbackPill
 import com.solari.app.ui.models.CapturedMedia
@@ -324,6 +327,7 @@ private fun SolariApp(
     var internetFeedbackEventId by remember { mutableIntStateOf(0) }
     var selectedMainPage by rememberSaveable { mutableIntStateOf(0) }
     var mainPageHistory by rememberSaveable { mutableStateOf(listOf(0)) }
+    var navigatedFromProfile by remember { mutableStateOf(false) }
     var notificationPermissionGranted by remember {
         mutableStateOf(ContextCompat.checkSelfPermission(
                         context,
@@ -551,52 +555,99 @@ private fun SolariApp(
 
     Box(modifier = Modifier.fillMaxSize()) {
         SharedTransitionLayout {
-            NavHost(
+            val currentBackStackEntry by navController.currentBackStackEntryAsState()
+            val currentRoute = currentBackStackEntry?.destination?.route
+
+            val isOnMainRoute = currentRoute?.startsWith(SolariRoute.Screen.Main.name) == true
+
+            val showNavBar = currentRoute != null && (
+                currentRoute.startsWith(SolariRoute.Screen.Main.name) ||
+                currentRoute == SolariRoute.Screen.CameraAfter.name ||
+                currentRoute.startsWith(SolariRoute.Screen.FeedBrowse.name) ||
+                currentRoute == SolariRoute.Screen.FriendManagement.name ||
+                currentRoute == SolariRoute.Screen.BlockedAccounts.name
+            )
+
+            val mainPageNames = listOf(
+                SolariRoute.Screen.CameraBefore.name,
+                SolariRoute.Screen.Feed.name,
+                SolariRoute.Screen.Conversations.name,
+                SolariRoute.Screen.Profile.name
+            )
+
+            val navBarSelectedRoute = when {
+                isOnMainRoute -> mainPageNames.getOrElse(selectedMainPage) { mainPageNames[0] }
+                currentRoute == SolariRoute.Screen.CameraAfter.name -> SolariRoute.Screen.CameraBefore.name
+                currentRoute?.startsWith(SolariRoute.Screen.FeedBrowse.name) == true -> SolariRoute.Screen.Feed.name
+                currentRoute == SolariRoute.Screen.FriendManagement.name -> {
+                    if (navigatedFromProfile) SolariRoute.Screen.Profile.name
+                    else SolariRoute.Screen.Conversations.name
+                }
+                currentRoute == SolariRoute.Screen.BlockedAccounts.name -> {
+                    if (navigatedFromProfile) SolariRoute.Screen.Profile.name
+                    else SolariRoute.Screen.Conversations.name
+                }
+                else -> ""
+            }
+
+            Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(SolariTheme.colors.background)
+                )
+                NavHost(
                 navController = navController,
-                modifier = Modifier.background(SolariTheme.colors.background),
+                modifier = Modifier.fillMaxSize(),
                 startDestination = startDestination,
                 enterTransition = {
                     if (targetState.destination.route.isFeedBrowseRoute()) {
-                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300))
+                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300)) +
+                                fadeIn(animationSpec = tween(200, delayMillis = 100))
                     } else {
                         slideInHorizontally(
                             initialOffsetX = { 1000 },
                             animationSpec = tween(300)
-                        ) + fadeIn(animationSpec = tween(300))
+                        ) + fadeIn(animationSpec = tween(200, delayMillis = 100))
                     }
                 },
                 exitTransition = {
-                    if (targetState.destination.route.isFeedBrowseRoute()) {
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300))
-                    } else {
-                        slideOutHorizontally(
-                            targetOffsetX = { -1000 },
-                            animationSpec = tween(300)
-                        ) + fadeOut(animationSpec = tween(300))
+                    when {
+                        initialState.destination.route.isFeedBrowseRoute() -> ExitTransition.None
+                        targetState.destination.route.isFeedBrowseRoute() ->
+                            slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) +
+                                fadeOut(animationSpec = tween(200, delayMillis = 100))
+                        else ->
+                            slideOutHorizontally(
+                                targetOffsetX = { -1000 },
+                                animationSpec = tween(300)
+                            ) + fadeOut(animationSpec = tween(200, delayMillis = 100))
                     }
                 },
                 popEnterTransition = {
                     if (initialState.destination.route.isFeedPostRoute() &&
                         targetState.destination.route.isFeedBrowseRoute()
                     ) {
-                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300))
+                        slideInHorizontally(initialOffsetX = { -it }, animationSpec = tween(300)) +
+                                fadeIn(animationSpec = tween(200, delayMillis = 100))
                     } else {
                         slideInHorizontally(
                             initialOffsetX = { -1000 },
                             animationSpec = tween(300)
-                        ) + fadeIn(animationSpec = tween(300))
+                        ) + fadeIn(animationSpec = tween(200, delayMillis = 100))
                     }
                 },
                 popExitTransition = {
                     if (initialState.destination.route.isFeedPostRoute() &&
                         targetState.destination.route.isFeedBrowseRoute()
                     ) {
-                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300))
+                        slideOutHorizontally(targetOffsetX = { it }, animationSpec = tween(300)) +
+                                fadeOut(animationSpec = tween(200, delayMillis = 100))
                     } else {
                         slideOutHorizontally(
                             targetOffsetX = { 1000 },
                             animationSpec = tween(300)
-                        ) + fadeOut(animationSpec = tween(300))
+                        ) + fadeOut(animationSpec = tween(200, delayMillis = 100))
                     }
                 }
             ) {
@@ -743,6 +794,7 @@ private fun SolariApp(
                 }
                 composable(
                     route = SolariRoute.Screen.Main.name + "/{page}",
+                    enterTransition = { EnterTransition.None },
                     exitTransition = {
                         when {
                             targetState.destination.route.isFriendManagementRoute() -> ExitTransition.None
@@ -750,18 +802,13 @@ private fun SolariApp(
                                 slideOutHorizontally(
                                     targetOffsetX = { it },
                                     animationSpec = tween(300)
-                                )
+                                ) + fadeOut(animationSpec = tween(200, delayMillis = 100))
 
-                            else -> null
+                            else -> ExitTransition.None
                         }
                     },
-                    popEnterTransition = {
-                        if (initialState.destination.route.isFriendManagementRoute()) {
-                            EnterTransition.None
-                        } else {
-                            null
-                        }
-                    }
+                    popEnterTransition = { EnterTransition.None },
+                    popExitTransition = { ExitTransition.None }
                 ) {
                     MainScreen(
                         initialPage = selectedMainPage,
@@ -779,7 +826,10 @@ private fun SolariApp(
                                 conversation
                             )
                         },
-                        onNavigateToManageFriends = { navController.navigate(SolariRoute.Screen.FriendManagement.name) },
+                        onNavigateToManageFriends = {
+                            navigatedFromProfile = selectedMainPage == 3
+                            navController.navigate(SolariRoute.Screen.FriendManagement.name)
+                        },
                         onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
                         onNavigateToChangePassword = { navController.navigate(SolariRoute.Screen.PasswordReset.name + "/true") },
                         onNavigateToChangeTheme = { navController.navigate(SolariRoute.Screen.ChangeTheme.name) },
@@ -886,7 +936,10 @@ private fun SolariApp(
                                 conversation
                             )
                         },
-                        onNavigateToManageFriends = { navController.navigate(SolariRoute.Screen.FriendManagement.name) },
+                        onNavigateToManageFriends = {
+                            navigatedFromProfile = selectedMainPage == 3
+                            navController.navigate(SolariRoute.Screen.FriendManagement.name)
+                        },
                         onNavigateToBlockedAccounts = { navController.navigate(SolariRoute.Screen.BlockedAccounts.name) },
                         onNavigateToChangePassword = { navController.navigate(SolariRoute.Screen.PasswordReset.name + "/true") },
                         onNavigateToChangeTheme = { navController.navigate(SolariRoute.Screen.ChangeTheme.name) },
@@ -1056,6 +1109,7 @@ private fun SolariApp(
                 }
                 composable(
                     route = SolariRoute.Screen.FeedBrowse.name + "?authorId={authorId}",
+                    enterTransition = { EnterTransition.None },
                     exitTransition = {
                         val isSharedFeedOpen = initialState.savedStateHandle
                             .get<Boolean>(SelectedFeedSharedTransitionEnabledKey) == true
@@ -1075,7 +1129,8 @@ private fun SolariApp(
                             nullable = true
                             defaultValue = null
                         }
-                    )
+                    ),
+                    popExitTransition = { ExitTransition.None }
                 ) { backStackEntry ->
                     val initialAuthorId = backStackEntry.arguments?.getString("authorId")
                     val viewModel: FeedBrowseViewModel =
@@ -1174,6 +1229,12 @@ private fun SolariApp(
                                     durationMillis = FriendManagementTransitionMillis,
                                     easing = FastOutSlowInEasing
                                 )
+                            ) + fadeIn(
+                                animationSpec = tween(
+                                    durationMillis = 200,
+                                    delayMillis = 160,
+                                    easing = FastOutSlowInEasing
+                                )
                             )
                         } else {
                             null
@@ -1185,6 +1246,12 @@ private fun SolariApp(
                                 targetOffsetX = { it },
                                 animationSpec = tween(
                                     durationMillis = FriendManagementTransitionMillis,
+                                    easing = FastOutSlowInEasing
+                                )
+                            ) + fadeOut(
+                                animationSpec = tween(
+                                    durationMillis = 200,
+                                    delayMillis = 160,
                                     easing = FastOutSlowInEasing
                                 )
                             )
@@ -1221,48 +1288,68 @@ private fun SolariApp(
                     )
                 }
             }
-
             AnimatedVisibility(
-                visible = inviteFeedbackVisible,
-                enter = slideInVertically(
-                    initialOffsetY = { -it * 2 },
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-                ),
-                exit = slideOutVertically(
-                    targetOffsetY = { -it * 2 },
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-                ),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 12.dp)
+                visible = showNavBar,
+                enter = fadeIn(animationSpec = tween(300)),
+                exit = fadeOut(animationSpec = tween(300)),
+                modifier = Modifier.align(Alignment.BottomCenter)
             ) {
-                SolariFeedbackPill(
-                    message = inviteFeedbackMessage,
-                    isSuccess = inviteFeedbackIsSuccess
+                SolariBottomNavBar(
+                    selectedRoute = navBarSelectedRoute,
+                    onNavigate = { routeName ->
+                        val targetPage = mainPageNames.indexOf(routeName)
+                        val isFeedOnFeedPage = isOnMainRoute && selectedMainPage == 1 && targetPage == 1
+                        val isAlreadyOnMainPage = isOnMainRoute && selectedMainPage == targetPage
+                        when {
+                            isFeedOnFeedPage -> navController.navigateToFeedBrowse(null)
+                            !isAlreadyOnMainPage -> navigateToMainPage(targetPage, replaceCurrent = true)
+                        }
+                    }
                 )
             }
+        }
 
-            AnimatedVisibility(
-                visible = internetFeedbackVisible,
-                enter = slideInVertically(
-                    initialOffsetY = { -it * 2 },
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-                ),
-                exit = slideOutVertically(
-                    targetOffsetY = { -it * 2 },
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
-                ),
-                modifier = Modifier
-                    .align(Alignment.TopCenter)
-                    .statusBarsPadding()
-                    .padding(horizontal = 24.dp, vertical = 12.dp)
-            ) {
-                SolariFeedbackPill(
-                    message = internetFeedbackMessage,
-                    isSuccess = internetFeedbackIsSuccess,
-                    isLoading = internetFeedbackIsLoading
-                )
+        AnimatedVisibility(
+            visible = inviteFeedbackVisible,
+            enter = slideInVertically(
+                initialOffsetY = { -it * 2 },
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+            ),
+            exit = slideOutVertically(
+                targetOffsetY = { -it * 2 },
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+            ),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+        ) {
+            SolariFeedbackPill(
+                message = inviteFeedbackMessage,
+                isSuccess = inviteFeedbackIsSuccess
+            )
+        }
+
+        AnimatedVisibility(
+            visible = internetFeedbackVisible,
+            enter = slideInVertically(
+                initialOffsetY = { -it * 2 },
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+            ),
+            exit = slideOutVertically(
+                targetOffsetY = { -it * 2 },
+                animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing)
+            ),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 12.dp)
+        ) {
+            SolariFeedbackPill(
+                message = internetFeedbackMessage,
+                isSuccess = internetFeedbackIsSuccess,
+                isLoading = internetFeedbackIsLoading
+            )
             }
         }
 

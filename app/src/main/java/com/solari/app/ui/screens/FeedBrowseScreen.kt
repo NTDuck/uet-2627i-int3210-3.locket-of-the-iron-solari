@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,7 +31,6 @@ import androidx.compose.material.icons.filled.Public
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -54,10 +55,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import coil.request.ImageRequest
-import com.solari.app.navigation.SolariRoute
 import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SolariAvatar
-import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostUploadStatus
@@ -190,42 +189,27 @@ fun FeedBrowseScreen(
         onNavigateToPost(firstPost, posts, selectedFriendIds, selectedSort, false)
     }
 
-    Scaffold(
-        containerColor = SolariTheme.colors.background,
-        bottomBar = {
-            SolariBottomNavBar(
-                selectedRoute = SolariRoute.Screen.Feed.name,
-                onNavigate = { routeName ->
-                    when (routeName) {
-                        SolariRoute.Screen.CameraBefore.name -> onNavigateToCamera()
-                        SolariRoute.Screen.Feed.name -> navigateToFirstGridPost()
-                        SolariRoute.Screen.Conversations.name -> onNavigateToChat()
-                        SolariRoute.Screen.Profile.name -> onNavigateToProfile()
-                    }
-                }
-            )
-        }
-    ) { innerPadding ->
-        PullToRefreshBox(
-            isRefreshing = isUserRefreshing,
-            onRefresh = {
-                isUserRefreshing = true
-                viewModel.refresh()
-            },
-            modifier = Modifier
-                .fillMaxSize()
-                .background(SolariTheme.colors.background)
-                .padding(innerPadding)
-        ) {
+    PullToRefreshBox(
+        isRefreshing = isUserRefreshing,
+        onRefresh = {
+            isUserRefreshing = true
+            viewModel.refresh()
+        },
+        modifier = Modifier
+            .fillMaxSize()
+            .background(SolariTheme.colors.background)
+            .navigationBarsPadding()
+            .padding(top = 24.dp, bottom = 59.dp)
+    ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 24.dp, start = 24.dp, end = 24.dp)
+                    .padding(top = 24.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
+                        .padding(bottom = 12.dp, start = 12.dp, end = 12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -249,10 +233,10 @@ fun FeedBrowseScreen(
 
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().graphicsLayer { clip = false }
                 ) {
                     item {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(start = 12.dp)) {
                             val isAllSelected = selectedFriendIds.isEmpty()
                             Box(
                                 modifier = Modifier
@@ -363,7 +347,7 @@ fun FeedBrowseScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 24.dp)
+                        contentPadding = PaddingValues(bottom = 24.dp, start = 12.dp, end = 12.dp)
                     ) {
                         items(posts, key = { post -> post.id }) { post ->
                             val thumbnailUrl = post.thumbnailUrl.ifBlank { post.imageUrl }
@@ -480,7 +464,6 @@ fun FeedBrowseScreen(
                         )
                     }
                 }
-            }
         }
     }
 }

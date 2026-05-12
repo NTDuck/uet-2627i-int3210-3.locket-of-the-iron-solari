@@ -3,7 +3,6 @@ package com.solari.app.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -129,11 +128,11 @@ fun ThemeItem(variant: SolariThemeVariant, isSelected: Boolean, onClick: () -> U
     val themeColors = ThemeMap[variant] ?: return
 
     Surface(
+        onClick = onClick,
         color = if (isSelected) SolariTheme.colors.primary.copy(alpha = 0.2f) else SolariTheme.colors.surface,
         shape = RoundedCornerShape(12.dp),
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
             .then(
                 if (isSelected) Modifier.border(
                     1.dp,
