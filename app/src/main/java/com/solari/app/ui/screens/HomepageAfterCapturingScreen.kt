@@ -499,6 +499,29 @@ fun HomepageAfterCapturingScreen(
                 }
             }
         }
+
+        // Feedback pill overlay for download and error messages
+        AnimatedVisibility(
+            visible = topPillVisible,
+            enter = slideInVertically(
+                initialOffsetY = { -it * 2 },
+                animationSpec = tween(durationMillis = 260)
+            ) + fadeIn(animationSpec = tween(260)),
+            exit = slideOutVertically(
+                targetOffsetY = { -it * 2 },
+                animationSpec = tween(durationMillis = 260)
+            ) + fadeOut(animationSpec = tween(260)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 16.dp)
+                .zIndex(20f)
+        ) {
+            SolariFeedbackPill(
+                message = topPillMessage,
+                isSuccess = topPillIsSuccess
+            )
+        }
     }
 
     if (isWeatherSheetOpen) {
@@ -735,7 +758,8 @@ private fun CapturePreviewCard(
         PreviewTopActionButton(
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .padding(14.dp),
+                .padding(14.dp)
+                .zIndex(1f),
             onClick = onDownload
         ) {
             Icon(

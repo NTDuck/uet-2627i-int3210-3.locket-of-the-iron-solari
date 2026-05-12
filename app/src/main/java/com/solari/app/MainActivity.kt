@@ -27,7 +27,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -82,7 +81,7 @@ import com.solari.app.ui.screens.ImageEditingScreen
 import com.solari.app.ui.screens.MainScreen
 import com.solari.app.ui.screens.OTPConfirmationScreen
 import com.solari.app.ui.screens.PasswordRecoveryScreen
-import com.solari.app.ui.screens.PasswordResetScreen
+import com.solari.app.ui.screens.ChangePasswordScreen
 import com.solari.app.ui.screens.SignInScreen
 import com.solari.app.ui.screens.SignUpScreen
 import com.solari.app.ui.screens.WelcomeScreen
@@ -101,7 +100,7 @@ import com.solari.app.ui.viewmodels.HomepageAfterCapturingViewModel
 import com.solari.app.ui.viewmodels.ImageEditingViewModel
 import com.solari.app.ui.viewmodels.OTPConfirmationViewModel
 import com.solari.app.ui.viewmodels.PasswordRecoveryViewModel
-import com.solari.app.ui.viewmodels.PasswordResetViewModel
+import com.solari.app.ui.viewmodels.ChangePasswordViewModel
 import com.solari.app.ui.viewmodels.SettingsViewModel
 import com.solari.app.ui.viewmodels.SignInViewModel
 import com.solari.app.ui.viewmodels.SignUpViewModel
@@ -756,9 +755,9 @@ private fun SolariApp(
                 composable(SolariRoute.Screen.PasswordReset.name + "/{showTopBar}") { backStackEntry ->
                     val showTopBar =
                         backStackEntry.arguments?.getString("showTopBar")?.toBoolean() ?: true
-                    val viewModel: PasswordResetViewModel =
+                    val viewModel: ChangePasswordViewModel =
                         viewModel(factory = appContainer.viewModelFactory)
-                    PasswordResetScreen(
+                    ChangePasswordScreen(
                         viewModel = viewModel,
                         showTopBar = showTopBar,
                         onNavigateBack = { navigateToMainPage(3, replaceCurrent = true) },

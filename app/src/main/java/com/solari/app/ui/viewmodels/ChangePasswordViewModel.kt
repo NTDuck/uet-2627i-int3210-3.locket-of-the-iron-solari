@@ -10,7 +10,7 @@ import com.solari.app.data.user.UserRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-class PasswordResetViewModel(
+class ChangePasswordViewModel(
     private val userRepository: UserRepository
 ) : ViewModel() {
     var oldPassword by mutableStateOf("")

@@ -29,7 +29,9 @@ import java.util.UUID
 private const val LocalTypingIdleTimeoutMs = 2_000L
 private const val LocalTypingHeartbeatMs = 1_500L
 private const val RemoteTypingExpiryMs = 4_000L
-private const val MessagePageSize = 50
+private const val InitialMessagePageSize = 100
+private const val OlderMessagePageSize = 100
+private const val OlderMessageBoundaryLoadPageCount = 2
 private const val ChatViewModelLogTag = "ChatViewModel"
 private const val MessageUnsentPreviewText = "Message unsent"
 private const val UnknownMessagePreviewText = "Unknown message"
@@ -68,6 +70,9 @@ class ChatViewModel(
         private set
 
     var canLoadOlderMessages by mutableStateOf(false)
+        private set
+
+    var olderMessagesPrefetchBoundaryMessageId by mutableStateOf<String?>(null)
         private set
 
     var isPartnerTyping by mutableStateOf(false)
@@ -367,6 +372,7 @@ class ChatViewModel(
         isLoadingOlderMessages = false
         canLoadOlderMessages = false
         olderMessagesCursor = null
+        olderMessagesPrefetchBoundaryMessageId = null
         errorMessage = null
     }
 
@@ -378,7 +384,9 @@ class ChatViewModel(
             isLoadingOlderMessages = false
             canLoadOlderMessages = false
             olderMessagesCursor = null
+            olderMessagesPrefetchBoundaryMessageId = null
             errorMessage = null
+            var shouldPrimeOlderMessages = false
 
             try {
                 loadCurrentUser()
@@ -386,22 +394,29 @@ class ChatViewModel(
                 val conversationResult = conversationRepository.getConversation(chatId)
                 val messagesResult = conversationRepository.getMessages(
                     conversationId = chatId,
-                    limit = MessagePageSize
+                    limit = InitialMessagePageSize
                 )
                 conversationRepository.markConversationRead(chatId)
 
                 when {
                     conversationResult is ApiResult.Success && messagesResult is ApiResult.Success -> {
                         val messagesPage = messagesResult.data
+                        val messages = messagesPage.messages.withReferencedPostThumbnails()
                         olderMessagesCursor = messagesPage.nextCursor
                         canLoadOlderMessages = messagesPage.nextCursor != null
+                        olderMessagesPrefetchBoundaryMessageId = if (canLoadOlderMessages) {
+                            messages.oldestMessageId()
+                        } else {
+                            null
+                        }
                         conversation = conversationResult.data.copy(
                             partnerLastReadAt = messagesPage.partnerLastReadAt
                                 ?: conversationResult.data.partnerLastReadAt,
-                            messages = messagesPage.messages.withReferencedPostThumbnails()
+                            messages = messages
                         )
                         resolveMissingReplyPreviews(chatId)
                         errorMessage = null
+                        shouldPrimeOlderMessages = canLoadOlderMessages
                     }
 
                     conversationResult is ApiResult.Failure -> errorMessage =
@@ -415,28 +430,69 @@ class ChatViewModel(
             } finally {
                 isLoadingMessages = false
             }
+
+            if (shouldPrimeOlderMessages) {
+                startOlderMessagesLoad(
+                    conversationId = chatId,
+                    pageCount = 1,
+                    nextBoundaryMessageId = null
+                )
+            }
         }
     }
 
     fun loadOlderMessages(): Boolean {
         val currentConversation = conversation ?: return false
-        val cursor = olderMessagesCursor ?: return false
+        val nextBoundaryMessageId = currentConversation.messages.oldestMessageId()
+        return startOlderMessagesLoad(
+            conversationId = currentConversation.id,
+            pageCount = OlderMessageBoundaryLoadPageCount,
+            nextBoundaryMessageId = nextBoundaryMessageId
+        )
+    }
+
+    private fun startOlderMessagesLoad(
+        conversationId: String,
+        pageCount: Int,
+        nextBoundaryMessageId: String?
+    ): Boolean {
+        val currentConversation = conversation ?: return false
+        if (currentConversation.id != conversationId) return false
+        if (olderMessagesCursor == null) return false
         if (currentConversation.isDraft || isLoadingMessages || isLoadingOlderMessages) return false
 
         isLoadingOlderMessages = true
         viewModelScope.launch {
-            try {
+            loadOlderMessagesBatch(
+                conversationId = conversationId,
+                pageCount = pageCount,
+                nextBoundaryMessageId = nextBoundaryMessageId
+            )
+        }
+        return true
+    }
+
+    private suspend fun loadOlderMessagesBatch(
+        conversationId: String,
+        pageCount: Int,
+        nextBoundaryMessageId: String?
+    ) {
+        var didLoadPage = false
+        try {
+            var loadedPageCount = 0
+            while (loadedPageCount < pageCount) {
+                val cursor = olderMessagesCursor ?: break
                 when (
                     val result = conversationRepository.getMessages(
-                        conversationId = currentConversation.id,
-                        limit = MessagePageSize,
+                        conversationId = conversationId,
+                        limit = OlderMessagePageSize,
                         cursor = cursor
                     )
                 ) {
                     is ApiResult.Success -> {
                         val latestConversation = conversation
-                        if (latestConversation == null || latestConversation.id != currentConversation.id) {
-                            return@launch
+                        if (latestConversation == null || latestConversation.id != conversationId) {
+                            return
                         }
 
                         val existingMessageIds = latestConversation.messages
@@ -455,21 +511,30 @@ class ChatViewModel(
                                 ?: latestConversation.partnerLastReadAt,
                             messages = mergedMessages
                         )
-                        resolveMissingReplyPreviews(currentConversation.id)
+                        resolveMissingReplyPreviews(conversationId)
+
+                        didLoadPage = true
+                        loadedPageCount += 1
                     }
 
                     is ApiResult.Failure -> {
                         errorMessage = result.message
+                        break
                     }
                 }
-            } catch (throwable: Throwable) {
-                if (throwable is CancellationException) throw throwable
-                errorMessage = throwable.message ?: "Failed to load older messages"
-            } finally {
-                isLoadingOlderMessages = false
             }
+
+            if (!canLoadOlderMessages) {
+                olderMessagesPrefetchBoundaryMessageId = null
+            } else if (didLoadPage && nextBoundaryMessageId != null) {
+                olderMessagesPrefetchBoundaryMessageId = nextBoundaryMessageId
+            }
+        } catch (throwable: Throwable) {
+            if (throwable is CancellationException) throw throwable
+            errorMessage = throwable.message ?: "Failed to load older messages"
+        } finally {
+            isLoadingOlderMessages = false
         }
-        return true
     }
 
     fun sendMessage(
@@ -930,6 +995,10 @@ class ChatViewModel(
             }
         }
         return if (didReplace) messages else null
+    }
+
+    private fun List<Message>.oldestMessageId(): String? {
+        return minByOrNull { it.timestamp }?.id
     }
 
     private fun Message.withUiOnlyFieldsFrom(localMessage: Message): Message {
