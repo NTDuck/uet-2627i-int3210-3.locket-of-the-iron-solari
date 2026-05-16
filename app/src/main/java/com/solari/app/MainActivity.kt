@@ -123,6 +123,7 @@ private const val CapturedMediaIsVideoKey = "captured_media_is_video"
 private const val CapturedMediaDurationKey = "captured_media_duration"
 private const val CapturedMediaSourceKey = "captured_media_source"
 private const val SolariWebHost = "solari.adnope.io.vn"
+private const val InternetConnectivityProbeUrl = "https://www.google.com/generate_204"
 
 private data class FriendInviteDeepLink(
     val username: String,
@@ -334,6 +335,15 @@ private fun SolariApp(
                     ) == PackageManager.PERMISSION_GRANTED
         )
     }
+    val internetProbeClient = remember {
+        okhttp3.OkHttpClient.Builder()
+            .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .callTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .followRedirects(false)
+            .build()
+    }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -477,12 +487,13 @@ private fun SolariApp(
             delay(1000)
 
             val request = okhttp3.Request.Builder()
-                .url("${BuildConfig.SOLARI_BACKEND_URL}health")
+                .url(InternetConnectivityProbeUrl)
+                .header("Cache-Control", "no-cache")
                 .build()
 
             val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 runCatching {
-                    appContainer.okHttpClient.newCall(request).execute().use { it.isSuccessful }
+                    internetProbeClient.newCall(request).execute().use { it.code == 204 }
                 }.getOrDefault(false)
             }
 
@@ -497,8 +508,8 @@ private fun SolariApp(
                     val pollResult =
                         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                             runCatching {
-                                appContainer.okHttpClient.newCall(request).execute()
-                                    .use { it.isSuccessful }
+                                internetProbeClient.newCall(request).execute()
+                                    .use { it.code == 204 }
                             }.getOrDefault(false)
                         }
                     if (pollResult) {
