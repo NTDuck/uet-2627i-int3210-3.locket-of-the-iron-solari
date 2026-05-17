@@ -31,10 +31,10 @@ data class PostUploadEntry(
 class PostUploadCoordinator(
     context: Context,
     private val feedRepository: FeedRepository,
-    private val webSocketManager: WebSocketManager
+    private val webSocketManager: WebSocketManager,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 ) {
     private val applicationContext = context.applicationContext
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val _uploads = MutableStateFlow<List<PostUploadEntry>>(emptyList())
 
     val uploads: StateFlow<List<PostUploadEntry>> = _uploads.asStateFlow()
