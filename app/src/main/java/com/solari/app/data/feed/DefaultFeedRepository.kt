@@ -1,5 +1,6 @@
 package com.solari.app.data.feed
 
+import android.os.SystemClock
 import android.util.Log
 import com.solari.app.data.mappers.toEpochMillisOrNow
 import com.solari.app.data.mappers.toUiUser
@@ -27,6 +28,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class DefaultFeedRepository(
     private val feedApi: FeedApi,
@@ -34,6 +37,7 @@ class DefaultFeedRepository(
     private val uploadClient: OkHttpClient = OkHttpClient()
 ) : FeedRepository {
     private val uploadLogTag = "SolariUpload"
+    private val latencyLogTag = "SolariApiLatency"
     private val _deletedPostIds = MutableStateFlow<Set<String>>(emptySet())
 
     override val deletedPostIds: StateFlow<Set<String>> = _deletedPostIds.asStateFlow()
@@ -165,16 +169,23 @@ class DefaultFeedRepository(
         bytes: ByteArray
     ): ApiResult<Unit> {
         return withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url(uploadUrl)
+                .put(bytes.toRequestBody(contentType.toMediaType()))
+                .header("Content-Type", contentType)
+                .build()
+            val startedAtNanos = SystemClock.elapsedRealtimeNanos()
             try {
-                val response = uploadClient.newCall(
-                    Request.Builder()
-                        .url(uploadUrl)
-                        .put(bytes.toRequestBody(contentType.toMediaType()))
-                        .header("Content-Type", contentType)
-                        .build()
-                ).execute()
+                val response = uploadClient.newCall(request).execute()
 
                 response.use {
+                    logS3UploadLatency(
+                        startedAtNanos = startedAtNanos,
+                        status = it.code.toString(),
+                        byteSize = bytes.size,
+                        contentType = contentType,
+                        host = it.request.url.host
+                    )
                     if (it.isSuccessful) {
                         ApiResult.Success(Unit)
                     } else {
@@ -194,6 +205,14 @@ class DefaultFeedRepository(
                     }
                 }
             } catch (error: Exception) {
+                logS3UploadLatency(
+                    startedAtNanos = startedAtNanos,
+                    status = "NETWORK_ERROR",
+                    byteSize = bytes.size,
+                    contentType = contentType,
+                    host = request.url.host,
+                    error = error.javaClass.simpleName
+                )
                 Log.e(
                     uploadLogTag,
                     "Presigned upload crashed: contentType=$contentType, bytes=${bytes.size}",
@@ -208,6 +227,29 @@ class DefaultFeedRepository(
                 )
             }
         }
+    }
+
+    private fun logS3UploadLatency(
+        startedAtNanos: Long,
+        status: String,
+        byteSize: Int,
+        contentType: String,
+        host: String,
+        error: String? = null
+    ) {
+        val elapsedMs = elapsedMillis(startedAtNanos)
+        val errorSuffix = error?.let { " error=$it" }.orEmpty()
+        Log.d(
+            latencyLogTag,
+            "API_LATENCY PUT S3_BINARY_UPLOAD ${elapsedMs}ms status=$status " +
+                    "bytes=$byteSize contentType=$contentType host=$host$errorSuffix"
+        )
+    }
+
+    private fun elapsedMillis(startedAtNanos: Long): String {
+        val elapsedNanos = SystemClock.elapsedRealtimeNanos() - startedAtNanos
+        val elapsedMs = TimeUnit.NANOSECONDS.toMicros(elapsedNanos) / 1_000.0
+        return String.format(Locale.US, "%.1f", elapsedMs)
     }
 
     override suspend fun finalizePostUpload(

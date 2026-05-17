@@ -243,6 +243,13 @@ class FeedViewModel(
         }
     }
 
+    fun retryPostUpload(postId: String) {
+        val didRetry = postUploadCoordinator.retryUpload(postId)
+        if (!didRetry) {
+            errorMessage = "Upload can only be retried after it fails."
+        }
+    }
+
     fun sendPostReaction(
         post: Post,
         emoji: String,

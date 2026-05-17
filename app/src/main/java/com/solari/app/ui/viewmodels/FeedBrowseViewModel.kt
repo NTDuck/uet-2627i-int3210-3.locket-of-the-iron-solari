@@ -230,6 +230,13 @@ class FeedBrowseViewModel(
         }
     }
 
+    fun retryPostUpload(postId: String) {
+        val didRetry = postUploadCoordinator.retryUpload(postId)
+        if (!didRetry) {
+            errorMessage = "Upload can only be retried after it fails."
+        }
+    }
+
     private fun applyDisplayPosts() {
         val user = currentUser
         val uploadPosts = if (user == null) {

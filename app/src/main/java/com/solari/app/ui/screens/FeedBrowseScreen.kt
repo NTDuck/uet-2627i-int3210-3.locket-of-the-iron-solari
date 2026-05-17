@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Public
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -359,20 +360,24 @@ fun FeedBrowseScreen(
                                     .scaledClickable(
                                         pressedScale = 0.9f
                                     ) {
-                                        if (post.uploadStatus == PostUploadStatus.None) {
-                                            viewModel.registerPostView(post.id)
+                                        if (post.uploadStatus == PostUploadStatus.Failed) {
+                                            viewModel.retryPostUpload(post.id)
+                                        } else {
+                                            if (post.uploadStatus == PostUploadStatus.None) {
+                                                viewModel.registerPostView(post.id)
+                                            }
+                                            viewModel.updateFeedListScroll(
+                                                firstVisibleItemIndex = feedListState.firstVisibleItemIndex,
+                                                firstVisibleItemScrollOffset = feedListState.firstVisibleItemScrollOffset
+                                            )
+                                            onNavigateToPost(
+                                                post,
+                                                posts,
+                                                selectedFriendIds,
+                                                selectedSort,
+                                                false
+                                            )
                                         }
-                                        viewModel.updateFeedListScroll(
-                                            firstVisibleItemIndex = feedListState.firstVisibleItemIndex,
-                                            firstVisibleItemScrollOffset = feedListState.firstVisibleItemScrollOffset
-                                        )
-                                        onNavigateToPost(
-                                            post,
-                                            posts,
-                                            selectedFriendIds,
-                                            selectedSort,
-                                            false
-                                        )
                                     }
                                     .clip(RoundedCornerShape(FeedBrowseThumbnailCornerRadius))
                                     .background(SolariTheme.colors.surface)
@@ -422,12 +427,26 @@ fun FeedBrowseScreen(
                                                 .background(SolariTheme.colors.onSurface.copy(alpha = 0.36f)),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Text(
-                                                text = "Failed",
-                                                color = SolariTheme.colors.onBackground,
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
+                                            Column(
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Refresh,
+                                                    contentDescription = null,
+                                                    tint = SolariTheme.colors.onBackground,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+
+                                                Spacer(modifier = Modifier.height(4.dp))
+
+                                                Text(
+                                                    text = "Retry",
+                                                    color = SolariTheme.colors.onBackground,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
                                         }
                                     }
 

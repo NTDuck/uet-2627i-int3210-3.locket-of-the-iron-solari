@@ -130,8 +130,8 @@ class SolariViewModelFactory(
                 )
             }
 
-            modelClass.isAssignableFrom(PasswordResetViewModel::class.java) -> {
-                PasswordResetViewModel(userRepository)
+            modelClass.isAssignableFrom(ChangePasswordViewModel::class.java) -> {
+                ChangePasswordViewModel(userRepository)
             }
 
             modelClass.isAssignableFrom(PasswordRecoveryViewModel::class.java) -> {

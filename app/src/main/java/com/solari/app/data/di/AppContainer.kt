@@ -17,6 +17,7 @@ import com.solari.app.data.friend.DefaultFriendRepository
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.local.SolariDatabase
 import com.solari.app.data.network.ApiExecutor
+import com.solari.app.data.network.ApiLatencyLoggingInterceptor
 import com.solari.app.data.preferences.PushNotificationStore
 import com.solari.app.data.preferences.RecentEmojiStore
 import com.solari.app.data.preferences.UserPreferencesStore
@@ -59,9 +60,11 @@ class AppContainer(
     private val pushNotificationStore = PushNotificationStore(applicationContext)
     private val authSessionInvalidationNotifier = AuthSessionInvalidationNotifier()
     private val apiExecutor = ApiExecutor(json)
+    private val apiLatencyLoggingInterceptor = ApiLatencyLoggingInterceptor()
     val userPreferencesStore = UserPreferencesStore(applicationContext)
 
     private val refreshOkHttpClient = OkHttpClient.Builder()
+        .addInterceptor(apiLatencyLoggingInterceptor)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
@@ -86,6 +89,7 @@ class AppContainer(
                 sessionInvalidationNotifier = authSessionInvalidationNotifier
             )
         )
+        .addInterceptor(apiLatencyLoggingInterceptor)
         .addInterceptor(AuthInterceptor(database.authSessionDao(), tokenCipher))
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)

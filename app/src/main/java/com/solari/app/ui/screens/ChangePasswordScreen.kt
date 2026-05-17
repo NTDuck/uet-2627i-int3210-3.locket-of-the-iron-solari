@@ -55,12 +55,12 @@ import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariTextField
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.util.scaledClickable
-import com.solari.app.ui.viewmodels.PasswordResetViewModel
+import com.solari.app.ui.viewmodels.ChangePasswordViewModel
 import kotlinx.coroutines.delay
 
 @Composable
-fun PasswordResetScreen(
-    viewModel: PasswordResetViewModel,
+fun ChangePasswordScreen(
+    viewModel: ChangePasswordViewModel,
     showTopBar: Boolean = true,
     onNavigateBack: () -> Unit,
     onResetComplete: () -> Unit
@@ -76,6 +76,8 @@ fun PasswordResetScreen(
     var showSuccessDialog by remember { mutableStateOf(false) }
     var errorPillVisible by remember { mutableStateOf(false) }
     var errorEventId by remember { mutableIntStateOf(0) }
+    var oldPasswordVisible by remember { mutableStateOf(false) }
+    var newPasswordVisible by remember { mutableStateOf(false) }
 
     fun closeKeyboardAndFocus() {
         focusManager.clearFocus(force = true)
@@ -162,6 +164,8 @@ fun PasswordResetScreen(
                     label = "Old Password",
                     placeholder = "••••••••",
                     isPassword = true,
+                    isPasswordVisible = oldPasswordVisible,
+                    onPasswordVisibilityChange = { oldPasswordVisible = it },
                     modifier = Modifier.padding(bottom = 24.dp),
                     textFieldModifier = Modifier.focusRequester(oldPasswordFocusRequester),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -176,6 +180,8 @@ fun PasswordResetScreen(
                     label = "New Password",
                     placeholder = "••••••••",
                     isPassword = true,
+                    isPasswordVisible = newPasswordVisible,
+                    onPasswordVisibilityChange = { newPasswordVisible = it },
                     modifier = Modifier.padding(bottom = 24.dp),
                     textFieldModifier = Modifier.focusRequester(newPasswordFocusRequester),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -190,6 +196,7 @@ fun PasswordResetScreen(
                     label = "Confirm New Password",
                     placeholder = "••••••••",
                     isPassword = true,
+                    isPasswordVisible = newPasswordVisible,
                     modifier = Modifier.padding(bottom = 40.dp),
                     textFieldModifier = Modifier.focusRequester(confirmPasswordFocusRequester),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),

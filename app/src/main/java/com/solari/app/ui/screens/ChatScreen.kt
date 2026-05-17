@@ -2,6 +2,7 @@ package com.solari.app.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -64,7 +65,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -84,6 +87,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
@@ -91,6 +95,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -130,6 +137,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 
 private val ChatBackground @Composable get() = SolariTheme.colors.background
@@ -147,7 +155,8 @@ private val EmojiPickerPanel @Composable get() = SolariTheme.colors.surface
 private val EmojiPickerSearch @Composable get() = SolariTheme.colors.surfaceVariant
 private val EmojiPickerMuted @Composable get() = SolariTheme.colors.onSurfaceVariant
 private const val MaxScrollToBottomPasses = 12
-private const val OlderMessagesTriggerRemainingMessageCount = 30
+// Only show the top spinner when the viewport is within this many items of the absolute top.
+private const val OlderMessagesSpinnerItemThreshold = 5
 private const val MinuteMillis = 60_000L
 private const val HourMillis = 60L * MinuteMillis
 private const val DayMillis = 24L * HourMillis
@@ -191,6 +200,11 @@ private data class ChatScrollSnapshot(
     val firstVisibleItemIndex: Int,
     val firstVisibleItemScrollOffset: Int,
     val isScrolledToBottom: Boolean
+)
+
+private data class ChatBoundaryScrollSnapshot(
+    val boundaryOrdinal: Int?,
+    val oldestVisibleOrdinal: Int?
 )
 
 private data class ChatListModel(
@@ -296,7 +310,6 @@ fun ChatScreen(
         isDraftConversation = isDraftConversation,
         isPartnerTyping = isPartnerTyping,
         lastListItemIndex = chatListModel.lastListItemIndex,
-        messageListItemCount = chatListModel.messageListItemCount,
         messageOrdinalsById = chatListModel.messageOrdinalsById,
         listItemIndexes = chatListModel.listItemIndexes
     )
@@ -363,7 +376,11 @@ fun ChatScreen(
                         state = messageListState,
                         modifier = Modifier
                             .fillMaxSize()
-                            .alpha(if (isMessageListVisible) 1f else 0f),
+                            .alpha(if (isMessageListVisible) 1f else 0f)
+                            .chatScrollbar(
+                                listState = messageListState,
+                                canLoadOlderMessages = viewModel.canLoadOlderMessages
+                            ),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         contentPadding = PaddingValues(
                             start = 24.dp,
@@ -383,6 +400,7 @@ fun ChatScreen(
                                 is ChatMessageItem -> {
                                     ChatMessageRow(
                                         item = item,
+                                        currentUser = currentUser,
                                         partner = visiblePartner,
                                         currentUserId = currentUserId,
                                         partnerLastReadAt = currentConversation?.partnerLastReadAt,
@@ -429,13 +447,19 @@ fun ChatScreen(
                         )
                     }
 
+                    // Only show the spinner when the user has actually reached
+                    // the oldest loaded boundary while a fetch is still in flight.
+                    // During background prefetch the spinner stays hidden.
+                    val showOlderMessagesSpinner = viewModel.isLoadingOlderMessages &&
+                        messageListState.firstVisibleItemIndex < OlderMessagesSpinnerItemThreshold
+
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .padding(top = 4.dp)
                     ) {
                         this@Column.AnimatedVisibility(
-                            visible = viewModel.isLoadingOlderMessages,
+                            visible = showOlderMessagesSpinner,
                             enter = fadeIn(animationSpec = tween(durationMillis = 120)),
                             exit = fadeOut(animationSpec = tween(durationMillis = 120))
                         ) {
@@ -578,7 +602,6 @@ private fun BindChatMessageListEffects(
     isDraftConversation: Boolean,
     isPartnerTyping: Boolean,
     lastListItemIndex: Int,
-    messageListItemCount: Int,
     messageOrdinalsById: Map<String, Int>,
     listItemIndexes: Map<String, Int>
 ) {
@@ -667,36 +690,45 @@ private fun BindChatMessageListEffects(
         }
     }
 
+    // Maintain a prefetched history buffer. The view model exposes the oldest
+    // message from the previously visible page as the boundary; crossing it
+    // triggers the next two-page prepend.
     LaunchedEffect(
         messageListState,
         state.isMessageScrollInitialized,
+        viewModel.olderMessagesPrefetchBoundaryMessageId,
+        messageOrdinalsById,
         viewModel.canLoadOlderMessages,
         viewModel.isLoadingOlderMessages,
-        viewModel.isLoadingMessages,
-        messageListItemCount,
-        messageOrdinalsById
+        viewModel.isLoadingMessages
     ) {
         if (state.pendingJumpToMessageId != null) return@LaunchedEffect
-        if (!state.isMessageScrollInitialized || viewModel.isLoadingMessages || messageListItemCount == 0) {
+        if (!state.isMessageScrollInitialized || viewModel.isLoadingMessages) {
             return@LaunchedEffect
         }
 
         snapshotFlow {
-            messageListState.layoutInfo.visibleItemsInfo
-                .firstOrNull { itemInfo ->
-                    (itemInfo.key as? String)?.startsWith("message-") == true
+            val boundaryOrdinal = viewModel.olderMessagesPrefetchBoundaryMessageId
+                ?.let(messageOrdinalsById::get)
+            val oldestVisibleOrdinal = messageListState.layoutInfo.visibleItemsInfo
+                .asSequence()
+                .mapNotNull { itemInfo ->
+                    val itemKey = itemInfo.key as? String ?: return@mapNotNull null
+                    val messageId = chatMessageIdFromItemKey(itemKey) ?: return@mapNotNull null
+                    messageOrdinalsById[messageId]
                 }
-                ?.key as? String
-        }.collect { firstVisibleMessageKey ->
-            val firstVisibleMessageId = firstVisibleMessageKey
-                ?.removePrefix("message-")
-                ?.takeIf { it != firstVisibleMessageKey }
-            val firstVisibleMessageOrdinal =
-                firstVisibleMessageId?.let(messageOrdinalsById::get) ?: return@collect
+                .minOrNull()
+            ChatBoundaryScrollSnapshot(
+                boundaryOrdinal = boundaryOrdinal,
+                oldestVisibleOrdinal = oldestVisibleOrdinal
+            )
+        }.collect { snapshot ->
+            val boundaryOrdinal = snapshot.boundaryOrdinal ?: return@collect
+            val oldestVisibleOrdinal = snapshot.oldestVisibleOrdinal ?: return@collect
 
             if (viewModel.canLoadOlderMessages &&
                 !viewModel.isLoadingOlderMessages &&
-                firstVisibleMessageOrdinal <= OlderMessagesTriggerRemainingMessageCount
+                oldestVisibleOrdinal <= boundaryOrdinal
             ) {
                 requestOlderMessagesLoad()
             }
@@ -1132,6 +1164,7 @@ private fun ChatDayChip(text: String) {
 @Composable
 private fun ChatMessageRow(
     item: ChatMessageItem,
+    currentUser: User?,
     partner: User?,
     currentUserId: String?,
     partnerLastReadAt: Long?,
@@ -1155,6 +1188,8 @@ private fun ChatMessageRow(
                 message = message,
                 isFromMe = true,
                 isHighlighted = message.id == highlightedMessageId,
+                currentUser = currentUser,
+                partner = partner,
                 partnerName = partner?.displayName.orEmpty(),
                 currentUserId = currentUserId,
                 recentEmojis = recentEmojis,
@@ -1207,6 +1242,8 @@ private fun ChatMessageRow(
                 message = message,
                 isFromMe = false,
                 isHighlighted = message.id == highlightedMessageId,
+                currentUser = currentUser,
+                partner = partner,
                 partnerName = partner?.displayName.orEmpty(),
                 currentUserId = currentUserId,
                 recentEmojis = recentEmojis,
@@ -1227,6 +1264,8 @@ private fun ChatBubble(
     message: Message,
     isFromMe: Boolean,
     isHighlighted: Boolean,
+    currentUser: User?,
+    partner: User?,
     partnerName: String,
     currentUserId: String?,
     recentEmojis: List<String>,
@@ -1240,6 +1279,7 @@ private fun ChatBubble(
     var isActionMenuExpanded by remember { mutableStateOf(false) }
     var isEmojiPickerExpanded by remember { mutableStateOf(false) }
     var isConfirmingUnsend by remember { mutableStateOf(false) }
+    var isReactionSheetExpanded by remember { mutableStateOf(false) }
     var dragOffsetPx by remember(message.id) { mutableStateOf(0f) }
     var isReplySwipeArmed by remember(message.id) { mutableStateOf(false) }
     var hasReplySwipeHapticFired by remember(message.id) { mutableStateOf(false) }
@@ -1387,6 +1427,7 @@ private fun ChatBubble(
             if (hasReactions) {
                 MessageReactionPill(
                     reactions = message.reactions,
+                    onClick = { isReactionSheetExpanded = true },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
                         .offset(
@@ -1439,6 +1480,15 @@ private fun ChatBubble(
                 isConfirmingUnsend = false
             },
             onDismiss = { isConfirmingUnsend = false }
+        )
+    }
+
+    if (isReactionSheetExpanded && hasReactions) {
+        ReactionDetailsSheet(
+            reactions = message.reactions,
+            currentUser = currentUser,
+            partner = partner,
+            onDismiss = { isReactionSheetExpanded = false }
         )
     }
 }
@@ -1578,6 +1628,7 @@ private fun MessageContextPreview(
 @Composable
 private fun MessageReactionPill(
     reactions: List<MessageReaction>,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val groupedReactions = reactions.groupingBy { it.emoji }.eachCount()
@@ -1589,6 +1640,7 @@ private fun MessageReactionPill(
         modifier = modifier
             .clip(CircleShape)
             .background(ChatReactionSurface)
+            .scaledClickable(pressedScale = 1.15f, onClick = onClick)
             .padding(horizontal = 3.dp)
     ) {
         Text(
@@ -1607,6 +1659,204 @@ private fun MessageReactionPill(
                 )
             )
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReactionDetailsSheet(
+    reactions: List<MessageReaction>,
+    currentUser: User?,
+    partner: User?,
+    onDismiss: () -> Unit
+) {
+    // Resolve reactor identity from userId (1:1 chat: only currentUser or partner)
+    data class ResolvedReaction(
+        val displayName: String,
+        val avatarUrl: String?,
+        val username: String,
+        val emoji: String
+    )
+
+    val resolvedReactions = remember(reactions, currentUser, partner) {
+        reactions.map { reaction ->
+            val isCurrentUser = reaction.userId == currentUser?.id
+            val user = if (isCurrentUser) currentUser else partner
+            ResolvedReaction(
+                displayName = user?.displayName ?: "Unknown",
+                avatarUrl = user?.profileImageUrl,
+                username = user?.username ?: "unknown",
+                emoji = reaction.emoji
+            )
+        }
+    }
+
+    val groupedCounts = remember(reactions) {
+        reactions.groupingBy { it.emoji }.eachCount()
+    }
+
+    var selectedFilter by remember { mutableStateOf<String?>(null) }
+
+    val filteredReactions = remember(resolvedReactions, selectedFilter) {
+        if (selectedFilter == null) resolvedReactions
+        else resolvedReactions.filter { it.emoji == selectedFilter }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = SolariTheme.colors.surface,
+        dragHandle = null
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 20.dp, bottom = 24.dp)
+        ) {
+            // Header row: title + close button
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Reactions",
+                    color = SolariTheme.colors.onSurface,
+                    fontSize = 20.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(SolariTheme.colors.surfaceVariant)
+                        .scaledClickable(pressedScale = 1.15f, onClick = onDismiss),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Close",
+                        tint = SolariTheme.colors.onSurface,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Reaction list
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 80.dp, max = 320.dp)
+                    .padding(horizontal = 20.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                filteredReactions.forEach { reaction ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            SolariAvatar(
+                                imageUrl = reaction.avatarUrl,
+                                username = reaction.username,
+                                contentDescription = "${reaction.displayName} avatar",
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(CircleShape),
+                                fontSize = 16.sp
+                            )
+
+                            Text(
+                                text = reaction.displayName,
+                                color = SolariTheme.colors.onSurface,
+                                fontSize = 16.sp,
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Text(
+                            text = reaction.emoji,
+                            fontSize = 28.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.weight(1f, fill = false))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Filter tabs at the bottom
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // "ALL" tab
+                val isAllSelected = selectedFilter == null
+                Surface(
+                    color = if (isAllSelected) SolariTheme.colors.onSurfaceVariant else SolariTheme.colors.surfaceVariant,
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .scaledClickable(pressedScale = 1.1f) {
+                            selectedFilter = null
+                        }
+                ) {
+                    Text(
+                        text = "ALL",
+                        color = if (isAllSelected) SolariTheme.colors.surface else SolariTheme.colors.onSurface,
+                        fontSize = 13.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                    )
+                }
+
+                // Per-emoji filter tabs
+                groupedCounts.forEach { (emoji, count) ->
+                    val isSelected = selectedFilter == emoji
+                    Surface(
+                        color = if (isSelected) SolariTheme.colors.onSurfaceVariant else SolariTheme.colors.surfaceVariant,
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier
+                            .scaledClickable(pressedScale = 1.1f) {
+                                selectedFilter = emoji
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = emoji,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = count.toString(),
+                                color = if (isSelected) SolariTheme.colors.surface else SolariTheme.colors.onSurface,
+                                fontSize = 13.sp,
+                                fontFamily = PlusJakartaSans,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -2328,7 +2578,15 @@ private fun buildListItemIndexMap(
 
 private fun chatDayItemKey(date: LocalDate): String = "day-$date"
 
-private fun chatMessageItemKey(messageId: String): String = "message-$messageId"
+private const val ChatMessageItemKeyPrefix = "message-"
+
+private fun chatMessageItemKey(messageId: String): String = "$ChatMessageItemKeyPrefix$messageId"
+
+private fun chatMessageIdFromItemKey(itemKey: String): String? {
+    return itemKey
+        .takeIf { it.startsWith(ChatMessageItemKeyPrefix) }
+        ?.removePrefix(ChatMessageItemKeyPrefix)
+}
 
 private const val TypingIndicatorItemKey = "typing-indicator"
 
@@ -2343,7 +2601,7 @@ private fun LazyListState.viewportAnchor(): ChatViewportAnchor {
 private fun LazyListState.olderMessagesRestoreAnchor(): ChatListItemAnchor? {
     val layoutInfo = layoutInfo
     val anchorItem = layoutInfo.visibleItemsInfo.firstOrNull { itemInfo ->
-        (itemInfo.key as? String)?.startsWith("message-") == true
+        (itemInfo.key as? String)?.startsWith(ChatMessageItemKeyPrefix) == true
     } ?: layoutInfo.visibleItemsInfo.firstOrNull()
     val itemKey = anchorItem?.key as? String ?: return null
     return ChatListItemAnchor(
@@ -2437,3 +2695,116 @@ private fun LocalDate.toChatDayLabel(): String {
 }
 
 private val ChatDateFormatter: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
+// --- Telegram-style scrollbar thumb ---
+
+private const val ScrollbarThumbWidthPx = 10f
+private const val ScrollbarMinThumbHeightPx = 48f
+private const val ScrollbarTrackPaddingPx = 4f
+// Fraction of the virtual scroll extent attributed to unloaded older messages.
+// Makes the thumb smaller to hint at more history above.
+private const val ScrollbarUnloadedFraction = 0.3f
+private const val ScrollbarHideDelayMs = 1_500L
+
+/**
+ * Draws a small rounded scrollbar thumb on the right edge, Telegram-style.
+ *
+ * The thumb shrinks when [canLoadOlderMessages] is true to convey that
+ * more history exists beyond the currently loaded messages. Position is
+ * derived from [LazyListState.layoutInfo] so it stays in sync with the
+ * viewport at all times.
+ */
+@Composable
+private fun Modifier.chatScrollbar(
+    listState: LazyListState,
+    canLoadOlderMessages: Boolean
+): Modifier {
+    val thumbAlpha = remember { Animatable(0f) }
+    val coroutineScope = rememberCoroutineScope()
+    val thumbColor = ChatMuted.copy(alpha = 0.45f)
+
+    // Observe scroll changes to show/hide the thumb
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+        }.collect {
+            // Show thumb instantly on any scroll change
+            coroutineScope.launch {
+                thumbAlpha.snapTo(1f)
+            }
+            // Schedule fade-out
+            delay(ScrollbarHideDelayMs)
+            thumbAlpha.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(durationMillis = 400)
+            )
+        }
+    }
+
+    return this.drawWithContent {
+        drawContent()
+
+        val layoutInfo = listState.layoutInfo
+        val totalItemsCount = layoutInfo.totalItemsCount
+        if (totalItemsCount == 0) return@drawWithContent
+
+        val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+        if (viewportHeight <= 0) return@drawWithContent
+
+        val visibleItems = layoutInfo.visibleItemsInfo
+        if (visibleItems.isEmpty()) return@drawWithContent
+
+        val currentAlpha = thumbAlpha.value
+        if (currentAlpha <= 0f) return@drawWithContent
+
+        // Estimate total content height from average item size
+        val totalVisibleSize = visibleItems.sumOf { it.size }
+        val avgItemSize = totalVisibleSize.toFloat() / visibleItems.size
+        val estimatedTotalContentHeight = avgItemSize * totalItemsCount
+
+        // When older messages can still be loaded, inflate the virtual total
+        // so the thumb appears smaller (hinting at more history).
+        val virtualTotalHeight = if (canLoadOlderMessages) {
+            estimatedTotalContentHeight / (1f - ScrollbarUnloadedFraction)
+        } else {
+            estimatedTotalContentHeight
+        }
+
+        if (virtualTotalHeight <= viewportHeight) return@drawWithContent
+
+        val trackHeight = size.height - ScrollbarTrackPaddingPx * 2
+        if (trackHeight <= 0f) return@drawWithContent
+
+        // Thumb height is proportional to viewport / virtual total
+        val rawThumbHeight = (viewportHeight / virtualTotalHeight) * trackHeight
+        val thumbHeight = rawThumbHeight.coerceIn(ScrollbarMinThumbHeightPx, trackHeight)
+
+        // Compute scroll fraction: how far through the loaded content we are
+        val firstItem = visibleItems.first()
+        val scrolledPx = firstItem.index * avgItemSize - firstItem.offset
+        val maxScrollPx = max(1f, estimatedTotalContentHeight - viewportHeight)
+        val loadedScrollFraction = (scrolledPx / maxScrollPx).coerceIn(0f, 1f)
+
+        // Map loaded scroll fraction to the virtual range.
+        // When canLoadOlderMessages, the loaded content occupies the bottom
+        // portion of the virtual range, so offset the fraction.
+        val virtualScrollFraction = if (canLoadOlderMessages) {
+            ScrollbarUnloadedFraction + loadedScrollFraction * (1f - ScrollbarUnloadedFraction)
+        } else {
+            loadedScrollFraction
+        }
+
+        val maxThumbOffset = trackHeight - thumbHeight
+        val thumbOffsetY = ScrollbarTrackPaddingPx + virtualScrollFraction * maxThumbOffset
+
+        val thumbX = size.width - ScrollbarThumbWidthPx - ScrollbarTrackPaddingPx
+        val cornerRadius = ScrollbarThumbWidthPx / 2f
+
+        drawRoundRect(
+            color = thumbColor.copy(alpha = thumbColor.alpha * currentAlpha),
+            topLeft = Offset(thumbX, thumbOffsetY),
+            size = Size(ScrollbarThumbWidthPx, thumbHeight),
+            cornerRadius = CornerRadius(cornerRadius, cornerRadius)
+        )
+    }
+}
