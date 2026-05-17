@@ -105,11 +105,14 @@ import com.solari.app.ui.viewmodels.SettingsViewModel
 import com.solari.app.ui.viewmodels.SignInViewModel
 import com.solari.app.ui.viewmodels.SignUpViewModel
 import com.solari.app.ui.viewmodels.WelcomeViewModel
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicInteger
 
 private const val FriendManagementTransitionMillis = 360
 private const val SelectedConversationKey = "selected_conversation"
@@ -123,7 +126,17 @@ private const val CapturedMediaIsVideoKey = "captured_media_is_video"
 private const val CapturedMediaDurationKey = "captured_media_duration"
 private const val CapturedMediaSourceKey = "captured_media_source"
 private const val SolariWebHost = "solari.adnope.io.vn"
-private const val InternetConnectivityProbeUrl = "https://www.google.com/generate_204"
+private val InternetConnectivityProbeUrls = listOf(
+    "https://www.google.com/generate_204",
+    "http://connectivitycheck.gstatic.com/generate_204",
+    "http://clients3.google.com/generate_204"
+)
+private const val InternetConnectivityProbeDebounceMillis = 1_500L
+private const val InternetConnectivityProbeAttempts = 3
+private const val InternetConnectivityProbeRetryDelayMillis = 900L
+private const val InternetReconnectProbeIntervalMillis = 350L
+private const val InternetConnectivityProbeTimeoutMillis = 1_500L
+private const val InternetReconnectProbeTimeoutMillis = 700L
 
 private data class FriendInviteDeepLink(
     val username: String,
@@ -337,10 +350,22 @@ private fun SolariApp(
     }
     val internetProbeClient = remember {
         okhttp3.OkHttpClient.Builder()
-            .connectTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
-            .callTimeout(5, java.util.concurrent.TimeUnit.SECONDS)
+            .connectTimeout(
+                InternetConnectivityProbeTimeoutMillis,
+                java.util.concurrent.TimeUnit.MILLISECONDS
+            )
+            .readTimeout(
+                InternetConnectivityProbeTimeoutMillis,
+                java.util.concurrent.TimeUnit.MILLISECONDS
+            )
+            .writeTimeout(
+                InternetConnectivityProbeTimeoutMillis,
+                java.util.concurrent.TimeUnit.MILLISECONDS
+            )
+            .callTimeout(
+                InternetConnectivityProbeTimeoutMillis,
+                java.util.concurrent.TimeUnit.MILLISECONDS
+            )
             .followRedirects(false)
             .build()
     }
@@ -461,6 +486,18 @@ private fun SolariApp(
         }
     }
 
+    suspend fun showInternetReconnectedFeedback() {
+        if (!internetFeedbackVisible || internetFeedbackIsSuccess) return
+
+        internetFeedbackVisible = false
+        delay(400)
+        internetFeedbackMessage = "Reconnected successfully"
+        internetFeedbackIsSuccess = true
+        internetFeedbackIsLoading = false
+        internetFeedbackVisible = true
+        internetFeedbackEventId += 1
+    }
+
     LaunchedEffect(Unit) {
         val connectivityManager =
             context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
@@ -473,65 +510,88 @@ private fun SolariApp(
                 override fun onLost(network: android.net.Network) {
                     trySend(Unit)
                 }
+
+                override fun onCapabilitiesChanged(
+                    network: android.net.Network,
+                    networkCapabilities: android.net.NetworkCapabilities
+                ) {
+                    trySend(Unit)
+                }
             }
             val request = android.net.NetworkRequest.Builder()
                 .addCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
                 .build()
             connectivityManager.registerNetworkCallback(request, callback)
+            trySend(Unit)
             awaitClose {
                 connectivityManager.unregisterNetworkCallback(callback)
             }
         }
 
-        networkChanges.collectLatest {
-            delay(1000)
-
-            val request = okhttp3.Request.Builder()
-                .url(InternetConnectivityProbeUrl)
-                .header("Cache-Control", "no-cache")
-                .build()
-
-            val result = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                runCatching {
-                    internetProbeClient.newCall(request).execute().use { it.code == 204 }
-                }.getOrDefault(false)
+        // Keep recovery polling alive during radio handoff; collectLatest would cancel it on
+        // repeated Wi-Fi/mobile callback noise before Google becomes reachable again.
+        networkChanges.collect {
+            if (internetFeedbackVisible && !internetFeedbackIsSuccess) {
+                val hasInternet = probeInternetConnectivity(
+                    connectivityManager = connectivityManager,
+                    client = internetProbeClient,
+                    attempts = 1,
+                    retryDelayMillis = 0L,
+                    timeoutMillis = InternetReconnectProbeTimeoutMillis
+                )
+                if (hasInternet) {
+                    showInternetReconnectedFeedback()
+                }
+                return@collect
             }
 
-            if (!result) {
+            delay(InternetConnectivityProbeDebounceMillis)
+            if (internetFeedbackVisible && !internetFeedbackIsSuccess) {
+                return@collect
+            }
+
+            val hasInternet = probeInternetConnectivity(
+                connectivityManager = connectivityManager,
+                client = internetProbeClient,
+                attempts = InternetConnectivityProbeAttempts,
+                retryDelayMillis = InternetConnectivityProbeRetryDelayMillis,
+                timeoutMillis = InternetConnectivityProbeTimeoutMillis
+            )
+
+            if (!hasInternet) {
                 internetFeedbackMessage = "No internet connection. Reconnecting..."
                 internetFeedbackIsSuccess = false
                 internetFeedbackIsLoading = true
                 internetFeedbackVisible = true
-
-                while (true) {
-                    delay(1000)
-                    val pollResult =
-                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                            runCatching {
-                                internetProbeClient.newCall(request).execute()
-                                    .use { it.code == 204 }
-                            }.getOrDefault(false)
-                        }
-                    if (pollResult) {
-                        internetFeedbackVisible = false
-                        delay(400)
-                        internetFeedbackMessage = "Reconnected successfully"
-                        internetFeedbackIsSuccess = true
-                        internetFeedbackIsLoading = false
-                        internetFeedbackVisible = true
-                        internetFeedbackEventId += 1
-                        break
-                    }
-                }
             } else if (internetFeedbackVisible && !internetFeedbackIsSuccess) {
-                internetFeedbackVisible = false
-                delay(400)
-                internetFeedbackMessage = "Reconnected successfully"
-                internetFeedbackIsSuccess = true
-                internetFeedbackIsLoading = false
-                internetFeedbackVisible = true
-                internetFeedbackEventId += 1
+                showInternetReconnectedFeedback()
             }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        val connectivityManager =
+            context.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+
+        while (true) {
+            if (!internetFeedbackVisible || internetFeedbackIsSuccess) {
+                delay(InternetReconnectProbeIntervalMillis)
+                continue
+            }
+
+            val hasInternet = probeInternetConnectivity(
+                connectivityManager = connectivityManager,
+                client = internetProbeClient,
+                attempts = 1,
+                retryDelayMillis = 0L,
+                timeoutMillis = InternetReconnectProbeTimeoutMillis
+            )
+
+            if (hasInternet) {
+                showInternetReconnectedFeedback()
+            }
+
+            delay(InternetReconnectProbeIntervalMillis)
         }
     }
 
@@ -1434,5 +1494,117 @@ private fun SolariApp(
                 }
             )
         }
+    }
+}
+
+private suspend fun probeInternetConnectivity(
+    connectivityManager: android.net.ConnectivityManager,
+    client: okhttp3.OkHttpClient,
+    attempts: Int,
+    retryDelayMillis: Long,
+    timeoutMillis: Long
+): Boolean {
+    repeat(attempts.coerceAtLeast(1)) { attemptIndex ->
+        if (probeAnyInternetRoute(connectivityManager, client, timeoutMillis)) {
+            return true
+        }
+        if (attemptIndex < attempts - 1 && retryDelayMillis > 0L) {
+            delay(retryDelayMillis)
+        }
+    }
+
+    return false
+}
+
+private suspend fun probeAnyInternetRoute(
+    connectivityManager: android.net.ConnectivityManager,
+    client: okhttp3.OkHttpClient,
+    timeoutMillis: Long
+): Boolean = coroutineScope {
+    val routeProbes = buildList<suspend () -> Boolean> {
+        InternetConnectivityProbeUrls.forEach { probeUrl ->
+            add { probeInternetViaDefaultRoute(client, probeUrl, timeoutMillis) }
+        }
+        connectivityManager.internetCapableNetworks().forEach { network ->
+            InternetConnectivityProbeUrls.forEach { probeUrl ->
+                add { probeInternetViaNetwork(network, probeUrl, timeoutMillis) }
+            }
+        }
+    }
+    if (routeProbes.isEmpty()) return@coroutineScope false
+
+    val result = CompletableDeferred<Boolean>()
+    val remainingProbes = AtomicInteger(routeProbes.size)
+    val jobs = routeProbes.map { probe ->
+        launch {
+            val didReachInternet = runCatching { probe() }.getOrDefault(false)
+            if (didReachInternet) {
+                result.complete(true)
+            } else if (remainingProbes.decrementAndGet() == 0) {
+                result.complete(false)
+            }
+        }
+    }
+
+    val didReachInternet = result.await()
+    jobs.forEach { it.cancel() }
+    didReachInternet
+}
+
+private suspend fun probeInternetViaDefaultRoute(
+    client: okhttp3.OkHttpClient,
+    probeUrl: String,
+    timeoutMillis: Long
+): Boolean {
+    val request = okhttp3.Request.Builder()
+        .url(probeUrl)
+        .header("Cache-Control", "no-cache")
+        .build()
+
+    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val call = client.newCall(request)
+            call.timeout().timeout(timeoutMillis, java.util.concurrent.TimeUnit.MILLISECONDS)
+            call.execute().use(::isSuccessfulInternetProbeResponse)
+        }.getOrDefault(false)
+    }
+}
+
+private suspend fun probeInternetViaNetwork(
+    network: android.net.Network,
+    probeUrl: String,
+    timeoutMillis: Long
+): Boolean {
+    return kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            val connection = network.openConnection(
+                java.net.URL(probeUrl)
+            ) as java.net.HttpURLConnection
+
+            val timeout = timeoutMillis.toInt().coerceAtLeast(1)
+            connection.connectTimeout = timeout
+            connection.readTimeout = timeout
+            connection.instanceFollowRedirects = false
+            connection.useCaches = false
+            connection.setRequestProperty("Cache-Control", "no-cache")
+
+            try {
+                connection.responseCode in 200..399
+            } finally {
+                connection.disconnect()
+            }
+        }.getOrDefault(false)
+    }
+}
+
+private fun isSuccessfulInternetProbeResponse(response: okhttp3.Response): Boolean {
+    return response.code in 200..399
+}
+
+@Suppress("DEPRECATION")
+private fun android.net.ConnectivityManager.internetCapableNetworks(): List<android.net.Network> {
+    return allNetworks.filter { network ->
+        getNetworkCapabilities(network)
+            ?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
     }
 }

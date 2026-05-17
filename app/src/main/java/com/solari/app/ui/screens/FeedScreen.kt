@@ -72,6 +72,7 @@ import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -579,7 +580,8 @@ fun FeedScreen(
                     onMessageTextChange = { messageText = it },
                     onOpenEmojiPicker = { showEmojiPicker = true },
                     onSendReaction = ::sendReactionOptimistically,
-                    onSendMessage = ::sendMessageOptimistically
+                    onSendMessage = ::sendMessageOptimistically,
+                    onRetryUpload = { viewModel.retryPostUpload(post.id) }
                 )
             }
         }
@@ -1017,7 +1019,8 @@ private fun FeedPost(
     onMessageTextChange: (String) -> Unit,
     onOpenEmojiPicker: () -> Unit,
     onSendReaction: (String) -> Unit,
-    onSendMessage: () -> Unit
+    onSendMessage: () -> Unit,
+    onRetryUpload: () -> Unit
 ) {
     val currentUserId = currentUser?.id
     val isCurrentUserPost = post.author.id == currentUserId
@@ -1316,9 +1319,10 @@ private fun FeedPost(
 
                                     PostUploadStatus.Failed -> {
                                         FeedUploadStatusPill(
-                                            text = post.uploadError ?: "Upload failed",
+                                            text = "Retry upload",
                                             isLoading = false,
-                                            isError = true
+                                            isError = true,
+                                            onClick = onRetryUpload
                                         )
                                     }
                                 }
@@ -1369,11 +1373,20 @@ private fun FeedPost(
 private fun FeedUploadStatusPill(
     text: String,
     isLoading: Boolean,
-    isError: Boolean
+    isError: Boolean,
+    onClick: (() -> Unit)? = null
 ) {
+    val clickAction = onClick
     Row(
         modifier = Modifier
             .height(64.dp)
+            .then(
+                if (clickAction != null) {
+                    Modifier.scaledClickable(pressedScale = 1.05f, onClick = clickAction)
+                } else {
+                    Modifier
+                }
+            )
             .clip(RoundedCornerShape(36.dp))
             .background(if (isError) SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.2f) else SolariTheme.colors.surfaceVariant)
             .padding(horizontal = 22.dp),
@@ -1389,6 +1402,15 @@ private fun FeedUploadStatusPill(
             )
 
             Spacer(modifier = Modifier.width(12.dp))
+        } else if (isError && clickAction != null) {
+            Icon(
+                imageVector = Icons.Default.Refresh,
+                contentDescription = null,
+                tint = SolariTheme.colors.error,
+                modifier = Modifier.size(22.dp)
+            )
+
+            Spacer(modifier = Modifier.width(10.dp))
         }
 
         Text(
