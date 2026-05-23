@@ -826,7 +826,7 @@ private fun CapturePreviewCard(
                 when (page) {
                     0 -> {
                         Surface(
-                            color = SolariTheme.colors.background.copy(alpha = 0.58f),
+                            color = SolariTheme.colors.background.copy(alpha = 0.7f),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .padding(bottom = 15.dp)
@@ -860,7 +860,7 @@ private fun CapturePreviewCard(
                                 textStyle = TextStyle(
                                     color = SolariTheme.colors.onBackground,
                                     fontSize = 14.sp,
-                                    lineHeight = 19.sp,
+                                    lineHeight = 16.sp,
                                     fontFamily = PlusJakartaSans,
                                     textAlign = TextAlign.Center
                                 ),
@@ -878,7 +878,7 @@ private fun CapturePreviewCard(
                                                 text = "Add a message",
                                                 color = SolariTheme.colors.onBackground.copy(alpha = 0.72f),
                                                 fontSize = 14.sp,
-                                                lineHeight = 19.sp,
+                                                lineHeight = 16.sp,
                                                 fontFamily = PlusJakartaSans,
                                                 textAlign = TextAlign.Center
                                             )
@@ -891,7 +891,7 @@ private fun CapturePreviewCard(
                     }
                     1 -> {
                         Surface(
-                            color = androidx.compose.ui.graphics.Color(0xFF8A2BE2).copy(alpha = 0.85f),
+                            color = androidx.compose.ui.graphics.Color(0xFFE4E4E4),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.padding(bottom = 15.dp)
                         ) {
@@ -900,17 +900,15 @@ private fun CapturePreviewCard(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.glasses),
-                                    contentDescription = null,
-                                    tint = androidx.compose.ui.graphics.Color.White,
-                                    modifier = Modifier.size(18.dp)
+                                Text(
+                                    text = "🕶️",
+                                    fontSize = 16.sp
                                 )
                                 Text(
                                     text = "OOTD",
-                                    color = SolariTheme.colors.onBackground,
+                                    color = androidx.compose.ui.graphics.Color(0xFF252525),
                                     fontSize = 14.sp,
-                                    lineHeight = 19.sp,
+                                    lineHeight = 16.sp,
                                     fontFamily = PlusJakartaSans,
                                     textAlign = TextAlign.Center,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
@@ -945,7 +943,7 @@ private fun CapturePreviewCard(
                                         text = condition,
                                         color = SolariTheme.colors.onBackground,
                                         fontSize = 14.sp,
-                                        lineHeight = 19.sp,
+                                        lineHeight = 16.sp,
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                                     )
@@ -959,7 +957,7 @@ private fun CapturePreviewCard(
                                     textStyle = TextStyle(
                                         color = SolariTheme.colors.onBackground,
                                         fontSize = 14.sp,
-                                        lineHeight = 19.sp,
+                                        lineHeight = 16.sp,
                                         fontFamily = PlusJakartaSans,
                                         textAlign = TextAlign.Center
                                     ),
@@ -974,7 +972,7 @@ private fun CapturePreviewCard(
                                                     text = "Temp °C",
                                                     color = SolariTheme.colors.onBackground.copy(alpha = 0.5f),
                                                     fontSize = 14.sp,
-                                                    lineHeight = 19.sp,
+                                                    lineHeight = 16.sp,
                                                     fontFamily = PlusJakartaSans,
                                                     maxLines = 1
                                                 )
@@ -986,7 +984,7 @@ private fun CapturePreviewCard(
                                                         text = "°C",
                                                         color = SolariTheme.colors.onBackground,
                                                         fontSize = 14.sp,
-                                                        lineHeight = 19.sp,
+                                                        lineHeight = 16.sp,
                                                         fontFamily = PlusJakartaSans
                                                     )
                                                 }
@@ -1026,7 +1024,7 @@ private fun CapturePreviewCard(
                                         SolariTheme.colors.onBackground
                                     },
                                     fontSize = 14.sp,
-                                    lineHeight = 19.sp,
+                                    lineHeight = 16.sp,
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                     maxLines = 1,
@@ -1060,7 +1058,7 @@ private fun CapturePreviewCard(
                                         textStyle = TextStyle(
                                             color = SolariTheme.colors.onBackground,
                                             fontSize = 14.sp,
-                                            lineHeight = 19.sp,
+                                            lineHeight = 16.sp,
                                             fontFamily = PlusJakartaSans,
                                             textAlign = TextAlign.Center
                                         ),
@@ -1072,7 +1070,7 @@ private fun CapturePreviewCard(
                                         decorationBox = { innerTextField ->
                                             Box(contentAlignment = Alignment.Center) {
                                                 if (ratingReviewText.isBlank()) {
-                                                    Text("Write a review...", color = SolariTheme.colors.onBackground.copy(alpha = 0.7f), fontSize = 14.sp, fontFamily = PlusJakartaSans)
+                                                    Text("Write a review...", color = SolariTheme.colors.onBackground.copy(alpha = 0.7f), fontSize = 14.sp, lineHeight = 16.sp, fontFamily = PlusJakartaSans)
                                                 }
                                                 innerTextField()
                                             }
@@ -1084,7 +1082,7 @@ private fun CapturePreviewCard(
                     }
                     5 -> {
                         Surface(
-                            color = androidx.compose.ui.graphics.Color(0xFF1E88E5).copy(alpha = 0.85f),
+                            color = androidx.compose.ui.graphics.Color(0xFF000000).copy(alpha = 0.7f),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.padding(bottom = 15.dp)
                         ) {
@@ -1096,15 +1094,15 @@ private fun CapturePreviewCard(
                                 Icon(
                                     painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.clock),
                                     contentDescription = null,
-                                    tint = androidx.compose.ui.graphics.Color.White,
+                                    tint = androidx.compose.ui.graphics.Color(0xFFD9D9D9),
                                     modifier = Modifier.size(18.dp)
                                 )
                                 val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
                                 Text(
                                     text = timeFormat.format(Date()),
-                                    color = SolariTheme.colors.onBackground,
+                                    color = androidx.compose.ui.graphics.Color(0xFFD9D9D9),
                                     fontSize = 14.sp,
-                                    lineHeight = 19.sp,
+                                    lineHeight = 16.sp,
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                                 )

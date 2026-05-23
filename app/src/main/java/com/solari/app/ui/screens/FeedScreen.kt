@@ -1556,9 +1556,9 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
             modifier = modifier
                 .widthIn(max = 280.dp)
                 .wrapContentWidth()
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(SolariTheme.colors.background.copy(alpha = 0.7f))
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .padding(horizontal = 12.dp, vertical = 9.dp)
         )
         return
     }
@@ -1569,22 +1569,21 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                 modifier = modifier
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SolariTheme.colors.background.copy(alpha = 0.85f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(androidx.compose.ui.graphics.Color(0xFFE4E4E4))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.glasses),
-                    contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color.White,
-                    modifier = Modifier.size(16.dp)
+                Text(
+                    text = "🕶️",
+                    fontSize = 16.sp
                 )
                 Text(
                     text = "OOTD",
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = androidx.compose.ui.graphics.Color(0xFF252525),
                     fontSize = 14.sp,
+                    lineHeight = 16.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold
                 )
@@ -1592,22 +1591,36 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
         }
         is CaptionMetadata.Weather -> {
             val iconMap = mapOf("Sunny" to "☀️", "Cloudy" to "☁️", "Cool" to "❄️", "Cold" to "🥶", "Rainy" to "🌧️", "Snowy" to "🌨️", "Windy" to "💨", "Stormy" to "⛈️")
-            Row(
+            Column(
                 modifier = modifier
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(androidx.compose.ui.graphics.Color(0xFF00ACC1).copy(alpha = 0.85f)) // Cyan for Weather
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(androidx.compose.ui.graphics.Color(0xFF00ACC1).copy(alpha = 0.85f))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(text = iconMap[metadata.condition] ?: "☀️", fontSize = 16.sp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = iconMap[metadata.condition] ?: "☀️", fontSize = 18.sp)
+                    Text(
+                        text = metadata.condition,
+                        color = SolariTheme.colors.onBackground,
+                        fontSize = 14.sp,
+                        lineHeight = 16.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 if (metadata.temperatureC != null) {
                     Text(
                         text = "${metadata.temperatureC.formatCaptionTemperature()}°C",
-                        color = androidx.compose.ui.graphics.Color.White,
+                        color = SolariTheme.colors.onBackground,
                         fontSize = 14.sp,
+                        lineHeight = 16.sp,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold
                     )
@@ -1635,6 +1648,7 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                     text = metadata.placeName,
                     color = SolariTheme.colors.onBackground,
                     fontSize = 14.sp,
+                    lineHeight = 16.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -1647,39 +1661,43 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                 modifier = modifier
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SolariTheme.colors.background.copy(alpha = 0.85f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(androidx.compose.ui.graphics.Color(0xFF000000).copy(alpha = 0.7f))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.clock),
                     contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color.White,
+                    tint = androidx.compose.ui.graphics.Color(0xFFD9D9D9),
                     modifier = Modifier.size(18.dp)
                 )
                 Text(
                     text = metadata.time,
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = androidx.compose.ui.graphics.Color(0xFFD9D9D9),
                     fontSize = 14.sp,
+                    lineHeight = 16.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
         is CaptionMetadata.Rating -> {
-            Row(
+            Column(
                 modifier = modifier
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SolariTheme.colors.background.copy(alpha = 0.85f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(androidx.compose.ui.graphics.Color(0xFFF57C00).copy(alpha = 0.85f))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     for (i in 1..5) {
                         val fraction = (metadata.starRating - (i - 1)).coerceIn(0f, 1f)
                         Box(modifier = Modifier.size(16.dp)) {
@@ -1702,12 +1720,12 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                 }
                 if (!metadata.review.isNullOrBlank()) {
                     Text(
-                        text = " - \"${metadata.review}\"",
-                        color = androidx.compose.ui.graphics.Color.White,
+                        text = "\"${metadata.review}\"",
+                        color = SolariTheme.colors.onBackground,
                         fontSize = 14.sp,
+                        lineHeight = 16.sp,
                         fontFamily = PlusJakartaSans,
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
