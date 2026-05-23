@@ -244,7 +244,13 @@ fun FeedScreen(
             } else {
                 emptyList()
             }
-            syncedInitialPosts + additionalPosts
+            
+            val newestInitialTimestamp = visibleInitialPosts.maxOfOrNull { it.timestamp } ?: 0L
+            val (newPrependedPosts, oldAppendedPosts) = additionalPosts.partition {
+                it.timestamp > newestInitialTimestamp
+            }
+            
+            newPrependedPosts.sortedByDescending { it.timestamp } + syncedInitialPosts + oldAppendedPosts.sortedByDescending { it.timestamp }
         } else {
             val initialSelectedPost = initialPost?.takeIf { it.id !in deletedPostIds }
             val selectedPost = initialPostId
@@ -273,7 +279,11 @@ fun FeedScreen(
             }
 
             if (selectedPost != null) {
-                listOf(selectedPost) + sortedPosts
+                val newestTimestamp = selectedPost.timestamp
+                val (newPrependedPosts, remainingSortedPosts) = sortedPosts.partition {
+                    it.timestamp > newestTimestamp
+                }
+                newPrependedPosts.sortedByDescending { it.timestamp } + selectedPost + remainingSortedPosts
             } else {
                 sortedPosts
             }
@@ -288,6 +298,22 @@ fun FeedScreen(
     }
     val pagerState = rememberPagerState(initialPage = initialPostPage) { posts.size }
     var isInitialScrollDone by remember { mutableStateOf(initialPostId == null) }
+
+    var lastPosts by remember { mutableStateOf<List<Post>>(emptyList()) }
+
+    LaunchedEffect(posts) {
+        if (lastPosts.isNotEmpty() && posts.isNotEmpty()) {
+            val prevVisibleIndex = pagerState.currentPage
+            if (prevVisibleIndex in lastPosts.indices) {
+                val prevVisiblePostId = lastPosts[prevVisibleIndex].id
+                val newIndex = posts.indexOfFirst { it.id == prevVisiblePostId }
+                if (newIndex >= 0 && newIndex != prevVisibleIndex) {
+                    pagerState.scrollToPage(newIndex)
+                }
+            }
+        }
+        lastPosts = posts
+    }
 
     LaunchedEffect(initialPostId, posts.size) {
         if (initialPostId != null && !isInitialScrollDone) {
