@@ -43,6 +43,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -166,7 +168,6 @@ private const val FeedSharedMediaTransitionMillis = 200
 private val FeedSharedMediaCornerRadius = 8.dp
 private val FeedPostMediaCornerRadius = 14.dp
 private val FeedInputOverlayKeyboardGap = 14.dp
-private val FeedInputOverlayBottomBarCompensation = 104.dp
 private const val FeedNeighborPrefetchDistance = 2
 private const val FeedNeighborPrefetchParallelism = 4
 
@@ -704,11 +705,16 @@ fun FeedScreen(
             val overlayMode = activeInputOverlay!!
             val density = LocalDensity.current
             val keyboardBottom = WindowInsets.ime.getBottom(density)
+            val navBarsBottom = WindowInsets.navigationBars.getBottom(density)
             val keyboardBottomPadding = with(density) { keyboardBottom.toDp() }
-            // Subtract the Scaffold bottom bar height from IME inset — our container's
-            // bottom is already offset upward by the nav bar, so raw IME inset overshoots.
+            val navBarsBottomPadding = with(density) { navBarsBottom.toDp() }
+            // MainScreen has a bottom padding of 59.dp + navigationBarsPadding()
+            val bottomOffset = navBarsBottomPadding + 59.dp
+            
+            // Subtract the bottom offset from IME inset — our container's
+            // bottom is already offset upward by the nav bar and spacer, so raw IME inset overshoots.
             val compensatedKeyboardPadding = if (keyboardBottom > 0) {
-                (keyboardBottomPadding - FeedInputOverlayBottomBarCompensation).coerceAtLeast(0.dp)
+                (keyboardBottomPadding - bottomOffset).coerceAtLeast(0.dp)
             } else {
                 0.dp
             }
@@ -2642,7 +2648,13 @@ private fun FeedMessageField(
                     }
                     innerTextField()
                 }
-            }
+            },
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                imeAction = androidx.compose.ui.text.input.ImeAction.Send
+            ),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                onSend = { onSend() }
+            )
         )
 
         Icon(
