@@ -53,6 +53,17 @@ class ConversationViewModel(
     var successMessage by mutableStateOf<String?>(null)
         private set
 
+    var hasNewFriendRequestActivity by mutableStateOf(false)
+        private set
+
+    /** True when any conversation has unread messages or a new friend request activity exists. Drives the navbar badge. */
+    val hasUnreadActivity: Boolean
+        get() = conversations.any { it.isUnread } || hasNewFriendRequestActivity
+
+    fun markFriendRequestsAsSeen() {
+        hasNewFriendRequestActivity = false
+    }
+
     private var friendRequestsNextCursor by mutableStateOf<String?>(null)
     private var consumedClearedConversationIds: Set<String> = emptySet()
 
@@ -125,6 +136,7 @@ class ConversationViewModel(
             }
 
             is WebSocketEvent.NewFriendRequest -> {
+                hasNewFriendRequestActivity = true
                 refreshFriendRequestsFromRealtime()
             }
 

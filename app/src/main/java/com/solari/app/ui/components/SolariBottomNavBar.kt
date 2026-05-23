@@ -4,12 +4,15 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
@@ -38,7 +41,8 @@ import com.solari.app.ui.theme.SolariTheme
 fun SolariBottomNavBar(
     selectedRoute: String,
     onNavigate: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showChatsBadge: Boolean = false
 ) {
     val items = listOf(
         NavNavItem(SolariRoute.Screen.CameraBefore.name, "Camera", imageVector = Icons.Outlined.PhotoCamera),
@@ -46,7 +50,8 @@ fun SolariBottomNavBar(
         NavNavItem(
             SolariRoute.Screen.Conversations.name,
             "Chats",
-            imageVector = Icons.Outlined.ChatBubbleOutline
+            imageVector = Icons.Outlined.ChatBubbleOutline,
+            showBadge = showChatsBadge
         ),
         NavNavItem(SolariRoute.Screen.Profile.name, "Profile", imageVector = Icons.Outlined.PersonOutline)
     )
@@ -88,20 +93,32 @@ fun SolariBottomNavBar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    if (item.drawableRes != null) {
-                        Icon(
-                            painter = painterResource(id = item.drawableRes),
-                            contentDescription = item.label,
-                            tint = tint,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    } else if (item.imageVector != null) {
-                        Icon(
-                            imageVector = item.imageVector,
-                            contentDescription = item.label,
-                            tint = tint,
-                            modifier = Modifier.size(24.dp)
-                        )
+                    Box {
+                        if (item.drawableRes != null) {
+                            Icon(
+                                painter = painterResource(id = item.drawableRes),
+                                contentDescription = item.label,
+                                tint = tint,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        } else if (item.imageVector != null) {
+                            Icon(
+                                imageVector = item.imageVector,
+                                contentDescription = item.label,
+                                tint = tint,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        if (item.showBadge) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 2.dp, y = (-1).dp)
+                                    .clip(CircleShape)
+                                    .background(SolariTheme.colors.primary)
+                            )
+                        }
                     }
                     Text(
                         text = item.label,
@@ -120,5 +137,6 @@ private data class NavNavItem(
     val route: String,
     val label: String,
     val imageVector: ImageVector? = null,
-    @param:DrawableRes val drawableRes: Int? = null
+    @param:DrawableRes val drawableRes: Int? = null,
+    val showBadge: Boolean = false
 )

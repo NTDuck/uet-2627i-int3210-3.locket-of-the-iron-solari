@@ -102,6 +102,7 @@ import com.solari.app.ui.viewmodels.OTPConfirmationViewModel
 import com.solari.app.ui.viewmodels.PasswordRecoveryViewModel
 import com.solari.app.ui.viewmodels.ChangePasswordViewModel
 import com.solari.app.ui.viewmodels.SettingsViewModel
+import com.solari.app.notifications.ForegroundNotificationDispatcher
 import com.solari.app.ui.viewmodels.SignInViewModel
 import com.solari.app.ui.viewmodels.SignUpViewModel
 import com.solari.app.ui.viewmodels.WelcomeViewModel
@@ -338,6 +339,7 @@ private fun SolariApp(
     var internetFeedbackIsSuccess by remember { mutableStateOf(false) }
     var internetFeedbackIsLoading by remember { mutableStateOf(false) }
     var internetFeedbackEventId by remember { mutableIntStateOf(0) }
+    var showChatsBadge by remember { mutableStateOf(false) }
     var selectedMainPage by rememberSaveable { mutableIntStateOf(0) }
     var mainPageHistory by rememberSaveable { mutableStateOf(listOf(0)) }
     var navigatedFromProfile by remember { mutableStateOf(false) }
@@ -929,7 +931,8 @@ private fun SolariApp(
                             navController.navigateToWelcomeAfterLogout(appAuthViewModel::signOutLocal)
                         },
                         onProfileFeedbackConsumed = { profileFeedbackMessage = null },
-                        onConversationFeedbackConsumed = { conversationFeedbackMessage = null }
+                        onConversationFeedbackConsumed = { conversationFeedbackMessage = null },
+                        onChatsBadgeChanged = { showChatsBadge = it }
                     )
                 }
                 composable(
@@ -1040,7 +1043,8 @@ private fun SolariApp(
                             navController.navigateToWelcomeAfterLogout(appAuthViewModel::signOutLocal)
                         },
                         onProfileFeedbackConsumed = { profileFeedbackMessage = null },
-                        onConversationFeedbackConsumed = { conversationFeedbackMessage = null }
+                        onConversationFeedbackConsumed = { conversationFeedbackMessage = null },
+                        onChatsBadgeChanged = { showChatsBadge = it }
                     )
                 }
                 composable(
@@ -1239,6 +1243,15 @@ private fun SolariApp(
                             viewModel.loadConversation(chatId)
                         }
                     }
+
+                    // Track active conversation to suppress duplicate foreground notifications
+                    androidx.compose.runtime.DisposableEffect(chatId) {
+                        ForegroundNotificationDispatcher.setActiveConversationId(chatId)
+                        onDispose {
+                            ForegroundNotificationDispatcher.setActiveConversationId(null)
+                        }
+                    }
+
                     ChatScreen(
                         chatId = chatId,
                         initialPartner = selectedConversation?.otherUser,
@@ -1366,6 +1379,7 @@ private fun SolariApp(
             ) {
                 SolariBottomNavBar(
                     selectedRoute = navBarSelectedRoute,
+                    showChatsBadge = showChatsBadge,
                     onNavigate = { routeName ->
                         val targetPage = mainPageNames.indexOf(routeName)
                         val isFeedOnFeedPage = isOnMainRoute && selectedMainPage == 1 && targetPage == 1

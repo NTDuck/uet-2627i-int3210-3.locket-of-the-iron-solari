@@ -60,5 +60,11 @@ class SolariFirebaseMessagingService : FirebaseMessagingService() {
         } else {
             Log.d("SolariWidgetUpdate", "Ignored widget update for FCM type: $type")
         }
+
+        // Display foreground notification for all types (dispatcher handles suppression)
+        ForegroundNotificationDispatcher.dispatchForegroundNotification(
+            context = applicationContext,
+            message = message
+        )
     }
 }

@@ -41,6 +41,8 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Warning
@@ -96,6 +98,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -139,6 +151,41 @@ fun ProfileScreen(
     var selectedAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var committedAvatarPreviewUri by remember { mutableStateOf<Uri?>(null) }
     val isGoogleLinked = viewModel.isSignedInWithGoogle
+
+    // Notification permission state - re-checked on each resume (e.g. returning from OS settings)
+    var notificationsEnabled by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    context, Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        )
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationsEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+                } else {
+                    true
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        notificationsEnabled = granted
+    }
+
     val avatarPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -614,6 +661,56 @@ fun ProfileScreen(
                             Switch(
                                 checked = settingsViewModel.isDarkMode,
                                 onCheckedChange = { settingsViewModel.toggleDarkMode(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = SolariTheme.colors.onPrimary,
+                                    checkedTrackColor = SolariTheme.colors.primary
+                                )
+                            )
+                        }
+                    )
+                }
+
+                item { Spacer(modifier = Modifier.height(8.dp)) }
+
+                item {
+                    SettingsRow(
+                        icon = if (notificationsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                        title = if (notificationsEnabled) "Notifications Enabled" else "Notifications Disabled",
+                        onClick = {
+                            if (notificationsEnabled) {
+                                // Open OS notification settings so user can revoke
+                                val intent = Intent().apply {
+                                    action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                }
+                                context.startActivity(intent)
+                            } else {
+                                // Request permission on SDK 33+; for older devices notifications are always enabled
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    notificationPermissionLauncher.launch(
+                                        Manifest.permission.POST_NOTIFICATIONS
+                                    )
+                                }
+                            }
+                        },
+                        trailing = {
+                            Switch(
+                                checked = notificationsEnabled,
+                                onCheckedChange = { enable ->
+                                    if (enable) {
+                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                            notificationPermissionLauncher.launch(
+                                                Manifest.permission.POST_NOTIFICATIONS
+                                            )
+                                        }
+                                    } else {
+                                        val intent = Intent().apply {
+                                            action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = SolariTheme.colors.onPrimary,
                                     checkedTrackColor = SolariTheme.colors.primary
