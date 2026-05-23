@@ -216,7 +216,13 @@ fun HomepageAfterCapturingScreen(
                 val fallback = if (temp != null) "$condition $temp°C" else condition
                 viewModel.updateCaption("weather", com.solari.app.ui.models.CaptionMetadata.Weather(condition, temp), fallback)
             }
-            3 -> viewModel.updateCaption("location", com.solari.app.ui.models.CaptionMetadata.Location(locationText), locationText)
+            3 -> {
+                if (locationText.isBlank()) {
+                    viewModel.updateCaption("text", null, "")
+                } else {
+                    viewModel.updateCaption("location", com.solari.app.ui.models.CaptionMetadata.Location(locationText), locationText)
+                }
+            }
             4 -> {
                 val fallback = "Rating: $ratingValue" + if (ratingReviewText.isNotBlank()) " - $ratingReviewText" else ""
                 viewModel.updateCaption("rating", com.solari.app.ui.models.CaptionMetadata.Rating(ratingValue, ratingReviewText.takeIf { it.isNotBlank() }), fallback)
@@ -257,6 +263,42 @@ fun HomepageAfterCapturingScreen(
             }
         } else {
             pendingLegacyDownload = false
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        if (fineGranted || coarseGranted) {
+            coroutineScope.launch {
+                val city = getCityFromLocation(context)
+                if (!city.isNullOrBlank()) {
+                    locationText = city
+                }
+            }
+        }
+    }
+
+    val requestLocation = {
+        val fineLocationCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarseLocationCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (fineLocationCheck || coarseLocationCheck) {
+            coroutineScope.launch {
+                val city = getCityFromLocation(context)
+                if (!city.isNullOrBlank()) {
+                    locationText = city
+                }
+            }
+            Unit
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
         }
     }
 
@@ -350,6 +392,7 @@ fun HomepageAfterCapturingScreen(
                         onCustomCaptionChange = { customCaptionText = it },
                         locationText = locationText,
                         onLocationTextChange = { locationText = it },
+                        onRequestLocation = requestLocation,
                         ratingValue = ratingValue,
                         onRatingValueChange = { ratingValue = it },
                         ratingReviewText = ratingReviewText,
@@ -561,6 +604,7 @@ private fun CapturePreviewCard(
     onCustomCaptionChange: (String) -> Unit,
     locationText: String,
     onLocationTextChange: (String) -> Unit,
+    onRequestLocation: () -> Unit,
     ratingValue: Float,
     onRatingValueChange: (Float) -> Unit,
     ratingReviewText: String,
@@ -958,7 +1002,9 @@ private fun CapturePreviewCard(
                             color = SolariTheme.colors.background.copy(alpha = 0.85f),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.padding(bottom = 15.dp)
-                                .scaledClickable(pressedScale = 1.08f) { focusRequester.requestFocus() }
+                                .scaledClickable(pressedScale = 1.08f) {
+                                    onRequestLocation()
+                                }
                                 .onGloballyPositioned { onCaptionBoundsChanged(it.boundsInRoot()) }
                         ) {
                             Row(
@@ -972,41 +1018,20 @@ private fun CapturePreviewCard(
                                     tint = androidx.compose.ui.graphics.Color.White,
                                     modifier = Modifier.size(16.dp)
                                 )
-                                BasicTextField(
-                                    value = locationText,
-                                    onValueChange = { onLocationTextChange(it.take(48)) },
-                                    modifier = Modifier
-                                        .widthIn(min = 122.dp, max = 280.dp)
-                                        .focusRequester(focusRequester)
-                                        .onFocusChanged { onCaptionFocusChanged(it.isFocused) },
-                                    textStyle = TextStyle(
-                                        color = SolariTheme.colors.onBackground,
-                                        fontSize = 14.sp,
-                                        lineHeight = 19.sp,
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                        textAlign = TextAlign.Start
-                                    ),
-                                    cursorBrush = SolidColor(SolariTheme.colors.onBackground),
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                                    keyboardActions = KeyboardActions(onDone = { onCaptionDone() }),
-                                    decorationBox = { innerTextField ->
-                                        Box {
-                                            if (locationText.isBlank()) {
-                                                Text(
-                                                    text = "Location name",
-                                                    color = SolariTheme.colors.onBackground.copy(alpha = 0.7f),
-                                                    fontSize = 14.sp,
-                                                    lineHeight = 19.sp,
-                                                    fontFamily = PlusJakartaSans,
-                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                                    maxLines = 1
-                                                )
-                                            }
-                                            innerTextField()
-                                        }
-                                    }
+                                Text(
+                                    text = locationText.ifBlank { "Location name" },
+                                    color = if (locationText.isBlank()) {
+                                        SolariTheme.colors.onBackground.copy(alpha = 0.7f)
+                                    } else {
+                                        SolariTheme.colors.onBackground
+                                    },
+                                    fontSize = 14.sp,
+                                    lineHeight = 19.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 280.dp)
                                 )
                             }
                         }
@@ -1675,4 +1700,78 @@ private fun Bitmap.centerCropSquare(): Bitmap {
     val left = (width - side) / 2
     val top = (height - side) / 2
     return Bitmap.createBitmap(this, left, top, side, side)
+}
+
+private suspend fun getCityFromLocation(context: android.content.Context): String? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager ?: return@withContext null
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return@withContext null
+        }
+        
+        val providers = locationManager.getProviders(true)
+        var bestLocation: android.location.Location? = null
+        for (provider in providers) {
+            val loc = locationManager.getLastKnownLocation(provider) ?: continue
+            if (bestLocation == null || loc.accuracy < bestLocation.accuracy) {
+                bestLocation = loc
+            }
+        }
+        
+        if (bestLocation == null) {
+            val provider = if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                android.location.LocationManager.NETWORK_PROVIDER
+            } else if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                android.location.LocationManager.GPS_PROVIDER
+            } else {
+                null
+            }
+            
+            if (provider != null) {
+                val locationDeferred = kotlinx.coroutines.CompletableDeferred<android.location.Location?>()
+                var activeListener: android.location.LocationListener? = null
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    try {
+                        val listener = object : android.location.LocationListener {
+                            override fun onLocationChanged(location: android.location.Location) {
+                                locationDeferred.complete(location)
+                                locationManager.removeUpdates(this)
+                            }
+                            @Deprecated("Deprecated in Java")
+                            override fun onStatusChanged(p0: String?, p1: Int, p2: android.os.Bundle?) {}
+                            override fun onProviderEnabled(p0: String) {}
+                            override fun onProviderDisabled(p0: String) {}
+                        }
+                        activeListener = listener
+                        locationManager.requestLocationUpdates(provider, 0L, 0f, listener, android.os.Looper.getMainLooper())
+                    } catch (e: Exception) {
+                        locationDeferred.complete(null)
+                    }
+                }
+                
+                try {
+                    kotlinx.coroutines.withTimeoutOrNull(4000) {
+                        val newLoc = locationDeferred.await()
+                        if (newLoc != null) {
+                            bestLocation = newLoc
+                        }
+                    }
+                } finally {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        activeListener?.let { locationManager.removeUpdates(it) }
+                    }
+                }
+            }
+        }
+
+        val loc = bestLocation ?: return@withContext null
+        val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+        val addresses = geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
+        val address = addresses?.firstOrNull()
+        address?.locality ?: address?.subAdminArea ?: address?.adminArea ?: address?.featureName
+    } catch (e: Exception) {
+        android.util.Log.e("SolariLocation", "Failed to fetch city name", e)
+        null
+    }
 }

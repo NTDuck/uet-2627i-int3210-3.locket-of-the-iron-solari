@@ -1619,9 +1619,9 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                 modifier = modifier
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(SolariTheme.colors.background.copy(alpha = 0.85f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1633,7 +1633,7 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                 )
                 Text(
                     text = metadata.placeName,
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = SolariTheme.colors.onBackground,
                     fontSize = 14.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
