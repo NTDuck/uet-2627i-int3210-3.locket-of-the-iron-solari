@@ -1689,7 +1689,7 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(androidx.compose.ui.graphics.Color(0xFFF57C00).copy(alpha = 0.85f))
+                    .background(androidx.compose.ui.graphics.Color(0xFF000000).copy(alpha = 0.6f))
                     .padding(horizontal = 12.dp, vertical = 9.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp)

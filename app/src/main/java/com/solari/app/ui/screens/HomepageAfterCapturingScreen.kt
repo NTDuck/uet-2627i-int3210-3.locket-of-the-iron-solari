@@ -1036,7 +1036,7 @@ private fun CapturePreviewCard(
                     }
                     4 -> {
                         Surface(
-                            color = androidx.compose.ui.graphics.Color(0xFFF57C00).copy(alpha = 0.85f),
+                            color = androidx.compose.ui.graphics.Color(0xFF000000).copy(alpha = 0.6f),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.padding(bottom = 15.dp)
                                 .onGloballyPositioned { onCaptionBoundsChanged(it.boundsInRoot()) }
@@ -1655,16 +1655,21 @@ private fun StarRatingInput(
             .onGloballyPositioned { width = it.size.width.toFloat() }
             .pointerInput(Unit) {
                 awaitEachGesture {
-                    val down = awaitFirstDown()
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    down.consume()
                     var x = down.position.x
                     if (width > 0) {
                         onRatingChange((Math.round((x / width * 5f).coerceIn(0f, 5f) * 2) / 2.0).toFloat())
                     }
                     do {
                         val event = awaitPointerEvent()
-                        x = event.changes.first().position.x
-                        if (width > 0) {
-                            onRatingChange((Math.round((x / width * 5f).coerceIn(0f, 5f) * 2) / 2.0).toFloat())
+                        val changes = event.changes
+                        changes.forEach { it.consume() }
+                        if (changes.isNotEmpty()) {
+                            x = changes.first().position.x
+                            if (width > 0) {
+                                onRatingChange((Math.round((x / width * 5f).coerceIn(0f, 5f) * 2) / 2.0).toFloat())
+                            }
                         }
                     } while (event.changes.any { it.pressed })
                 }
