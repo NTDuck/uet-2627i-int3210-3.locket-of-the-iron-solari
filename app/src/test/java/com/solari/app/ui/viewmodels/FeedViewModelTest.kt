@@ -47,6 +47,7 @@ class FeedViewModelTest {
         // Setup default mocks for init block
         every { postUploadCoordinator.uploads } returns MutableStateFlow(emptyList())
         every { feedRepository.deletedPostIds } returns MutableStateFlow(emptySet())
+        every { feedRepository.newlyPublishedPosts } returns kotlinx.coroutines.flow.MutableSharedFlow()
         coEvery { userRepository.getMe() } returns ApiResult.Success(mockk())
         coEvery { friendRepository.getFriends() } returns ApiResult.Success(emptyList())
         coEvery { feedRepository.getFeed(any(), any(), any(), any()) } returns ApiResult.Success(PaginatedFeed(emptyList(), null))

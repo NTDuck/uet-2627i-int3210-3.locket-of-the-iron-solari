@@ -51,9 +51,13 @@ class DefaultFeedRepository(
                 _newlyPublishedPosts.emit(result.data)
             }
             is ApiResult.Failure -> {
-                Log.e("SolariFCM", "Failed to fetch newly published post \$postId: \${result.message}")
+                Log.e("SolariFCM", "Failed to fetch newly published post $postId: ${result.message}")
             }
         }
+    }
+
+    override suspend fun emitNewlyPublishedPost(post: Post) {
+        _newlyPublishedPosts.emit(post)
     }
 
     override suspend fun getFeed(

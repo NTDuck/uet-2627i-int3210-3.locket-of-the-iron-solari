@@ -16,6 +16,7 @@ interface FeedRepository {
     val newlyPublishedPosts: SharedFlow<Post>
 
     suspend fun emitNewlyPublishedPost(postId: String)
+    suspend fun emitNewlyPublishedPost(post: Post)
 
     suspend fun getFeed(
         authorIds: Set<String> = emptySet(),

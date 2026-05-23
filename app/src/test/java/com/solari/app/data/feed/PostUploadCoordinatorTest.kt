@@ -13,6 +13,7 @@ import com.solari.app.ui.models.User
 import com.solari.app.ui.util.PreparedPostMedia
 import com.solari.app.ui.util.preparePostMediaForUpload
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -43,6 +44,7 @@ class PostUploadCoordinatorTest {
     fun setup() {
         mockkStatic("com.solari.app.ui.util.PostMediaPreparationKt")
         every { webSocketManager.events } returns wsEvents
+        coEvery { feedRepository.emitNewlyPublishedPost(any<Post>()) } returns Unit
         
         mockkStatic(Uri::class)
         val mockUri = mockk<Uri>()
@@ -193,6 +195,7 @@ class PostUploadCoordinatorTest {
             }
             
             assertEquals(PostUploadStatus.None, completed[0].draft.uploadStatus)
+            coVerify(exactly = 1) { feedRepository.emitNewlyPublishedPost(remotePost) }
             cancelAndIgnoreRemainingEvents()
         }
     }
