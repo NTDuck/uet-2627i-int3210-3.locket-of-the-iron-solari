@@ -1641,7 +1641,7 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                 Icon(
                     painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.location),
                     contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color.White,
+                    tint = SolariTheme.colors.onBackground,
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
@@ -1793,10 +1793,13 @@ private fun Post.resolvedCaptionMetadata(): CaptionMetadata? {
             CaptionMetadata.Weather(condition, temperatureC)
         }
         "location" -> trimmedCaption
+            .removePrefix("📍")
+            .trim()
             .takeIf { it.isNotEmpty() }
             ?.let(CaptionMetadata::Location)
         "clock" -> trimmedCaption
             .removePrefix("⏱️")
+            .removePrefix("⏱")
             .trim()
             .takeIf { it.isNotEmpty() }
             ?.let(CaptionMetadata::Clock)
@@ -1806,7 +1809,7 @@ private fun Post.resolvedCaptionMetadata(): CaptionMetadata? {
                 ?.groupValues
                 ?.getOrNull(1)
                 ?.toFloatOrNull()
-                ?: return null
+                ?: 5f
             val review = trimmedCaption
                 .substringAfter(" - ", missingDelimiterValue = "")
                 .takeIf { it.isNotBlank() }
@@ -1853,6 +1856,12 @@ private fun String.toGeneratedCaptionMetadataOrNull(): CaptionMetadata? {
         .trim()
     if (clockCaption != this && clockCaption.isNotEmpty()) {
         return CaptionMetadata.Clock(clockCaption)
+    }
+
+    val locationCaption = removePrefix("📍")
+        .trim()
+    if (locationCaption != this && locationCaption.isNotEmpty()) {
+        return CaptionMetadata.Location(locationCaption)
     }
 
     return null

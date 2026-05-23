@@ -220,7 +220,7 @@ fun HomepageAfterCapturingScreen(
                 if (locationText.isBlank()) {
                     viewModel.updateCaption("text", null, "")
                 } else {
-                    viewModel.updateCaption("location", com.solari.app.ui.models.CaptionMetadata.Location(locationText), locationText)
+                    viewModel.updateCaption("location", com.solari.app.ui.models.CaptionMetadata.Location(locationText), "📍 $locationText")
                 }
             }
             4 -> {
@@ -1013,7 +1013,11 @@ private fun CapturePreviewCard(
                                 Icon(
                                     painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.location),
                                     contentDescription = null,
-                                    tint = androidx.compose.ui.graphics.Color.White,
+                                    tint = if (locationText.isBlank()) {
+                                        SolariTheme.colors.onBackground.copy(alpha = 0.7f)
+                                    } else {
+                                        SolariTheme.colors.onBackground
+                                    },
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
