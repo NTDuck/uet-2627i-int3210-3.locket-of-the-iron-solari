@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -318,6 +319,7 @@ fun ChatScreen(
 
     Scaffold(
         containerColor = ChatBackground,
+        contentWindowInsets = androidx.compose.material3.ScaffoldDefaults.contentWindowInsets.exclude(WindowInsets.ime)
     ) { innerPadding ->
         val scaffoldBottomPadding = innerPadding.calculateBottomPadding()
         val targetContentBottomPadding = max(

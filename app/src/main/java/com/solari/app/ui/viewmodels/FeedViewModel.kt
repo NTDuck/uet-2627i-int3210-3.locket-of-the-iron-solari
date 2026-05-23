@@ -89,6 +89,20 @@ class FeedViewModel(
             }
         }
 
+        viewModelScope.launch {
+            feedRepository.newlyPublishedPosts.collectLatest { newPost ->
+                if (newPost.id !in deletedPostIds) {
+                    val isDuplicate = remotePosts.any { it.id == newPost.id }
+                    // When a post is prepended, we apply filters to ensure it matches
+                    val matchesAuthorFilter = authorFilterIds.isEmpty() || newPost.author.id in authorFilterIds
+                    if (!isDuplicate && matchesAuthorFilter) {
+                        remotePosts = listOf(newPost) + remotePosts
+                        applyDisplayPosts()
+                    }
+                }
+            }
+        }
+
         refresh()
     }
 

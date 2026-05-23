@@ -1369,9 +1369,12 @@ private fun SolariApp(
                     onNavigate = { routeName ->
                         val targetPage = mainPageNames.indexOf(routeName)
                         val isFeedOnFeedPage = isOnMainRoute && selectedMainPage == 1 && targetPage == 1
+                        val isFeedOnBrowsePage = currentRoute.isFeedBrowseRoute() && targetPage == 1
                         val isAlreadyOnMainPage = isOnMainRoute && selectedMainPage == targetPage
                         when {
-                            isFeedOnFeedPage -> navController.navigateToFeedBrowse(null)
+                            isFeedOnFeedPage || isFeedOnBrowsePage -> {
+                                // Do nothing
+                            }
                             !isAlreadyOnMainPage -> navigateToMainPage(targetPage, replaceCurrent = true)
                         }
                     }

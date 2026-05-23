@@ -5,6 +5,7 @@ import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.PathMeasure
 import android.net.Uri
+import android.os.Build
 import android.util.Log
 import android.util.Rational
 import android.view.Surface
@@ -180,6 +181,18 @@ fun HomepageBeforeCapturingScreen(
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
+    var isNotificationPermissionGranted by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        )
+    }
     var boundCamera by remember { mutableStateOf<Camera?>(null) }
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
     var activeRecordingFile by remember { mutableStateOf<File?>(null) }
@@ -188,10 +201,15 @@ fun HomepageBeforeCapturingScreen(
     var isCaptureInFlight by remember { mutableStateOf(false) }
     var focusIndicatorPosition by remember { mutableStateOf<Offset?>(null) }
 
-    val cameraPermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        isCameraPermissionGranted = granted
+    val permissionsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        isCameraPermissionGranted = permissions[Manifest.permission.CAMERA] ?: isCameraPermissionGranted
+        isNotificationPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions[Manifest.permission.POST_NOTIFICATIONS] ?: isNotificationPermissionGranted
+        } else {
+            true
+        }
     }
     val galleryPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -478,8 +496,13 @@ fun HomepageBeforeCapturingScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (!isCameraPermissionGranted) {
-            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        val permissionsToRequest = mutableListOf(Manifest.permission.CAMERA)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isNotificationPermissionGranted) {
+            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+
+        if (!isCameraPermissionGranted || permissionsToRequest.size > 1) {
+            permissionsLauncher.launch(permissionsToRequest.toTypedArray())
         }
     }
 

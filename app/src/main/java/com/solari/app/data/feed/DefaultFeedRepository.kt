@@ -21,6 +21,7 @@ import com.solari.app.ui.models.User
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
@@ -39,8 +40,21 @@ class DefaultFeedRepository(
     private val uploadLogTag = "SolariUpload"
     private val latencyLogTag = "SolariApiLatency"
     private val _deletedPostIds = MutableStateFlow<Set<String>>(emptySet())
+    private val _newlyPublishedPosts = kotlinx.coroutines.flow.MutableSharedFlow<Post>()
 
     override val deletedPostIds: StateFlow<Set<String>> = _deletedPostIds.asStateFlow()
+    override val newlyPublishedPosts: kotlinx.coroutines.flow.SharedFlow<Post> = _newlyPublishedPosts.asSharedFlow()
+
+    override suspend fun emitNewlyPublishedPost(postId: String) {
+        when (val result = getPost(postId)) {
+            is ApiResult.Success -> {
+                _newlyPublishedPosts.emit(result.data)
+            }
+            is ApiResult.Failure -> {
+                Log.e("SolariFCM", "Failed to fetch newly published post \$postId: \${result.message}")
+            }
+        }
+    }
 
     override suspend fun getFeed(
         authorIds: Set<String>,

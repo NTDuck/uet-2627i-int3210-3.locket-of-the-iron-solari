@@ -84,6 +84,19 @@ class FeedBrowseViewModel(
             }
         }
 
+        viewModelScope.launch {
+            feedRepository.newlyPublishedPosts.collectLatest { newPost ->
+                if (newPost.id !in deletedPostIds) {
+                    val isDuplicate = remotePosts.any { it.id == newPost.id }
+                    val matchesAuthorFilter = selectedFriendIds.isEmpty() || newPost.author.id in selectedFriendIds
+                    if (!isDuplicate && matchesAuthorFilter) {
+                        remotePosts = listOf(newPost) + remotePosts
+                        applyDisplayPosts()
+                    }
+                }
+            }
+        }
+
         refresh()
     }
 
