@@ -1596,7 +1596,7 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
                     .clip(RoundedCornerShape(12.dp))
-                    .background(androidx.compose.ui.graphics.Color(0xFF00ACC1).copy(alpha = 0.85f))
+                    .background(getWeatherConditionColor(metadata.condition))
                     .padding(horizontal = 12.dp, vertical = 9.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -2757,4 +2757,19 @@ private fun FeedBrowseButton(
             fontWeight = FontWeight.Bold
         )
     }
+}
+
+private fun getWeatherConditionColor(condition: String): androidx.compose.ui.graphics.Color {
+    val colorHex = when (condition) {
+        "Sunny" -> 0xFFFFA726    // Vibrant Orange
+        "Cloudy" -> 0xFF78909C   // Muted Slate Gray
+        "Cool" -> 0xFF26C6DA     // Cool Teal/Cyan
+        "Cold" -> 0xFF42A5F5     // Freezing Sky Blue
+        "Rainy" -> 0xFF5C6BC0    // Rainy Indigo
+        "Snowy" -> 0xFF90A4AE    // Soft Lavender Gray
+        "Windy" -> 0xFF26A69A    // Mint Green
+        "Stormy" -> 0xFF5E35B1   // Deep Violet/Purple
+        else -> 0xFF00ACC1       // Default Cyan
+    }
+    return androidx.compose.ui.graphics.Color(colorHex).copy(alpha = 0.85f)
 }
