@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -28,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,8 +40,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.solari.app.ui.components.FilterToggleButton
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
+import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.BlockedUser
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
@@ -51,7 +55,6 @@ private val BlockedBackground @Composable get() = SolariTheme.colors.background
 private val BlockedSurface @Composable get() = SolariTheme.colors.surface
 private val BlockedChip @Composable get() = SolariTheme.colors.surfaceVariant
 private val BlockedPrimary @Composable get() = SolariTheme.colors.primary
-private val BlockedPrimaryContent @Composable get() = SolariTheme.colors.onPrimary
 private val BlockedText @Composable get() = SolariTheme.colors.onBackground
 private val BlockedSubtle @Composable get() = SolariTheme.colors.onSurfaceVariant
 
@@ -68,8 +71,39 @@ fun BlockedAccountsScreen(
     var pendingUnblock by remember { mutableStateOf<BlockedUser?>(null) }
     var isUserRefreshing by remember { mutableStateOf(false) }
     val blockedAccounts = viewModel.blockedUsers
+    val listState = rememberLazyListState()
+    val sortSelection = when (viewModel.sort) {
+        "oldest" -> SortSelection.Oldest
+        else -> SortSelection.Newest
+    }
+    val shouldLoadMoreBlockedAccounts by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?: return@derivedStateOf false
+            layoutInfo.totalItemsCount > 0 &&
+                lastVisibleItemIndex >= layoutInfo.totalItemsCount - 1
+        }
+    }
 
     BackHandler(onBack = onNavigateBack)
+
+    LaunchedEffect(
+        shouldLoadMoreBlockedAccounts,
+        viewModel.canLoadMoreBlockedUsers,
+        viewModel.isLoadingMoreBlockedUsers,
+        viewModel.isLoading,
+        blockedAccounts.size
+    ) {
+        if (
+            shouldLoadMoreBlockedAccounts &&
+            viewModel.canLoadMoreBlockedUsers &&
+            !viewModel.isLoadingMoreBlockedUsers &&
+            !viewModel.isLoading
+        ) {
+            viewModel.loadMoreBlockedUsers()
+        }
+    }
 
     LaunchedEffect(viewModel.isLoading) {
         if (!viewModel.isLoading) {
@@ -104,6 +138,7 @@ fun BlockedAccountsScreen(
                     }
                 } else {
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(
@@ -115,16 +150,28 @@ fun BlockedAccountsScreen(
                     ) {
                         item {
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.padding(bottom = 4.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 4.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                listOf("default", "newest", "oldest").forEach { sort ->
-                                    BlockedSortChip(
-                                        text = sort,
-                                        selected = viewModel.sort == sort,
-                                        onClick = { viewModel.updateSort(sort) }
-                                    )
-                                }
+                                Text(
+                                    text = "BLOCKED ACCOUNTS",
+                                    color = BlockedPrimary,
+                                    fontSize = 15.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                FilterToggleButton(
+                                    selected = sortSelection,
+                                    onToggle = { selection ->
+                                        viewModel.updateSort(selection.apiValue ?: "newest")
+                                    },
+                                    iconTint = BlockedPrimary,
+                                    modifier = Modifier.size(28.dp),
+                                    iconSize = 17
+                                )
                             }
                         }
 
@@ -146,6 +193,24 @@ fun BlockedAccountsScreen(
                                 account = account,
                                 onUnblock = { pendingUnblock = account }
                             )
+                        }
+
+                        if (viewModel.isLoadingMoreBlockedUsers) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = BlockedPrimary,
+                                        trackColor = BlockedSurface,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
                     }
             }
@@ -190,31 +255,6 @@ private fun BlockedAccountsHeader(onNavigateBack: () -> Unit) {
             text = "Blocked Accounts",
             color = BlockedText,
             fontSize = 20.sp,
-            fontFamily = PlusJakartaSans,
-            fontWeight = FontWeight.Bold
-        )
-    }
-}
-
-@Composable
-private fun BlockedSortChip(
-    text: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .height(36.dp)
-            .clip(RoundedCornerShape(18.dp))
-            .background(if (selected) BlockedPrimary else BlockedChip)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = text,
-            color = if (selected) BlockedPrimaryContent else BlockedText,
-            fontSize = 14.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Bold
         )
