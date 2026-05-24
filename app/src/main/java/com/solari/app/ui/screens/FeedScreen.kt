@@ -59,6 +59,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -84,6 +85,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -620,6 +622,12 @@ fun FeedScreen(
                 ?.let { viewModel.postActivities[it] }
                 .orEmpty(),
             isLoading = currentActivitySheetPostId in viewModel.loadingPostActivityIds,
+            isLoadingMore = currentActivitySheetPostId in viewModel.loadingMorePostActivityIds,
+            canLoadMore = currentActivitySheetPostId
+                ?.let { viewModel.canLoadMorePostActivity(it) } == true,
+            onLoadMore = {
+                currentActivitySheetPostId?.let { viewModel.loadMorePostActivity(it) }
+            },
             onDismiss = { isActivitySheetVisible = false }
         )
 
@@ -1877,10 +1885,14 @@ private fun FeedActivitySheet(
     visible: Boolean,
     activities: List<PostActivityEntry>,
     isLoading: Boolean,
+    isLoadingMore: Boolean,
+    canLoadMore: Boolean,
+    onLoadMore: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val dismissInteractionSource = remember { MutableInteractionSource() }
     val sheetInteractionSource = remember { MutableInteractionSource() }
+    val listState = rememberLazyListState()
     var isSheetDragging by remember { mutableStateOf(false) }
     var sheetDragOffsetPx by remember { mutableFloatStateOf(0f) }
     var expandedUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -1894,6 +1906,15 @@ private fun FeedActivitySheet(
                 )
             }
     }
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?: return@derivedStateOf false
+            layoutInfo.totalItemsCount > 0 &&
+                lastVisibleItemIndex >= layoutInfo.totalItemsCount - 1
+        }
+    }
     val animatedSheetDragOffsetPx by animateFloatAsState(
         targetValue = sheetDragOffsetPx,
         animationSpec = tween(durationMillis = if (isSheetDragging) 0 else 180),
@@ -1904,6 +1925,13 @@ private fun FeedActivitySheet(
         if (visible) {
             sheetDragOffsetPx = 0f
             expandedUserIds = emptySet()
+            listState.scrollToItem(0)
+        }
+    }
+
+    LaunchedEffect(visible, shouldLoadMore, canLoadMore, isLoadingMore, isLoading, activities.size) {
+        if (visible && shouldLoadMore && canLoadMore && !isLoadingMore && !isLoading) {
+            onLoadMore()
         }
     }
 
@@ -2033,6 +2061,7 @@ private fun FeedActivitySheet(
                     }
 
                     else -> LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(start = 19.dp, end = 19.dp, bottom = 26.dp)
@@ -2054,6 +2083,23 @@ private fun FeedActivitySheet(
                                     expandedUserIds = expandedUserIds - group.user.id
                                 }
                             )
+                        }
+                        if (isLoadingMore) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = SolariTheme.colors.primary,
+                                        trackColor = SolariTheme.colors.surfaceVariant,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }

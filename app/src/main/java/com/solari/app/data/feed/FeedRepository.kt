@@ -11,6 +11,11 @@ data class PaginatedFeed(
     val nextCursor: String?
 )
 
+data class PaginatedPostActivityEntries(
+    val activities: List<PostActivityEntry>,
+    val nextCursor: String?
+)
+
 interface FeedRepository {
     val deletedPostIds: StateFlow<Set<String>>
     val newlyPublishedPosts: SharedFlow<Post>
@@ -31,7 +36,19 @@ interface FeedRepository {
 
     suspend fun getPostViewers(postId: String): ApiResult<List<PostActivityEntry>>
 
+    suspend fun getPostViewersPage(
+        postId: String,
+        limit: Int,
+        cursor: String? = null
+    ): ApiResult<PaginatedPostActivityEntries>
+
     suspend fun getPostReactions(postId: String): ApiResult<List<PostActivityEntry>>
+
+    suspend fun getPostReactionsPage(
+        postId: String,
+        limit: Int,
+        cursor: String? = null
+    ): ApiResult<PaginatedPostActivityEntries>
 
     suspend fun registerPostView(postId: String): ApiResult<Unit>
 

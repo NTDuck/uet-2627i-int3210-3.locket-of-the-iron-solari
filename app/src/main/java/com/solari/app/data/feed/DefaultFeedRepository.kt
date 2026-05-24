@@ -104,17 +104,64 @@ class DefaultFeedRepository(
     }
 
     override suspend fun getPostViewers(postId: String): ApiResult<List<PostActivityEntry>> {
-        return when (val result = apiExecutor.execute { feedApi.getPostViewers(postId = postId) }) {
+        return when (val result = getPostViewersPage(postId = postId, limit = 50)) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiActivityEntry() })
+            is ApiResult.Success -> ApiResult.Success(result.data.activities)
+        }
+    }
+
+    override suspend fun getPostViewersPage(
+        postId: String,
+        limit: Int,
+        cursor: String?
+    ): ApiResult<PaginatedPostActivityEntries> {
+        return when (
+            val result = apiExecutor.execute {
+                feedApi.getPostViewers(
+                    postId = postId,
+                    limit = limit,
+                    cursor = cursor
+                )
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(
+                PaginatedPostActivityEntries(
+                    activities = result.data.items.map { it.toUiActivityEntry() },
+                    nextCursor = result.data.nextCursor
+                )
+            )
         }
     }
 
     override suspend fun getPostReactions(postId: String): ApiResult<List<PostActivityEntry>> {
-        return when (val result =
-            apiExecutor.execute { feedApi.getPostReactions(postId = postId) }) {
+        return when (val result = getPostReactionsPage(postId = postId, limit = 100)) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiActivityEntry() })
+            is ApiResult.Success -> ApiResult.Success(result.data.activities)
+        }
+    }
+
+    override suspend fun getPostReactionsPage(
+        postId: String,
+        limit: Int,
+        cursor: String?
+    ): ApiResult<PaginatedPostActivityEntries> {
+        return when (
+            val result = apiExecutor.execute {
+                feedApi.getPostReactions(
+                    postId = postId,
+                    limit = limit,
+                    cursor = cursor
+                )
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(
+                PaginatedPostActivityEntries(
+                    activities = result.data.items.map { it.toUiActivityEntry() },
+                    nextCursor = result.data.nextCursor
+                )
+            )
         }
     }
 

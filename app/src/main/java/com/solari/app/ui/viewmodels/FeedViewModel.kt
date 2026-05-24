@@ -17,8 +17,20 @@ import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostActivityEntry
 import com.solari.app.ui.models.PostUploadStatus
 import com.solari.app.ui.models.User
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+
+private const val PostActivityPageSize = 50
+
+private data class PostActivityPagination(
+    val viewersNextCursor: String?,
+    val reactionsNextCursor: String?
+) {
+    val canLoadMore: Boolean
+        get() = viewersNextCursor != null || reactionsNextCursor != null
+}
 
 class FeedViewModel(
     private val feedRepository: FeedRepository,
@@ -52,6 +64,9 @@ class FeedViewModel(
     var loadingPostActivityIds by mutableStateOf<Set<String>>(emptySet())
         private set
 
+    var loadingMorePostActivityIds by mutableStateOf<Set<String>>(emptySet())
+        private set
+
     var authorFilterIds by mutableStateOf<Set<String>>(emptySet())
         private set
 
@@ -70,6 +85,8 @@ class FeedViewModel(
     private var nextCursor: String? = null
     private var remotePosts: List<Post> = emptyList()
     private var uploadEntries: List<PostUploadEntry> = emptyList()
+    private var postActivityPaginationByPostId by mutableStateOf<Map<String, PostActivityPagination>>(emptyMap())
+    private val postActivityLoadGenerations = mutableMapOf<String, Int>()
 
     init {
         viewModelScope.launch {
@@ -85,6 +102,8 @@ class FeedViewModel(
                 remotePosts = remotePosts.filterNot { it.id in deletedIds }
                 postActivities = postActivities.filterKeys { it !in deletedIds }
                 loadingPostActivityIds = loadingPostActivityIds - deletedIds
+                loadingMorePostActivityIds = loadingMorePostActivityIds - deletedIds
+                postActivityPaginationByPostId = postActivityPaginationByPostId.filterKeys { it !in deletedIds }
                 applyDisplayPosts()
             }
         }
@@ -192,6 +211,8 @@ class FeedViewModel(
 
                     if (postActivities.size > 100) {
                         postActivities = postActivities.toList().takeLast(100).toMap()
+                        postActivityPaginationByPostId = postActivityPaginationByPostId
+                            .filterKeys { it in postActivities.keys }
                     }
                 }
 
@@ -211,6 +232,8 @@ class FeedViewModel(
                     applyDisplayPosts()
                     postActivities = postActivities - postId
                     loadingPostActivityIds = loadingPostActivityIds - postId
+                    loadingMorePostActivityIds = loadingMorePostActivityIds - postId
+                    postActivityPaginationByPostId = postActivityPaginationByPostId - postId
                 }
 
                 is ApiResult.Failure -> errorMessage = result.message
@@ -221,6 +244,7 @@ class FeedViewModel(
     fun loadPostActivity(postId: String, force: Boolean = false) {
         if (uploadEntries.any { it.draft.id == postId && it.draft.uploadStatus != PostUploadStatus.None }) {
             postActivities = postActivities + (postId to emptyList())
+            postActivityPaginationByPostId = postActivityPaginationByPostId - postId
             return
         }
 
@@ -228,33 +252,192 @@ class FeedViewModel(
             return
         }
 
+        val requestGeneration = nextPostActivityLoadGeneration(postId)
         viewModelScope.launch {
             loadingPostActivityIds = loadingPostActivityIds + postId
+            loadingMorePostActivityIds = loadingMorePostActivityIds - postId
+            postActivityPaginationByPostId = postActivityPaginationByPostId - postId
 
-            val viewersResult = feedRepository.getPostViewers(postId)
-            val reactionsResult = feedRepository.getPostReactions(postId)
+            try {
+                val viewersDeferred = async {
+                    feedRepository.getPostViewersPage(
+                        postId = postId,
+                        limit = PostActivityPageSize,
+                        cursor = null
+                    )
+                }
+                val reactionsDeferred = async {
+                    feedRepository.getPostReactionsPage(
+                        postId = postId,
+                        limit = PostActivityPageSize,
+                        cursor = null
+                    )
+                }
+                val viewersResult = viewersDeferred.await()
+                val reactionsResult = reactionsDeferred.await()
 
-            val activities = buildList {
-                if (viewersResult is ApiResult.Success) addAll(viewersResult.data)
-                if (reactionsResult is ApiResult.Success) addAll(reactionsResult.data)
-            }.sortedByDescending { it.timestamp }
+                if (!isCurrentPostActivityRequest(postId, requestGeneration)) {
+                    return@launch
+                }
 
-            if (activities.isNotEmpty() ||
-                viewersResult is ApiResult.Success ||
-                reactionsResult is ApiResult.Success
-            ) {
-                postActivities = postActivities + (postId to activities)
+                val activities = buildList {
+                    if (viewersResult is ApiResult.Success) addAll(viewersResult.data.activities)
+                    if (reactionsResult is ApiResult.Success) addAll(reactionsResult.data.activities)
+                }.sortedByDescending { it.timestamp }
+
+                if (activities.isNotEmpty() ||
+                    viewersResult is ApiResult.Success ||
+                    reactionsResult is ApiResult.Success
+                ) {
+                    postActivities = postActivities + (postId to activities)
+                    postActivityPaginationByPostId = postActivityPaginationByPostId + (
+                        postId to PostActivityPagination(
+                            viewersNextCursor = (viewersResult as? ApiResult.Success)?.data?.nextCursor,
+                            reactionsNextCursor = (reactionsResult as? ApiResult.Success)?.data?.nextCursor
+                        )
+                    )
+                }
+
+                val failure = listOf(viewersResult, reactionsResult)
+                    .filterIsInstance<ApiResult.Failure>()
+                    .firstOrNull()
+                if (failure != null && activities.isEmpty()) {
+                    errorMessage = failure.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                if (isCurrentPostActivityRequest(postId, requestGeneration)) {
+                    errorMessage = throwable.message ?: "Failed to load post activity"
+                }
+            } finally {
+                if (isCurrentPostActivityRequest(postId, requestGeneration)) {
+                    loadingPostActivityIds = loadingPostActivityIds - postId
+                }
             }
-
-            val failure = listOf(viewersResult, reactionsResult)
-                .filterIsInstance<ApiResult.Failure>()
-                .firstOrNull()
-            if (failure != null && activities.isEmpty()) {
-                errorMessage = failure.message
-            }
-
-            loadingPostActivityIds = loadingPostActivityIds - postId
         }
+    }
+
+    fun canLoadMorePostActivity(postId: String): Boolean {
+        return postActivityPaginationByPostId[postId]?.canLoadMore == true
+    }
+
+    fun loadMorePostActivity(postId: String) {
+        val pagination = postActivityPaginationByPostId[postId] ?: return
+        if (!pagination.canLoadMore ||
+            postId in loadingPostActivityIds ||
+            postId in loadingMorePostActivityIds
+        ) {
+            return
+        }
+
+        val requestGeneration = postActivityLoadGenerations[postId] ?: 0
+        viewModelScope.launch {
+            loadingMorePostActivityIds = loadingMorePostActivityIds + postId
+
+            try {
+                val viewersDeferred = pagination.viewersNextCursor?.let { cursor ->
+                    async {
+                        feedRepository.getPostViewersPage(
+                            postId = postId,
+                            limit = PostActivityPageSize,
+                            cursor = cursor
+                        )
+                    }
+                }
+                val reactionsDeferred = pagination.reactionsNextCursor?.let { cursor ->
+                    async {
+                        feedRepository.getPostReactionsPage(
+                            postId = postId,
+                            limit = PostActivityPageSize,
+                            cursor = cursor
+                        )
+                    }
+                }
+
+                val viewersResult = viewersDeferred?.await()
+                val reactionsResult = reactionsDeferred?.await()
+
+                if (!isCurrentPostActivityRequest(postId, requestGeneration)) {
+                    return@launch
+                }
+
+                val newActivities = buildList {
+                    if (viewersResult is ApiResult.Success) addAll(viewersResult.data.activities)
+                    if (reactionsResult is ApiResult.Success) addAll(reactionsResult.data.activities)
+                }
+
+                val mergedActivities = mergePostActivities(
+                    currentActivities = postActivities[postId].orEmpty(),
+                    newActivities = newActivities
+                )
+                postActivities = postActivities + (postId to mergedActivities)
+                postActivityPaginationByPostId = postActivityPaginationByPostId + (
+                    postId to PostActivityPagination(
+                        viewersNextCursor = when (viewersResult) {
+                            is ApiResult.Success -> viewersResult.data.nextCursor
+                            is ApiResult.Failure -> null
+                            null -> null
+                        },
+                        reactionsNextCursor = when (reactionsResult) {
+                            is ApiResult.Success -> reactionsResult.data.nextCursor
+                            is ApiResult.Failure -> null
+                            null -> null
+                        }
+                    )
+                )
+
+                val failure = listOfNotNull(viewersResult, reactionsResult)
+                    .filterIsInstance<ApiResult.Failure>()
+                    .firstOrNull()
+                if (failure != null && newActivities.isEmpty()) {
+                    errorMessage = failure.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                if (isCurrentPostActivityRequest(postId, requestGeneration)) {
+                    errorMessage = throwable.message ?: "Failed to load more post activity"
+                    postActivityPaginationByPostId = postActivityPaginationByPostId + (
+                        postId to PostActivityPagination(
+                            viewersNextCursor = null,
+                            reactionsNextCursor = null
+                        )
+                    )
+                }
+            } finally {
+                if (isCurrentPostActivityRequest(postId, requestGeneration)) {
+                    loadingMorePostActivityIds = loadingMorePostActivityIds - postId
+                }
+            }
+        }
+    }
+
+    private fun nextPostActivityLoadGeneration(postId: String): Int {
+        val nextGeneration = (postActivityLoadGenerations[postId] ?: 0) + 1
+        postActivityLoadGenerations[postId] = nextGeneration
+        return nextGeneration
+    }
+
+    private fun isCurrentPostActivityRequest(postId: String, generation: Int): Boolean {
+        return postActivityLoadGenerations[postId] == generation
+    }
+
+    private fun mergePostActivities(
+        currentActivities: List<PostActivityEntry>,
+        newActivities: List<PostActivityEntry>
+    ): List<PostActivityEntry> {
+        val seenActivityKeys = currentActivities.mapTo(mutableSetOf()) { it.activityKey() }
+        return (currentActivities + newActivities.filter { seenActivityKeys.add(it.activityKey()) })
+            .sortedByDescending { it.timestamp }
+    }
+
+    private fun PostActivityEntry.activityKey(): String {
+        return listOf(
+            user.id,
+            description,
+            timestamp.toString(),
+            emoji.orEmpty(),
+            caption.orEmpty()
+        ).joinToString(separator = "|")
     }
 
     fun retryPostUpload(postId: String) {
