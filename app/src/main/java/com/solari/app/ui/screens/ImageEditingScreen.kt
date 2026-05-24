@@ -42,6 +42,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.RotateRight
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AutoFixNormal
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Check
@@ -134,7 +135,7 @@ private enum class AdjustType {
     Exposure, Contrast, Brightness, Saturation, Temperature
 }
 
-private data class DrawPath(
+data class DrawPath(
     val path: NativePath,
     val color: Color,
     val strokeWidth: Float,
@@ -178,7 +179,7 @@ fun ImageEditingScreen(
     val coroutineScope = rememberCoroutineScope()
     var currentMode by remember { mutableStateOf(EditMode.Main) }
     var baseBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var currentBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val currentBitmap = viewModel.editedBitmap
     var isLoading by remember { mutableStateOf(true) }
     var applyTrigger by remember { mutableStateOf(false) }
 
@@ -212,7 +213,6 @@ fun ImageEditingScreen(
                         }
                     val softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
                     baseBitmap = softwareBitmap
-                    currentBitmap = softwareBitmap
                     softwareBitmap?.let { viewModel.setInitialBitmap(it) }
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -243,7 +243,29 @@ fun ImageEditingScreen(
                         onCancel = { onNavigateBack(null) },
                         onApply = {
                             coroutineScope.launch {
-                                val finalBitmap = currentBitmap ?: return@launch
+                                val base = currentBitmap ?: return@launch
+                                val finalBitmap = withContext(Dispatchers.Default) {
+                                    val result = base.copy(Bitmap.Config.ARGB_8888, true)
+                                    val canvas = AndroidCanvas(result)
+                                    val paint = AndroidPaint().apply {
+                                        isAntiAlias = true
+                                        style = AndroidPaint.Style.STROKE
+                                        strokeJoin = AndroidPaint.Join.ROUND
+                                        strokeCap = AndroidPaint.Cap.ROUND
+                                    }
+                                    viewModel.drawingPaths.forEach { drawPath ->
+                                        paint.strokeWidth = drawPath.strokeWidth
+                                        if (drawPath.isEraser) {
+                                            paint.xfermode =
+                                                android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                                        } else {
+                                            paint.xfermode = null
+                                            paint.color = drawPath.color.toArgb()
+                                        }
+                                        canvas.drawPath(drawPath.path, paint)
+                                    }
+                                    result
+                                }
                                 val file = File(
                                     context.cacheDir,
                                     "edited_${System.currentTimeMillis()}.jpg"
@@ -266,6 +288,8 @@ fun ImageEditingScreen(
                                 )
                             }
                         },
+                        onUndo = { viewModel.undo() },
+                        canUndo = viewModel.hasChanges,
                         canApply = viewModel.hasChanges
                     )
                 } else {
@@ -335,26 +359,30 @@ fun ImageEditingScreen(
                     ) {
                         when (currentMode) {
                             EditMode.Main -> {
-                                androidx.compose.foundation.Image(
-                                    bitmap = bitmap.asImageBitmap(),
-                                    contentDescription = null,
+                                EditableImagePreview(
+                                    bitmap = bitmap,
+                                    drawingPaths = viewModel.drawingPaths,
                                     modifier = Modifier
                                         .fillMaxSize()
-                                        .clip(RoundedCornerShape(12.dp)),
-                                    contentScale = ContentScale.Fit
+                                        .clip(RoundedCornerShape(12.dp))
                                 )
                             }
 
                             EditMode.Crop -> {
                                 CropWorkspace(
                                     bitmap = bitmap,
+                                    drawingPaths = viewModel.drawingPaths,
                                     rotation = cropRotation,
                                     flipH = cropFlipH,
                                     flipV = cropFlipV,
                                     applyTrigger = applyTrigger,
-                                    onApply = { edited ->
-                                        currentBitmap = edited
-                                        viewModel.updateBitmap(edited)
+                                    onApply = { edited, matrix ->
+                                        val transformedPaths = viewModel.drawingPaths.map { drawPath ->
+                                            val newPath = NativePath(drawPath.path)
+                                            newPath.transform(matrix)
+                                            drawPath.copy(path = newPath)
+                                        }
+                                        viewModel.updateBitmapAndDrawingPaths(edited, transformedPaths)
                                         currentMode = EditMode.Main
                                         applyTrigger = false
                                     }
@@ -364,13 +392,13 @@ fun ImageEditingScreen(
                             EditMode.Draw -> {
                                 DrawWorkspace(
                                     bitmap = bitmap,
+                                    initialPaths = viewModel.drawingPaths,
                                     selectedColor = drawColor,
                                     selectedTool = drawTool,
                                     selectedEraserSize = selectedEraserSize,
                                     applyTrigger = applyTrigger,
-                                    onApply = { edited ->
-                                        currentBitmap = edited
-                                        viewModel.updateBitmap(edited)
+                                    onApply = { _, finalPaths ->
+                                        viewModel.updateDrawingPaths(finalPaths)
                                         currentMode = EditMode.Main
                                         applyTrigger = false
                                     }
@@ -380,10 +408,10 @@ fun ImageEditingScreen(
                             EditMode.Text -> {
                                 TextWorkspace(
                                     bitmap = bitmap,
+                                    drawingPaths = viewModel.drawingPaths,
                                     selectedColor = textColor,
                                     applyTrigger = applyTrigger,
                                     onApply = { edited ->
-                                        currentBitmap = edited
                                         viewModel.updateBitmap(edited)
                                         currentMode = EditMode.Main
                                         applyTrigger = false
@@ -394,10 +422,10 @@ fun ImageEditingScreen(
                             EditMode.Adjust -> {
                                 AdjustWorkspace(
                                     bitmap = bitmap,
+                                    drawingPaths = viewModel.drawingPaths,
                                     values = adjustValues,
                                     applyTrigger = applyTrigger,
                                     onApply = { edited ->
-                                        currentBitmap = edited
                                         viewModel.updateBitmap(edited)
                                         currentMode = EditMode.Main
                                         applyTrigger = false
@@ -416,6 +444,8 @@ fun ImageEditingScreen(
 private fun EditingTopBar(
     onCancel: () -> Unit,
     onApply: () -> Unit,
+    onUndo: () -> Unit,
+    canUndo: Boolean,
     canApply: Boolean
 ) {
     Row(
@@ -433,17 +463,32 @@ private fun EditingTopBar(
                 tint = SolariTheme.colors.secondary
             )
         }
-        IconButton(
-            onClick = onApply,
-            enabled = canApply
-        ) {
-            Icon(
-                Icons.Default.Check,
-                contentDescription = "Apply",
-                tint = if (canApply) SolariTheme.colors.primary else SolariTheme.colors.primary.copy(
-                    alpha = 0.38f
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = onUndo,
+                enabled = canUndo
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.Undo,
+                    contentDescription = "Undo",
+                    tint = if (canUndo) SolariTheme.colors.primary else SolariTheme.colors.primary.copy(
+                        alpha = 0.38f
+                    )
                 )
-            )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = onApply,
+                enabled = canApply
+            ) {
+                Icon(
+                    Icons.Default.Check,
+                    contentDescription = "Apply",
+                    tint = if (canApply) SolariTheme.colors.primary else SolariTheme.colors.primary.copy(
+                        alpha = 0.38f
+                    )
+                )
+            }
         }
     }
 }
@@ -511,11 +556,12 @@ private fun EditModeButton(
 @Composable
 private fun CropWorkspace(
     bitmap: Bitmap,
+    drawingPaths: List<DrawPath>,
     rotation: Float,
     flipH: Float,
     flipV: Float,
     applyTrigger: Boolean,
-    onApply: (Bitmap) -> Unit
+    onApply: (Bitmap, AndroidMatrix) -> Unit
 ) {
     val animRotation by animateFloatAsState(targetValue = rotation, label = "rotation")
     val animFlipH by animateFloatAsState(targetValue = flipH, label = "flipH")
@@ -526,30 +572,70 @@ private fun CropWorkspace(
     var cropRect by remember { mutableStateOf(RectF()) }
     var draggingEdge by remember { mutableStateOf(CropEdge.None) }
 
-    val transformedBitmap = remember(bitmap, rotation, flipH, flipV) {
+    val compositeBitmapForCrop = remember(bitmap, drawingPaths) {
+        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = AndroidCanvas(result)
+        val paint = AndroidPaint().apply {
+            isAntiAlias = true
+            style = AndroidPaint.Style.STROKE
+            strokeJoin = AndroidPaint.Join.ROUND
+            strokeCap = AndroidPaint.Cap.ROUND
+        }
+        drawingPaths.forEach { drawPath ->
+            paint.strokeWidth = drawPath.strokeWidth
+            if (drawPath.isEraser) {
+                paint.xfermode =
+                    android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+            } else {
+                paint.xfermode = null
+                paint.color = drawPath.color.toArgb()
+            }
+            canvas.drawPath(drawPath.path, paint)
+        }
+        result
+    }
+
+    val transformedBitmap = remember(compositeBitmapForCrop, rotation, flipH, flipV) {
         val matrix = AndroidMatrix()
         matrix.postRotate(rotation)
         matrix.postScale(flipH, flipV)
-        Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
+        Bitmap.createBitmap(compositeBitmapForCrop, 0, 0, compositeBitmapForCrop.width, compositeBitmapForCrop.height, matrix, true)
     }
 
     LaunchedEffect(applyTrigger) {
         if (applyTrigger) {
-            val scaleX = transformedBitmap.width / imageRect.width()
-            val scaleY = transformedBitmap.height / imageRect.height()
+            val cleanMatrix = AndroidMatrix()
+            cleanMatrix.postRotate(rotation)
+            cleanMatrix.postScale(flipH, flipV)
+            val cleanTransformed = Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, cleanMatrix, true)
+
+            val scaleX = cleanTransformed.width / imageRect.width()
+            val scaleY = cleanTransformed.height / imageRect.height()
 
             val left = ((cropRect.left - imageRect.left) * scaleX).toInt()
-                .coerceIn(0, transformedBitmap.width - 1)
+                .coerceIn(0, cleanTransformed.width - 1)
             val top = ((cropRect.top - imageRect.top) * scaleY).toInt()
-                .coerceIn(0, transformedBitmap.height - 1)
+                .coerceIn(0, cleanTransformed.height - 1)
             val right = ((cropRect.right - imageRect.left) * scaleX).toInt()
-                .coerceIn(left + 1, transformedBitmap.width)
+                .coerceIn(left + 1, cleanTransformed.width)
             val bottom = ((cropRect.bottom - imageRect.top) * scaleY).toInt()
-                .coerceIn(top + 1, transformedBitmap.height)
+                .coerceIn(top + 1, cleanTransformed.height)
 
             val width = (right - left).coerceAtLeast(1)
             val height = (bottom - top).coerceAtLeast(1)
-            onApply(Bitmap.createBitmap(transformedBitmap, left, top, width, height))
+
+            val cleanCropped = Bitmap.createBitmap(cleanTransformed, left, top, width, height)
+            cleanTransformed.recycle()
+
+            val matrix = AndroidMatrix()
+            matrix.postRotate(rotation)
+            matrix.postScale(flipH, flipV)
+            val rect = RectF(0f, 0f, bitmap.width.toFloat(), bitmap.height.toFloat())
+            matrix.mapRect(rect)
+            matrix.postTranslate(-rect.left, -rect.top)
+            matrix.postTranslate(-left.toFloat(), -top.toFloat())
+
+            onApply(cleanCropped, matrix)
         }
     }
 
@@ -894,13 +980,14 @@ private enum class CropEdge { None, Left, Top, Right, Bottom, TopLeft, TopRight,
 @Composable
 private fun DrawWorkspace(
     bitmap: Bitmap,
+    initialPaths: List<DrawPath>,
     selectedColor: Color,
     selectedTool: DrawTool,
     selectedEraserSize: Float,
     applyTrigger: Boolean,
-    onApply: (Bitmap) -> Unit
+    onApply: (Bitmap, List<DrawPath>) -> Unit
 ) {
-    val paths = remember { mutableStateListOf<DrawPath>() }
+    val paths = remember { mutableStateListOf<DrawPath>().apply { addAll(initialPaths) } }
     var currentPath by remember { mutableStateOf<NativePath?>(null) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
     var eraserCursorPosition by remember { mutableStateOf<Offset?>(null) }
@@ -920,40 +1007,7 @@ private fun DrawWorkspace(
 
     LaunchedEffect(applyTrigger) {
         if (applyTrigger) {
-            val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-            val scale = bitmap.width / drawWidth
-
-            val paint = AndroidPaint().apply {
-                isAntiAlias = true
-                style = AndroidPaint.Style.STROKE
-                strokeJoin = AndroidPaint.Join.ROUND
-                strokeCap = AndroidPaint.Cap.ROUND
-            }
-
-            val layerBitmap = Bitmap.createBitmap(bitmap.width, bitmap.height, Bitmap.Config.ARGB_8888)
-            val layerCanvas = AndroidCanvas(layerBitmap)
-
-            paths.forEach { drawPath ->
-                paint.strokeWidth = drawPath.strokeWidth * scale
-                if (drawPath.isEraser) {
-                    paint.xfermode =
-                        android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-                } else {
-                    paint.xfermode = null
-                    paint.color = drawPath.color.toArgb()
-                }
-                val matrix = AndroidMatrix()
-                matrix.postScale(scale, scale)
-                val scaledPath = NativePath(drawPath.path)
-                scaledPath.transform(matrix)
-                layerCanvas.drawPath(scaledPath, paint)
-            }
-
-            val resultCanvas = AndroidCanvas(result)
-            resultCanvas.drawBitmap(layerBitmap, 0f, 0f, null)
-            layerBitmap.recycle()
-
-            onApply(result)
+            onApply(bitmap, paths)
         }
     }
 
@@ -961,18 +1015,18 @@ private fun DrawWorkspace(
         modifier = Modifier
             .fillMaxSize()
             .onGloballyPositioned { canvasSize = it.size.toSize() }
-            .pointerInput(selectedColor, selectedTool, selectedEraserSize, imgLeft, imgTop) {
+            .pointerInput(selectedColor, selectedTool, selectedEraserSize, imgLeft, imgTop, screenScale) {
                 detectDragGestures(
                     onDragStart = { offset ->
                         val path = NativePath()
-                        path.moveTo(offset.x - imgLeft, offset.y - imgTop)
+                        path.moveTo((offset.x - imgLeft) / screenScale, (offset.y - imgTop) / screenScale)
                         currentPath = path
                         eraserCursorPosition = if (selectedTool == DrawTool.Eraser) offset else null
                         drawCounter++
                     },
                     onDrag = { change, _ ->
                         change.consume()
-                        currentPath?.lineTo(change.position.x - imgLeft, change.position.y - imgTop)
+                        currentPath?.lineTo((change.position.x - imgLeft) / screenScale, (change.position.y - imgTop) / screenScale)
                         eraserCursorPosition =
                             if (selectedTool == DrawTool.Eraser) change.position else null
                         drawCounter++
@@ -983,7 +1037,7 @@ private fun DrawWorkspace(
                                 DrawPath(
                                     it,
                                     selectedColor,
-                                    if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f,
+                                    (if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f) / screenScale,
                                     selectedTool == DrawTool.Eraser
                                 )
                             )
@@ -1013,50 +1067,62 @@ private fun DrawWorkspace(
                     null
                 )
 
-                val layerW = drawWidth.toInt().coerceAtLeast(1)
-                val layerH = drawHeight.toInt().coerceAtLeast(1)
-                val layerBitmap = Bitmap.createBitmap(layerW, layerH, Bitmap.Config.ARGB_8888)
-                val layerCanvas = AndroidCanvas(layerBitmap)
+                if (paths.isNotEmpty() || currentPath != null) {
+                    val layerW = drawWidth.toInt().coerceAtLeast(1)
+                    val layerH = drawHeight.toInt().coerceAtLeast(1)
+                    val layerBitmap = Bitmap.createBitmap(layerW, layerH, Bitmap.Config.ARGB_8888)
+                    val layerCanvas = AndroidCanvas(layerBitmap)
 
-                val paint = AndroidPaint().apply {
-                    isAntiAlias = true
-                    style = AndroidPaint.Style.STROKE
-                    strokeJoin = AndroidPaint.Join.ROUND
-                    strokeCap = AndroidPaint.Cap.ROUND
-                }
-
-                paths.forEach { drawPath ->
-                    paint.strokeWidth = drawPath.strokeWidth
-                    if (drawPath.isEraser) {
-                        paint.xfermode =
-                            android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-                    } else {
-                        paint.xfermode = null
-                        paint.color = drawPath.color.toArgb()
+                    val paint = AndroidPaint().apply {
+                        isAntiAlias = true
+                        style = AndroidPaint.Style.STROKE
+                        strokeJoin = AndroidPaint.Join.ROUND
+                        strokeCap = AndroidPaint.Cap.ROUND
                     }
-                    layerCanvas.drawPath(drawPath.path, paint)
-                }
 
-                currentPath?.let { path ->
-                    paint.strokeWidth =
-                        (if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f)
-                    if (selectedTool == DrawTool.Eraser) {
-                        paint.xfermode =
-                            android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-                    } else {
-                        paint.xfermode = null
-                        paint.color = selectedColor.toArgb()
+                    val scale = drawWidth / bitmap.width.toFloat()
+
+                    paths.forEach { drawPath ->
+                        paint.strokeWidth = drawPath.strokeWidth * scale
+                        if (drawPath.isEraser) {
+                            paint.xfermode =
+                                android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                        } else {
+                            paint.xfermode = null
+                            paint.color = drawPath.color.toArgb()
+                        }
+                        val matrix = AndroidMatrix()
+                        matrix.postScale(scale, scale)
+                        val scaledPath = NativePath(drawPath.path)
+                        scaledPath.transform(matrix)
+                        layerCanvas.drawPath(scaledPath, paint)
                     }
-                    layerCanvas.drawPath(path, paint)
-                }
 
-                nativeCanvas.drawBitmap(
-                    layerBitmap,
-                    null,
-                    RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight),
-                    null
-                )
-                layerBitmap.recycle()
+                    currentPath?.let { path ->
+                        paint.strokeWidth =
+                            (if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f)
+                        if (selectedTool == DrawTool.Eraser) {
+                            paint.xfermode =
+                                android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                        } else {
+                            paint.xfermode = null
+                            paint.color = selectedColor.toArgb()
+                        }
+                        val matrix = AndroidMatrix()
+                        matrix.postScale(scale, scale)
+                        val scaledPath = NativePath(path)
+                        scaledPath.transform(matrix)
+                        layerCanvas.drawPath(scaledPath, paint)
+                    }
+
+                    nativeCanvas.drawBitmap(
+                        layerBitmap,
+                        null,
+                        RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight),
+                        null
+                    )
+                    layerBitmap.recycle()
+                }
             }
 
             eraserCursorPosition
@@ -1167,6 +1233,7 @@ private fun DrawBottomRow(
 @Composable
 private fun TextWorkspace(
     bitmap: Bitmap,
+    drawingPaths: List<DrawPath>,
     selectedColor: Color,
     applyTrigger: Boolean,
     onApply: (Bitmap) -> Unit
@@ -1251,11 +1318,10 @@ private fun TextWorkspace(
             },
         contentAlignment = Alignment.TopStart
     ) {
-        androidx.compose.foundation.Image(
-            currentWorkingBitmap.asImageBitmap(),
-            null,
-            Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
+        EditableImagePreview(
+            bitmap = currentWorkingBitmap,
+            drawingPaths = drawingPaths,
+            modifier = Modifier.fillMaxSize()
         )
 
         overlay?.let { o ->
@@ -1484,6 +1550,7 @@ private fun TextBottomRow(
 @Composable
 private fun AdjustWorkspace(
     bitmap: Bitmap,
+    drawingPaths: List<DrawPath>,
     values: Map<AdjustType, Float>,
     applyTrigger: Boolean,
     onApply: (Bitmap) -> Unit
@@ -1536,11 +1603,10 @@ private fun AdjustWorkspace(
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        androidx.compose.foundation.Image(
-            adjustedBitmap.asImageBitmap(),
-            null,
-            Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit
+        EditableImagePreview(
+            bitmap = adjustedBitmap,
+            drawingPaths = drawingPaths,
+            modifier = Modifier.fillMaxSize()
         )
     }
 }
@@ -1678,6 +1744,89 @@ private fun ToolButton(label: String, icon: ImageVector, isSelected: Boolean, on
                 fontSize = 14.sp,
                 fontFamily = PlusJakartaSans
             )
+        }
+    }
+}
+
+@Composable
+private fun EditableImagePreview(
+    bitmap: Bitmap,
+    drawingPaths: List<DrawPath>,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        var canvasSize by remember { mutableStateOf(Size.Zero) }
+        val imageWidth = bitmap.width.toFloat()
+        val imageHeight = bitmap.height.toFloat()
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .onGloballyPositioned { canvasSize = it.size.toSize() }
+        ) {
+            if (canvasSize.width > 0 && canvasSize.height > 0) {
+                val screenScale = min(
+                    canvasSize.width / imageWidth,
+                    canvasSize.height / imageHeight
+                )
+                val drawWidth = imageWidth * screenScale
+                val drawHeight = imageHeight * screenScale
+                val imgLeft = (canvasSize.width - drawWidth) / 2
+                val imgTop = (canvasSize.height - drawHeight) / 2
+
+                drawIntoCanvas { canvas ->
+                    val nativeCanvas = canvas.nativeCanvas
+                    nativeCanvas.drawBitmap(
+                        bitmap,
+                        null,
+                        RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight),
+                        null
+                    )
+
+                    if (drawingPaths.isNotEmpty()) {
+                        val layerW = drawWidth.toInt().coerceAtLeast(1)
+                        val layerH = drawHeight.toInt().coerceAtLeast(1)
+                        val layerBitmap = Bitmap.createBitmap(layerW, layerH, Bitmap.Config.ARGB_8888)
+                        val layerCanvas = AndroidCanvas(layerBitmap)
+
+                        val paint = AndroidPaint().apply {
+                            isAntiAlias = true
+                            style = AndroidPaint.Style.STROKE
+                            strokeJoin = AndroidPaint.Join.ROUND
+                            strokeCap = AndroidPaint.Cap.ROUND
+                        }
+
+                        val scale = drawWidth / bitmap.width.toFloat()
+
+                        drawingPaths.forEach { drawPath ->
+                            paint.strokeWidth = drawPath.strokeWidth * scale
+                            if (drawPath.isEraser) {
+                                paint.xfermode =
+                                    android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                            } else {
+                                paint.xfermode = null
+                                paint.color = drawPath.color.toArgb()
+                            }
+                            val matrix = AndroidMatrix()
+                            matrix.postScale(scale, scale)
+                            val scaledPath = NativePath(drawPath.path)
+                            scaledPath.transform(matrix)
+                            layerCanvas.drawPath(scaledPath, paint)
+                        }
+
+                        nativeCanvas.drawBitmap(
+                            layerBitmap,
+                            null,
+                            RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight),
+                            null
+                        )
+                        layerBitmap.recycle()
+                    }
+                }
+            }
         }
     }
 }
