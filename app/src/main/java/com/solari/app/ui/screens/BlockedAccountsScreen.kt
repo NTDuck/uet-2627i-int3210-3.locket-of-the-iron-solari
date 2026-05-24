@@ -150,14 +150,12 @@ fun BlockedAccountsScreen(
                     ) {
                         item {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 4.dp),
+                                modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "BLOCKED ACCOUNTS",
+                                    text = "",
                                     color = BlockedPrimary,
                                     fontSize = 15.sp,
                                     fontFamily = PlusJakartaSans,
@@ -168,7 +166,7 @@ fun BlockedAccountsScreen(
                                     onToggle = { selection ->
                                         viewModel.updateSort(selection.apiValue ?: "newest")
                                     },
-                                    iconTint = BlockedPrimary,
+                                    iconTint = SolariTheme.colors.tertiary,
                                     modifier = Modifier.size(28.dp),
                                     iconSize = 17
                                 )
@@ -291,7 +289,8 @@ private fun BlockedAccountItem(
             Text(
                 text = account.user.displayName,
                 color = BlockedText,
-                fontSize = 14.sp,
+                fontSize = 13.sp,
+                lineHeight = 14.sp,
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold
             )
@@ -304,6 +303,8 @@ private fun BlockedAccountItem(
             )
         }
 
+        Spacer(modifier = Modifier.width(8.dp))
+        
         Box(
             modifier = Modifier
                 .height(36.dp)

@@ -399,7 +399,7 @@ fun FriendManagementScreen(
                                     sortSelection = selection
                                     viewModel.loadFriends(selection.apiValue)
                                 },
-                                iconTint = SolariTheme.colors.onSurface,
+                                iconTint = SolariTheme.colors.secondary,
                                 modifier = Modifier.size(28.dp),
                                 iconSize = 17
                             )
