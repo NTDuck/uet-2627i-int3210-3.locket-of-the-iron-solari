@@ -1025,10 +1025,8 @@ private fun DrawWorkspace(
                     strokeCap = AndroidPaint.Cap.ROUND
                 }
 
-                val scale = drawWidth / bitmap.width.toFloat()
-
                 paths.forEach { drawPath ->
-                    paint.strokeWidth = drawPath.strokeWidth * scale
+                    paint.strokeWidth = drawPath.strokeWidth
                     if (drawPath.isEraser) {
                         paint.xfermode =
                             android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
@@ -1036,16 +1034,12 @@ private fun DrawWorkspace(
                         paint.xfermode = null
                         paint.color = drawPath.color.toArgb()
                     }
-                    val matrix = AndroidMatrix()
-                    matrix.postScale(scale, scale)
-                    val scaledPath = NativePath(drawPath.path)
-                    scaledPath.transform(matrix)
-                    layerCanvas.drawPath(scaledPath, paint)
+                    layerCanvas.drawPath(drawPath.path, paint)
                 }
 
                 currentPath?.let { path ->
                     paint.strokeWidth =
-                        (if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f) * scale
+                        (if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f)
                     if (selectedTool == DrawTool.Eraser) {
                         paint.xfermode =
                             android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
@@ -1053,11 +1047,7 @@ private fun DrawWorkspace(
                         paint.xfermode = null
                         paint.color = selectedColor.toArgb()
                     }
-                    val matrix = AndroidMatrix()
-                    matrix.postScale(scale, scale)
-                    val scaledPath = NativePath(path)
-                    scaledPath.transform(matrix)
-                    layerCanvas.drawPath(scaledPath, paint)
+                    layerCanvas.drawPath(path, paint)
                 }
 
                 nativeCanvas.drawBitmap(
@@ -1282,17 +1272,17 @@ private fun TextWorkspace(
                         )
                     }
                     .onGloballyPositioned { boxSize = it.size.toSize() }
-                    .graphicsLayer(
-                        rotationZ = o.rotation,
-                        scaleX = o.scale,
-                        scaleY = o.scale
-                    )
                     .pointerInput(o.id) {
                         detectDragGestures { change, dragAmount ->
                             change.consume()
                             o.position += dragAmount
                         }
                     }
+                    .graphicsLayer(
+                        rotationZ = o.rotation,
+                        scaleX = o.scale,
+                        scaleY = o.scale
+                    )
                     .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
                     .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
                     .padding(handlePadding)
