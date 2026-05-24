@@ -44,10 +44,20 @@ class DefaultConversationRepository(
         }
     }
 
-    override suspend fun getConversations(): ApiResult<List<Conversation>> {
-        return when (val result = apiExecutor.execute { conversationApi.getConversations() }) {
+    override suspend fun getConversations(
+        limit: Int,
+        cursor: String?
+    ): ApiResult<ConversationsPage> {
+        return when (val result = apiExecutor.execute { conversationApi.getConversations(limit = limit, cursor = cursor) }) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiConversation() })
+            is ApiResult.Success -> {
+                ApiResult.Success(
+                    ConversationsPage(
+                        conversations = result.data.items.map { it.toUiConversation() },
+                        nextCursor = result.data.nextCursor
+                    )
+                )
+            }
         }
     }
 

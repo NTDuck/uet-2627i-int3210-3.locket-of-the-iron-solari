@@ -325,6 +325,26 @@ fun ConversationScreen(
                                 modifier = Modifier.animateItem()
                             )
                         }
+
+                        if (viewModel.canViewMoreConversations) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    FriendRequestTogglePill(
+                                        text = "View more",
+                                        isLoading = viewModel.isFetchingMoreConversations,
+                                        enabled = !viewModel.isFetchingMoreConversations,
+                                        onClick = {
+                                            viewModel.loadMoreConversations()
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
