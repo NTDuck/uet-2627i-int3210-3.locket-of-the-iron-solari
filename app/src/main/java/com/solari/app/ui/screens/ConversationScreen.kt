@@ -247,25 +247,18 @@ fun ConversationScreen(
                             )
                         }
 
-                        if (viewModel.canViewMoreFriendRequests || viewModel.canViewLessFriendRequests) {
+                        if (viewModel.canViewMoreFriendRequests) {
                             item {
                                 Box(
                                     modifier = Modifier.fillMaxWidth(),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     FriendRequestTogglePill(
-                                        text = when {
-                                            viewModel.canViewMoreFriendRequests -> "View more"
-                                            else -> "View less"
-                                        },
+                                        text = "View more",
                                         isLoading = viewModel.isLoadingMoreFriendRequests,
                                         enabled = !viewModel.isLoadingMoreFriendRequests,
                                         onClick = {
-                                            if (viewModel.canViewMoreFriendRequests) {
-                                                viewModel.expandFriendRequests()
-                                            } else {
-                                                viewModel.collapseFriendRequests()
-                                            }
+                                            viewModel.loadMoreFriendRequests()
                                         }
                                     )
                                 }
