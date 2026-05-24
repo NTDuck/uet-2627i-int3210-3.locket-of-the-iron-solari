@@ -25,6 +25,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -187,8 +188,11 @@ private data class ChatMessageItem(
 
 private data class ChatViewportAnchor(
     val firstVisibleItemIndex: Int,
+    val firstVisibleItemKey: String?,
     val firstVisibleItemScrollOffset: Int,
-    val isScrolledToBottom: Boolean
+    val isScrolledToBottom: Boolean,
+    val itemSize: Int,
+    val viewportHeight: Int
 )
 
 private data class ChatListItemAnchor(
@@ -333,6 +337,7 @@ fun ChatScreen(
             isLoadingMessages = viewModel.isLoadingMessages,
             lastListItemIndex = chatListModel.lastListItemIndex,
             lastMessageId = lastMessage?.id,
+            listItemIndexes = chatListModel.listItemIndexes,
             keyboardAnchorResetToken = keyboardAnchorResetToken,
             state = chatMessageListState
         )
@@ -498,11 +503,13 @@ fun ChatScreen(
                     },
                     onCancelReply = { replyingToMessage = null },
                     onInputFocused = {
-                        chatMessageListState.shouldKeepChatPinnedToBottom = true
-                        if (chatMessageListState.isMessageScrollInitialized && chatListModel.lastListItemIndex >= 0) {
-                            coroutineScope.launch {
-                                messageListState.scrollToMessageBottom(chatListModel.lastListItemIndex)
-                                chatMessageListState.lastBottomVisibleMessageId = lastMessage?.id
+                        if (messageListState.isScrolledToBottom()) {
+                            chatMessageListState.shouldKeepChatPinnedToBottom = true
+                            if (chatMessageListState.isMessageScrollInitialized && chatListModel.lastListItemIndex >= 0) {
+                                coroutineScope.launch {
+                                    messageListState.scrollToMessageBottom(chatListModel.lastListItemIndex)
+                                    chatMessageListState.lastBottomVisibleMessageId = lastMessage?.id
+                                }
                             }
                         }
                     },
@@ -730,6 +737,7 @@ private fun BindChatMessageListEffects(
 
             if (viewModel.canLoadOlderMessages &&
                 !viewModel.isLoadingOlderMessages &&
+                messageListState.isScrollInProgress &&
                 oldestVisibleOrdinal <= boundaryOrdinal
             ) {
                 requestOlderMessagesLoad()
@@ -900,6 +908,7 @@ private fun rememberChatContentPaddingState(
     isLoadingMessages: Boolean,
     lastListItemIndex: Int,
     lastMessageId: String?,
+    listItemIndexes: Map<String, Int>,
     keyboardAnchorResetToken: Int,
     state: ChatMessageListState
 ): ChatContentPaddingState {
@@ -913,9 +922,36 @@ private fun rememberChatContentPaddingState(
     var keyboardRestoreAnchor by remember(chatId) {
         mutableStateOf<ChatViewportAnchor?>(null)
     }
+    var hasUserDraggedSinceKeyboardOpen by remember(chatId) {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(state.listState.interactionSource) {
+        state.listState.interactionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) {
+                hasUserDraggedSinceKeyboardOpen = true
+            }
+        }
+    }
 
     LaunchedEffect(keyboardAnchorResetToken) {
         keyboardRestoreAnchor = null
+    }
+
+    LaunchedEffect(
+        state.listState,
+        targetContentBottomPadding,
+        scaffoldBottomPadding,
+        hasUserDraggedSinceKeyboardOpen
+    ) {
+        snapshotFlow {
+            state.listState.firstVisibleItemIndex to state.listState.firstVisibleItemScrollOffset
+        }.collect {
+            val isKeyboardOpen = (targetContentBottomPadding - scaffoldBottomPadding) > 1.dp
+            if (isKeyboardOpen && state.listState.isScrollInProgress && hasUserDraggedSinceKeyboardOpen) {
+                keyboardRestoreAnchor = null
+            }
+        }
     }
 
     LaunchedEffect(
@@ -924,6 +960,7 @@ private fun rememberChatContentPaddingState(
         isLoadingMessages,
         lastListItemIndex,
         lastMessageId,
+        listItemIndexes,
         keyboardAnchorResetToken,
         state.shouldKeepChatPinnedToBottom
     ) {
@@ -931,6 +968,16 @@ private fun rememberChatContentPaddingState(
             previousTargetContentBottomPadding = targetContentBottomPadding
             displayedContentBottomPadding = targetContentBottomPadding
             keyboardRestoreAnchor = null
+            hasUserDraggedSinceKeyboardOpen = false
+            return@LaunchedEffect
+        }
+
+        val isClosed = (targetContentBottomPadding - scaffoldBottomPadding) <= 1.dp
+        if (isClosed) {
+            previousTargetContentBottomPadding = scaffoldBottomPadding
+            displayedContentBottomPadding = scaffoldBottomPadding
+            keyboardRestoreAnchor = null
+            hasUserDraggedSinceKeyboardOpen = false
             return@LaunchedEffect
         }
 
@@ -950,23 +997,47 @@ private fun rememberChatContentPaddingState(
                     state.lastBottomVisibleMessageId = lastMessageId
                     state.shouldKeepChatPinnedToBottom = true
                 } else {
-                    state.listState.scrollBy(with(density) { bottomInsetDelta.toPx() })
+                    keyboardRestoreAnchor?.let { anchor ->
+                        val totalDeltaPx = with(density) {
+                            (targetContentBottomPadding - scaffoldBottomPadding).toPx().toInt()
+                        }
+                        val currentIndex = anchor.firstVisibleItemKey?.let { key ->
+                            listItemIndexes[key]
+                        } ?: anchor.firstVisibleItemIndex
+                        
+                        val viewportHeightCurrent = anchor.viewportHeight - totalDeltaPx
+                        val targetScrollOffset = anchor.firstVisibleItemScrollOffset + anchor.itemSize - viewportHeightCurrent
+                        
+                        state.listState.requestScrollToItem(
+                            currentIndex,
+                            targetScrollOffset
+                        )
+                    }
                 }
             }
 
             bottomInsetDelta < 0.dp -> {
-                val restoreAnchor = keyboardRestoreAnchor
-                displayedContentBottomPadding = scaffoldBottomPadding
-                keyboardRestoreAnchor = null
+                displayedContentBottomPadding = targetContentBottomPadding
                 if (state.shouldKeepChatPinnedToBottom && lastListItemIndex >= 0) {
                     state.listState.scrollToMessageBottom(lastListItemIndex)
-                } else if (restoreAnchor != null) {
-                    state.listState.restoreViewportAnchor(restoreAnchor)
+                } else {
+                    keyboardRestoreAnchor?.let { anchor ->
+                        val totalDeltaPx = with(density) {
+                            (targetContentBottomPadding - scaffoldBottomPadding).toPx().toInt()
+                        }
+                        val currentIndex = anchor.firstVisibleItemKey?.let { key ->
+                            listItemIndexes[key]
+                        } ?: anchor.firstVisibleItemIndex
+                        
+                        val viewportHeightCurrent = anchor.viewportHeight - totalDeltaPx
+                        val targetScrollOffset = anchor.firstVisibleItemScrollOffset + anchor.itemSize - viewportHeightCurrent
+                        
+                        state.listState.requestScrollToItem(
+                            currentIndex,
+                            targetScrollOffset
+                        )
+                    }
                 }
-            }
-
-            targetContentBottomPadding == scaffoldBottomPadding -> {
-                displayedContentBottomPadding = scaffoldBottomPadding
             }
         }
     }
@@ -2593,10 +2664,22 @@ private fun chatMessageIdFromItemKey(itemKey: String): String? {
 private const val TypingIndicatorItemKey = "typing-indicator"
 
 private fun LazyListState.viewportAnchor(): ChatViewportAnchor {
+    val layoutInfo = layoutInfo
+    val visibleItems = layoutInfo.visibleItemsInfo
+    val bottomItem = visibleItems.lastOrNull()
+    val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+    val offsetFromBottom = if (bottomItem != null) {
+        viewportHeight - (bottomItem.offset + bottomItem.size)
+    } else {
+        0
+    }
     return ChatViewportAnchor(
-        firstVisibleItemIndex = firstVisibleItemIndex,
-        firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
-        isScrolledToBottom = isScrolledToBottom()
+        firstVisibleItemIndex = bottomItem?.index ?: 0,
+        firstVisibleItemKey = bottomItem?.key as? String,
+        firstVisibleItemScrollOffset = offsetFromBottom,
+        isScrolledToBottom = isScrolledToBottom(),
+        itemSize = bottomItem?.size ?: 0,
+        viewportHeight = viewportHeight
     )
 }
 
@@ -2622,12 +2705,6 @@ private fun LazyListState.isScrolledToBottom(): Boolean {
             lastVisibleItem.offset + lastVisibleItem.size <= layoutInfo.viewportEndOffset
 }
 
-private suspend fun LazyListState.restoreViewportAnchor(anchor: ChatViewportAnchor) {
-    scrollToItem(
-        index = anchor.firstVisibleItemIndex,
-        scrollOffset = anchor.firstVisibleItemScrollOffset
-    )
-}
 
 private fun Message.deliveryFooterText(partnerLastReadAt: Long?): String {
     return when (deliveryState) {
