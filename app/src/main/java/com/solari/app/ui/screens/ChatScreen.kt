@@ -956,13 +956,13 @@ private fun rememberChatContentPaddingState(
 
             bottomInsetDelta < 0.dp -> {
                 val restoreAnchor = keyboardRestoreAnchor
+                displayedContentBottomPadding = scaffoldBottomPadding
+                keyboardRestoreAnchor = null
                 if (state.shouldKeepChatPinnedToBottom && lastListItemIndex >= 0) {
                     state.listState.scrollToMessageBottom(lastListItemIndex)
                 } else if (restoreAnchor != null) {
                     state.listState.restoreViewportAnchor(restoreAnchor)
                 }
-                displayedContentBottomPadding = scaffoldBottomPadding
-                keyboardRestoreAnchor = null
             }
 
             targetContentBottomPadding == scaffoldBottomPadding -> {
