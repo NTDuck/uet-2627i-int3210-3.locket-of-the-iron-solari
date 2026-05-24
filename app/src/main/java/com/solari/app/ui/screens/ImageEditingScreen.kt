@@ -246,23 +246,29 @@ fun ImageEditingScreen(
                                 val base = currentBitmap ?: return@launch
                                 val finalBitmap = withContext(Dispatchers.Default) {
                                     val result = base.copy(Bitmap.Config.ARGB_8888, true)
-                                    val canvas = AndroidCanvas(result)
-                                    val paint = AndroidPaint().apply {
-                                        isAntiAlias = true
-                                        style = AndroidPaint.Style.STROKE
-                                        strokeJoin = AndroidPaint.Join.ROUND
-                                        strokeCap = AndroidPaint.Cap.ROUND
-                                    }
-                                    viewModel.drawingPaths.forEach { drawPath ->
-                                        paint.strokeWidth = drawPath.strokeWidth
-                                        if (drawPath.isEraser) {
-                                            paint.xfermode =
-                                                android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-                                        } else {
-                                            paint.xfermode = null
-                                            paint.color = drawPath.color.toArgb()
+                                    if (viewModel.drawingPaths.isNotEmpty()) {
+                                        val canvas = AndroidCanvas(result)
+                                        val layerBitmap = Bitmap.createBitmap(result.width, result.height, Bitmap.Config.ARGB_8888)
+                                        val layerCanvas = AndroidCanvas(layerBitmap)
+                                        val paint = AndroidPaint().apply {
+                                            isAntiAlias = true
+                                            style = AndroidPaint.Style.STROKE
+                                            strokeJoin = AndroidPaint.Join.ROUND
+                                            strokeCap = AndroidPaint.Cap.ROUND
                                         }
-                                        canvas.drawPath(drawPath.path, paint)
+                                        viewModel.drawingPaths.forEach { drawPath ->
+                                            paint.strokeWidth = drawPath.strokeWidth
+                                            if (drawPath.isEraser) {
+                                                paint.xfermode =
+                                                    android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                                            } else {
+                                                paint.xfermode = null
+                                                paint.color = drawPath.color.toArgb()
+                                            }
+                                            layerCanvas.drawPath(drawPath.path, paint)
+                                        }
+                                        canvas.drawBitmap(layerBitmap, 0f, 0f, null)
+                                        layerBitmap.recycle()
                                     }
                                     result
                                 }
@@ -574,23 +580,29 @@ private fun CropWorkspace(
 
     val compositeBitmapForCrop = remember(bitmap, drawingPaths) {
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        val canvas = AndroidCanvas(result)
-        val paint = AndroidPaint().apply {
-            isAntiAlias = true
-            style = AndroidPaint.Style.STROKE
-            strokeJoin = AndroidPaint.Join.ROUND
-            strokeCap = AndroidPaint.Cap.ROUND
-        }
-        drawingPaths.forEach { drawPath ->
-            paint.strokeWidth = drawPath.strokeWidth
-            if (drawPath.isEraser) {
-                paint.xfermode =
-                    android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-            } else {
-                paint.xfermode = null
-                paint.color = drawPath.color.toArgb()
+        if (drawingPaths.isNotEmpty()) {
+            val canvas = AndroidCanvas(result)
+            val layerBitmap = Bitmap.createBitmap(result.width, result.height, Bitmap.Config.ARGB_8888)
+            val layerCanvas = AndroidCanvas(layerBitmap)
+            val paint = AndroidPaint().apply {
+                isAntiAlias = true
+                style = AndroidPaint.Style.STROKE
+                strokeJoin = AndroidPaint.Join.ROUND
+                strokeCap = AndroidPaint.Cap.ROUND
             }
-            canvas.drawPath(drawPath.path, paint)
+            drawingPaths.forEach { drawPath ->
+                paint.strokeWidth = drawPath.strokeWidth
+                if (drawPath.isEraser) {
+                    paint.xfermode =
+                        android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                } else {
+                    paint.xfermode = null
+                    paint.color = drawPath.color.toArgb()
+                }
+                layerCanvas.drawPath(drawPath.path, paint)
+            }
+            canvas.drawBitmap(layerBitmap, 0f, 0f, null)
+            layerBitmap.recycle()
         }
         result
     }
