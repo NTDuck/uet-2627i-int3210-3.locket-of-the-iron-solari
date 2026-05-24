@@ -18,7 +18,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
-private const val FriendRequestPageSize = 4
+private const val FriendRequestPageSize = 3
 private const val ConversationPageSize = 30
 
 class ConversationViewModel(
