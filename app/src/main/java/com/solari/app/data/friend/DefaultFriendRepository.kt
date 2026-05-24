@@ -18,9 +18,33 @@ class DefaultFriendRepository(
     private val apiExecutor: ApiExecutor
 ) : FriendRepository {
     override suspend fun getFriends(sort: String?): ApiResult<List<User>> {
-        return when (val result = apiExecutor.execute { friendApi.getFriends(sort = sort) }) {
+        return when (val result = getFriendsPage(sort = sort)) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiUser() })
+            is ApiResult.Success -> ApiResult.Success(result.data.items)
+        }
+    }
+
+    override suspend fun getFriendsPage(
+        limit: Int,
+        sort: String?,
+        cursor: String?
+    ): ApiResult<FriendPage> {
+        return when (
+            val result = apiExecutor.execute {
+                friendApi.getFriends(
+                    limit = limit,
+                    sort = sort,
+                    cursor = cursor
+                )
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(
+                FriendPage(
+                    items = result.data.items.map { it.toUiUser() },
+                    nextCursor = result.data.nextCursor
+                )
+            )
         }
     }
 

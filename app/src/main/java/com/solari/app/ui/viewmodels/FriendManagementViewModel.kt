@@ -16,6 +16,8 @@ import com.solari.app.ui.models.draftConversationIdForUser
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
+private const val FriendPageSize = 50
+
 class FriendManagementViewModel(
     private val friendRepository: FriendRepository,
     private val userRepository: UserRepository,
@@ -28,6 +30,12 @@ class FriendManagementViewModel(
         private set
 
     var isLoading by mutableStateOf(false)
+        private set
+
+    var isLoadingMoreFriends by mutableStateOf(false)
+        private set
+
+    var canLoadMoreFriends by mutableStateOf(false)
         private set
 
     var isSendingRequest by mutableStateOf(false)
@@ -43,6 +51,9 @@ class FriendManagementViewModel(
         private set
 
     private var currentSort: String? = null
+    private var friendsNextCursor by mutableStateOf<String?>(null)
+    private var nicknamesByUserId: Map<String, String> = emptyMap()
+    private var friendLoadGeneration = 0
 
     init {
         loadCurrentUser()
@@ -110,31 +121,36 @@ class FriendManagementViewModel(
 
     fun loadFriends(sort: String? = null) {
         currentSort = sort
+        friendLoadGeneration += 1
+        val requestGeneration = friendLoadGeneration
+
         viewModelScope.launch {
             isLoading = true
+            isLoadingMoreFriends = false
+            canLoadMoreFriends = false
+            friendsNextCursor = null
             errorMessage = null
 
             try {
-                val friendsResult = friendRepository.getFriends(sort = sort)
+                val friendsResult = friendRepository.getFriendsPage(
+                    limit = FriendPageSize,
+                    sort = sort,
+                    cursor = null
+                )
                 val nicknamesResult = friendRepository.getNicknames()
+                if (requestGeneration != friendLoadGeneration) {
+                    return@launch
+                }
 
                 when (friendsResult) {
                     is ApiResult.Success -> {
-                        val nicknamesByUserId = when (nicknamesResult) {
+                        nicknamesByUserId = when (nicknamesResult) {
                             is ApiResult.Success -> nicknamesResult.data
                             is ApiResult.Failure -> emptyMap()
                         }
-                        friends = friendsResult.data.map { friend ->
-                            val nickname = nicknamesByUserId[friend.id]
-                            if (nickname.isNullOrBlank()) {
-                                friend
-                            } else {
-                                friend.copy(
-                                    displayName = nickname,
-                                    nickname = nickname
-                                )
-                            }
-                        }
+                        friends = friendsResult.data.items.withNicknameOverrides()
+                        friendsNextCursor = friendsResult.data.nextCursor
+                        canLoadMoreFriends = friendsNextCursor != null
                         if (nicknamesResult is ApiResult.Failure && errorMessage == null) {
                             errorMessage = nicknamesResult.message
                         }
@@ -146,7 +162,60 @@ class FriendManagementViewModel(
                 if (throwable is CancellationException) throw throwable
                 errorMessage = throwable.message ?: "Failed to load friends"
             } finally {
-                isLoading = false
+                if (requestGeneration == friendLoadGeneration) {
+                    isLoading = false
+                }
+            }
+        }
+    }
+
+    fun loadMoreFriends() {
+        val cursor = friendsNextCursor ?: return
+        if (isLoading || isLoadingMoreFriends || !canLoadMoreFriends) return
+        val requestGeneration = friendLoadGeneration
+
+        viewModelScope.launch {
+            isLoadingMoreFriends = true
+            errorMessage = null
+
+            try {
+                when (
+                    val result = friendRepository.getFriendsPage(
+                        limit = FriendPageSize,
+                        sort = currentSort,
+                        cursor = cursor
+                    )
+                ) {
+                    is ApiResult.Success -> {
+                        if (requestGeneration != friendLoadGeneration) {
+                            return@launch
+                        }
+                        val existingIds = friends.mapTo(mutableSetOf()) { it.id }
+                        val newFriends = result.data.items
+                            .withNicknameOverrides()
+                            .filter { existingIds.add(it.id) }
+                        friends = friends + newFriends
+                        friendsNextCursor = result.data.nextCursor
+                        canLoadMoreFriends = friendsNextCursor != null
+                    }
+
+                    is ApiResult.Failure -> {
+                        if (requestGeneration == friendLoadGeneration) {
+                            errorMessage = result.message
+                            canLoadMoreFriends = false
+                        }
+                    }
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                if (requestGeneration == friendLoadGeneration) {
+                    errorMessage = throwable.message ?: "Failed to load more friends"
+                    canLoadMoreFriends = false
+                }
+            } finally {
+                if (requestGeneration == friendLoadGeneration) {
+                    isLoadingMoreFriends = false
+                }
             }
         }
     }
@@ -326,5 +395,20 @@ class FriendManagementViewModel(
             displayName = nickname?.takeIf { it.isNotBlank() } ?: profileDisplayName,
             profileImageUrl = event.avatarUrl
         )
+    }
+
+    private fun List<User>.withNicknameOverrides(): List<User> {
+        return map { friend ->
+            val nickname = nicknamesByUserId[friend.id]?.takeIf { it.isNotBlank() }
+                ?: friend.nickname?.takeIf { it.isNotBlank() }
+            if (nickname == null) {
+                friend
+            } else {
+                friend.copy(
+                    displayName = nickname,
+                    nickname = nickname
+                )
+            }
+        }
     }
 }

@@ -9,8 +9,19 @@ data class FriendRequestPage(
     val nextCursor: String?
 )
 
+data class FriendPage(
+    val items: List<User>,
+    val nextCursor: String?
+)
+
 interface FriendRepository {
     suspend fun getFriends(sort: String? = null): ApiResult<List<User>>
+
+    suspend fun getFriendsPage(
+        limit: Int = 100,
+        sort: String? = null,
+        cursor: String? = null
+    ): ApiResult<FriendPage>
 
     suspend fun getNicknames(): ApiResult<Map<String, String>>
 
