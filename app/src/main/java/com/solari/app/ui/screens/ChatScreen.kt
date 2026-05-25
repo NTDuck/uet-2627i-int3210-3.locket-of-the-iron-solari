@@ -162,7 +162,7 @@ private const val OlderMessagesSpinnerItemThreshold = 5
 private const val MinuteMillis = 60_000L
 private const val HourMillis = 60L * MinuteMillis
 private const val DayMillis = 24L * HourMillis
-private const val MessageJumpHighlightDurationMillis = 1_500
+private const val MessageJumpHighlightDurationMillis = 1_000
 
 private val QuickReactionEmojis = listOf("❤️", "😂", "😮", "😢", "😡", "👍")
 
@@ -1004,10 +1004,10 @@ private fun rememberChatContentPaddingState(
                         val currentIndex = anchor.firstVisibleItemKey?.let { key ->
                             listItemIndexes[key]
                         } ?: anchor.firstVisibleItemIndex
-                        
+
                         val viewportHeightCurrent = anchor.viewportHeight - totalDeltaPx
                         val targetScrollOffset = anchor.firstVisibleItemScrollOffset + anchor.itemSize - viewportHeightCurrent
-                        
+
                         state.listState.requestScrollToItem(
                             currentIndex,
                             targetScrollOffset
@@ -1028,10 +1028,10 @@ private fun rememberChatContentPaddingState(
                         val currentIndex = anchor.firstVisibleItemKey?.let { key ->
                             listItemIndexes[key]
                         } ?: anchor.firstVisibleItemIndex
-                        
+
                         val viewportHeightCurrent = anchor.viewportHeight - totalDeltaPx
                         val targetScrollOffset = anchor.firstVisibleItemScrollOffset + anchor.itemSize - viewportHeightCurrent
-                        
+
                         state.listState.requestScrollToItem(
                             currentIndex,
                             targetScrollOffset
@@ -1361,17 +1361,18 @@ private fun ChatBubble(
     val replySwipeThresholdPx = with(LocalDensity.current) { 90.dp.toPx() }
     val bubbleShape = RoundedCornerShape(12.dp)
     val highlightScale by animateFloatAsState(
-        targetValue = if (isHighlighted) 1.1f else 1f,
+        targetValue = if (isHighlighted) 1.02f else 1f,
         animationSpec = tween(durationMillis = 220),
         label = "messageHighlightScale"
     )
     val bubbleBackgroundColor = when {
-        isHighlighted -> SolariTheme.colors.primary
+        isHighlighted -> SolariTheme.colors.tertiary.copy(alpha = 0.5f)
         isFromMe -> ChatOutgoingBubble
         else -> ChatIncomingBubble
     }
     val messageTextColor = when {
-        isHighlighted -> SolariTheme.colors.onPrimary
+        // isHighlighted -> SolariTheme.colors.onBackground
+        isHighlighted -> ChatText
         message.isDeleted -> ChatText.copy(alpha = 0.8f)
         else -> ChatText
     }
@@ -1439,7 +1440,7 @@ private fun ChatBubble(
                     .scale(highlightScale)
                     .scaleOnPress(
                         interactionSource = bubbleInteractionSource,
-                        pressedScale = 1.1f
+                        pressedScale = 1.05f
                     )
                     .clip(bubbleShape)
                     .then(
