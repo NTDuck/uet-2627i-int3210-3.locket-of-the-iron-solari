@@ -133,11 +133,14 @@ import com.solari.app.ui.models.CapturedMediaSource
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.findActivity
+import com.solari.app.ui.util.openAppSettings
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.HomepageAfterCapturingViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.math.roundToInt
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -151,6 +154,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Matrix as AndroidMatrix
 import android.graphics.Paint as AndroidPaint
+import kotlin.coroutines.resume
 
 private val CapturePreviewCornerRadius = 24.dp
 
@@ -321,29 +325,54 @@ fun HomepageAfterCapturingScreen(
         }
     }
 
+    fun hasLocationPermission(): Boolean {
+        val fineLocationCheck = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarseLocationCheck = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        return fineLocationCheck || coarseLocationCheck
+    }
+
+    fun requestLocationPermission(afterGrantFetchesWeather: Boolean) {
+        if (hasLocationPermission()) return
+        val activity = context.findActivity()
+        val shouldOpenSettings = viewModel.hasRequestedLocationPermission &&
+                activity != null &&
+                activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) == false &&
+                activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION) == false
+
+        if (shouldOpenSettings) {
+            context.openAppSettings()
+            return
+        }
+
+        weatherRequestedLocationAfterPermission = afterGrantFetchesWeather
+        viewModel.markLocationPermissionRequested()
+        locationPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
+    }
+
     val requestWeather = {
-        val fineLocationCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarseLocationCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (fineLocationCheck || coarseLocationCheck) {
+        if (hasLocationPermission()) {
             coroutineScope.launch {
                 fetchAndSetWeather(context)
             }
         } else {
-            weatherRequestedLocationAfterPermission = true
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
+            requestLocationPermission(afterGrantFetchesWeather = true)
         }
         Unit
     }
 
     val requestLocation = {
-        val fineLocationCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarseLocationCheck = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (fineLocationCheck || coarseLocationCheck) {
+        if (hasLocationPermission()) {
             coroutineScope.launch {
                 val city = getCityFromLocation(context)
                 if (!city.isNullOrBlank()) {
@@ -352,12 +381,7 @@ fun HomepageAfterCapturingScreen(
             }
             Unit
         } else {
-            locationPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.ACCESS_FINE_LOCATION,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                )
-            )
+            requestLocationPermission(afterGrantFetchesWeather = false)
         }
     }
 
@@ -1864,12 +1888,44 @@ private suspend fun getCityFromLocation(context: android.content.Context): Strin
     val loc = getCurrentLocation(context) ?: return null
     return try {
         val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
-        val addresses = geocoder.getFromLocation(loc.latitude, loc.longitude, 1)
+        val addresses = geocoder.getFromLocationCompat(loc.latitude, loc.longitude, 1)
         val address = addresses?.firstOrNull()
         address?.locality ?: address?.subAdminArea ?: address?.adminArea ?: address?.featureName
     } catch (e: Exception) {
         android.util.Log.e("SolariLocation", "Failed to fetch city name", e)
         null
+    }
+}
+
+private suspend fun android.location.Geocoder.getFromLocationCompat(
+    latitude: Double,
+    longitude: Double,
+    maxResults: Int
+): List<android.location.Address>? {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        suspendCancellableCoroutine { continuation ->
+            getFromLocation(
+                latitude,
+                longitude,
+                maxResults,
+                object : android.location.Geocoder.GeocodeListener {
+                    override fun onGeocode(addresses: MutableList<android.location.Address>) {
+                        if (continuation.isActive) {
+                            continuation.resume(addresses)
+                        }
+                    }
+
+                    override fun onError(errorMessage: String?) {
+                        if (continuation.isActive) {
+                            continuation.resume(null)
+                        }
+                    }
+                }
+            )
+        }
+    } else {
+        @Suppress("DEPRECATION")
+        getFromLocation(latitude, longitude, maxResults)
     }
 }
 

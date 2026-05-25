@@ -107,6 +107,7 @@ class SolariViewModelFactory(
             modelClass.isAssignableFrom(FriendManagementViewModel::class.java) -> {
                 FriendManagementViewModel(
                     friendRepository = friendRepository,
+                    conversationRepository = conversationRepository,
                     userRepository = userRepository,
                     webSocketManager = webSocketManager
                 )
@@ -126,7 +127,8 @@ class SolariViewModelFactory(
             modelClass.isAssignableFrom(HomepageAfterCapturingViewModel::class.java) -> {
                 HomepageAfterCapturingViewModel(
                     friendRepository = friendRepository,
-                    postUploadCoordinator = postUploadCoordinator
+                    postUploadCoordinator = postUploadCoordinator,
+                    userPreferencesStore = userPreferencesStore
                 )
             }
 

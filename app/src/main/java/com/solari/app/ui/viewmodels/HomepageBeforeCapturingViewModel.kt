@@ -31,12 +31,16 @@ class HomepageBeforeCapturingViewModel(
     var timerValue by mutableIntStateOf(0)
         private set
 
+    var hasRequestedCameraPermission by mutableStateOf(false)
+        private set
+
     init {
         loadCurrentStreak()
         userPreferencesStore.userPreferencesFlow
             .onEach { preferences ->
                 isFlashEnabled = preferences.isFlashEnabled
                 timerValue = preferences.timerValue
+                hasRequestedCameraPermission = preferences.hasRequestedCameraPermission
             }
             .launchIn(viewModelScope)
     }
@@ -74,6 +78,12 @@ class HomepageBeforeCapturingViewModel(
         }
         viewModelScope.launch {
             userPreferencesStore.updateTimerValue(nextValue)
+        }
+    }
+
+    fun markCameraPermissionRequested() {
+        viewModelScope.launch {
+            userPreferencesStore.markCameraPermissionRequested()
         }
     }
 }

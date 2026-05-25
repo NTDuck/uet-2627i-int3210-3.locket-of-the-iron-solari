@@ -64,6 +64,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
@@ -360,6 +361,7 @@ fun ChatScreen(
                 partnerAvatarUrl = displayPartnerAvatarUrl,
                 partner = if (isReadOnly) null else partner,
                 isSettingsEnabled = !isDraftConversation,
+                isMuted = currentConversation?.isMuted == true,
                 onNavigateBack = onNavigateBack,
                 onNavigateToSettings = onNavigateToSettings
             )
@@ -1056,6 +1058,7 @@ private fun ChatHeaderBar(
     partnerAvatarUrl: String?,
     partner: User?,
     isSettingsEnabled: Boolean,
+    isMuted: Boolean,
     onNavigateBack: () -> Unit,
     onNavigateToSettings: (chatId: String, partner: User?) -> Unit
 ) {
@@ -1100,16 +1103,30 @@ private fun ChatHeaderBar(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            Text(
-                text = partnerName,
-                color = ChatText,
-                fontSize = 17.sp,
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = partnerName,
+                    color = ChatText,
+                    fontSize = 17.sp,
+                    fontFamily = PlusJakartaSans,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (isMuted) {
+                    Spacer(modifier = Modifier.width(7.dp))
+                    Icon(
+                        imageVector = Icons.Default.NotificationsOff,
+                        contentDescription = "Muted conversation",
+                        tint = ChatMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+            }
 
             Box(
                 modifier = Modifier

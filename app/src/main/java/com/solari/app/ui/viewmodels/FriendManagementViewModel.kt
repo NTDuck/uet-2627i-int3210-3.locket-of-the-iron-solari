@@ -5,6 +5,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.solari.app.data.conversation.ConversationRepository
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.user.UserRepository
@@ -20,6 +21,7 @@ private const val FriendPageSize = 50
 
 class FriendManagementViewModel(
     private val friendRepository: FriendRepository,
+    private val conversationRepository: ConversationRepository,
     private val userRepository: UserRepository,
     private val webSocketManager: WebSocketManager
 ) : ViewModel() {
@@ -300,16 +302,61 @@ class FriendManagementViewModel(
         friend: User,
         onConversationReady: (Conversation) -> Unit
     ) {
+        if (friend.id in messagingFriendIds) return
         successMessage = null
         errorMessage = null
+        messagingFriendIds = messagingFriendIds + friend.id
 
-        onConversationReady(
-            Conversation(
-                id = draftConversationIdForUser(friend.id),
-                otherUser = friend,
-                lastMessage = "",
-                isDraft = true
-            )
+        viewModelScope.launch {
+            try {
+                when (val result = findConversationWithFriend(friend.id)) {
+                    is ApiResult.Success -> {
+                        onConversationReady(result.data ?: friend.toDraftConversation())
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to open conversation"
+            } finally {
+                messagingFriendIds = messagingFriendIds - friend.id
+            }
+        }
+    }
+
+    private suspend fun findConversationWithFriend(friendId: String): ApiResult<Conversation?> {
+        var cursor: String? = null
+        repeat(10) {
+            when (
+                val result = conversationRepository.getConversations(
+                    limit = FriendPageSize,
+                    cursor = cursor
+                )
+            ) {
+                is ApiResult.Success -> {
+                    val match = result.data.conversations.firstOrNull {
+                        it.otherUser.id == friendId
+                    }
+                    if (match != null || result.data.nextCursor == null) {
+                        return ApiResult.Success(match)
+                    }
+                    cursor = result.data.nextCursor
+                }
+
+                is ApiResult.Failure -> return result
+            }
+        }
+
+        return ApiResult.Success(null)
+    }
+
+    private fun User.toDraftConversation(): Conversation {
+        return Conversation(
+            id = draftConversationIdForUser(id),
+            otherUser = this,
+            lastMessage = "",
+            isDraft = true
         )
     }
 

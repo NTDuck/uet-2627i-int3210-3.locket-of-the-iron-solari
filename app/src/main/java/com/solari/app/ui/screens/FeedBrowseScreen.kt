@@ -258,12 +258,12 @@ fun FeedBrowseScreen(
                             ) {
                                 Icon(
                                     Icons.Default.Public,
-                                    contentDescription = "All",
+                                    contentDescription = "All friends",
                                     tint = if (isAllSelected) SolariTheme.colors.primary else SolariTheme.colors.onSurfaceVariant
                                 )
                             }
                             Text(
-                                text = "All (${visibleFriends.size + if (currentUser != null) 1 else 0})",
+                                text = "All friends (${friends.size})",
                                 color = if (isAllSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
                                 fontSize = 12.sp,
                                 modifier = Modifier.padding(top = 8.dp)

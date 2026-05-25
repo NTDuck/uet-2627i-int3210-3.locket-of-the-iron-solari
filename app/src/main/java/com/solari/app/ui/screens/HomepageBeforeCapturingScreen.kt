@@ -5,7 +5,6 @@ import android.annotation.SuppressLint
 import android.content.pm.PackageManager
 import android.graphics.PathMeasure
 import android.net.Uri
-import android.os.Build
 import android.util.Log
 import android.util.Rational
 import android.view.Surface
@@ -100,11 +99,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.CapturedMediaSource
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.createCaptureCacheFile
+import com.solari.app.ui.util.findActivity
+import com.solari.app.ui.util.openAppSettings
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.HomepageBeforeCapturingViewModel
 import kotlinx.coroutines.Dispatchers
@@ -181,18 +184,6 @@ fun HomepageBeforeCapturingScreen(
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
-    var isNotificationPermissionGranted by remember {
-        mutableStateOf(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
-            } else {
-                true
-            }
-        )
-    }
     var boundCamera by remember { mutableStateOf<Camera?>(null) }
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
     var activeRecordingFile by remember { mutableStateOf<File?>(null) }
@@ -201,15 +192,10 @@ fun HomepageBeforeCapturingScreen(
     var isCaptureInFlight by remember { mutableStateOf(false) }
     var focusIndicatorPosition by remember { mutableStateOf<Offset?>(null) }
 
-    val permissionsLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissions ->
-        isCameraPermissionGranted = permissions[Manifest.permission.CAMERA] ?: isCameraPermissionGranted
-        isNotificationPermissionGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions[Manifest.permission.POST_NOTIFICATIONS] ?: isNotificationPermissionGranted
-        } else {
-            true
-        }
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        isCameraPermissionGranted = granted
     }
     val galleryPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -495,15 +481,32 @@ fun HomepageBeforeCapturingScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
-        val permissionsToRequest = mutableListOf(Manifest.permission.CAMERA)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !isNotificationPermissionGranted) {
-            permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+    fun requestCameraPermissionFromPreview() {
+        if (isCameraPermissionGranted) return
+        val activity = context.findActivity()
+        val shouldOpenSettings = viewModel.hasRequestedCameraPermission &&
+                activity?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) == false
+
+        if (shouldOpenSettings) {
+            context.openAppSettings()
+            return
         }
 
-        if (!isCameraPermissionGranted || permissionsToRequest.size > 1) {
-            permissionsLauncher.launch(permissionsToRequest.toTypedArray())
+        viewModel.markCameraPermissionRequested()
+        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                isCameraPermissionGranted = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.CAMERA
+                ) == PackageManager.PERMISSION_GRANTED
+            }
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(isCameraPermissionGranted, lensFacing) {
@@ -571,43 +574,52 @@ fun HomepageBeforeCapturingScreen(
                 .clip(RoundedCornerShape(CapturePreviewCornerRadius))
                 .background(SolariTheme.colors.background)
                 .border(1.dp, Color.Transparent, RoundedCornerShape(CapturePreviewCornerRadius))
-                .pointerInput(boundCamera) {
-                    awaitEachGesture {
-                        val firstDown = awaitFirstDown(requireUnconsumed = false)
-                        val firstPosition = firstDown.position
-                        var maxPointerCount = 1
-                        var totalZoomChange = 1f
-                        var didMovePastTapSlop = false
+                .then(
+                    if (isCameraPermissionGranted) {
+                        Modifier.pointerInput(boundCamera) {
+                            awaitEachGesture {
+                                val firstDown = awaitFirstDown(requireUnconsumed = false)
+                                val firstPosition = firstDown.position
+                                var maxPointerCount = 1
+                                var totalZoomChange = 1f
+                                var didMovePastTapSlop = false
 
-                        do {
-                            val event = awaitPointerEvent()
-                            maxPointerCount = maxOf(maxPointerCount, event.changes.size)
+                                do {
+                                    val event = awaitPointerEvent()
+                                    maxPointerCount = maxOf(maxPointerCount, event.changes.size)
 
-                            if (event.changes.size >= 2) {
-                                val zoomChange = event.calculateZoom()
-                                if (zoomChange.isFinite() && zoomChange > 0f) {
-                                    totalZoomChange *= zoomChange
-                                    zoomBy(zoomChange)
-                                    event.changes.forEach { it.consume() }
-                                }
-                            } else {
-                                val currentPosition = event.changes.firstOrNull()?.position
-                                if (currentPosition != null &&
-                                    (currentPosition - firstPosition).getDistance() > TapMovementSlopPx
+                                    if (event.changes.size >= 2) {
+                                        val zoomChange = event.calculateZoom()
+                                        if (zoomChange.isFinite() && zoomChange > 0f) {
+                                            totalZoomChange *= zoomChange
+                                            zoomBy(zoomChange)
+                                            event.changes.forEach { it.consume() }
+                                        }
+                                    } else {
+                                        val currentPosition = event.changes.firstOrNull()?.position
+                                        if (currentPosition != null &&
+                                            (currentPosition - firstPosition).getDistance() > TapMovementSlopPx
+                                        ) {
+                                            didMovePastTapSlop = true
+                                        }
+                                    }
+                                } while (event.changes.any { it.pressed })
+
+                                if (maxPointerCount == 1 &&
+                                    !didMovePastTapSlop &&
+                                    totalZoomChange in 0.98f..1.02f
                                 ) {
-                                    didMovePastTapSlop = true
+                                    focusAt(firstPosition)
                                 }
                             }
-                        } while (event.changes.any { it.pressed })
-
-                        if (maxPointerCount == 1 &&
-                            !didMovePastTapSlop &&
-                            totalZoomChange in 0.98f..1.02f
-                        ) {
-                            focusAt(firstPosition)
                         }
+                    } else {
+                        Modifier.scaledClickable(
+                            pressedScale = 0.98f,
+                            onClick = ::requestCameraPermissionFromPreview
+                        )
                     }
-                },
+                ),
             contentAlignment = Alignment.Center
         ) {
             if (isCameraPermissionGranted) {

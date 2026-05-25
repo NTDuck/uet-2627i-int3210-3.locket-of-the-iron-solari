@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -134,6 +135,7 @@ fun ConversationScreen(
     PullToRefreshBox(
         isRefreshing = isUserRefreshing,
         onRefresh = {
+            isUserRefreshing = true
             viewModel.refresh()
         },
         modifier = Modifier
@@ -651,14 +653,30 @@ fun ConversationItem(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = displayName,
-                            color = SolariTheme.colors.onBackground,
-
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            fontFamily = PlusJakartaSans
-                        )
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = displayName,
+                                color = SolariTheme.colors.onBackground,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                fontFamily = PlusJakartaSans,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (conversation.isMuted) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.Default.NotificationsOff,
+                                    contentDescription = "Muted conversation",
+                                    tint = SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.72f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = conversation.timestamp.toRelativeTimeLabel(),
                             color = if (conversation.isUnread) SolariTheme.colors.secondary else SolariTheme.colors.onSurfaceVariant,

@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -56,6 +57,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -84,6 +86,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.credentials.CredentialManager
 import com.solari.app.BuildConfig
+import com.solari.app.SolariApplication
 import com.solari.app.ui.auth.GoogleIdTokenResult
 import com.solari.app.ui.auth.requestGoogleIdToken
 import com.solari.app.ui.components.SolariAvatar
@@ -91,6 +94,8 @@ import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.compressAvatarForUpload
+import com.solari.app.ui.util.findActivity
+import com.solari.app.ui.util.openAppNotificationSettings
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.ProfileViewModel
 import com.solari.app.ui.viewmodels.SettingsViewModel
@@ -99,11 +104,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
-import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -123,6 +125,9 @@ fun ProfileScreen(
 ) {
     val user = viewModel.user
     val context = LocalContext.current
+    val appContainer = remember(context) {
+        (context.applicationContext as? SolariApplication)?.appContainer
+    }
     val credentialManager = remember(context) { CredentialManager.create(context) }
     val focusManager = LocalFocusManager.current
     val outsideEditClickSource = remember { MutableInteractionSource() }
@@ -147,6 +152,7 @@ fun ProfileScreen(
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var showRemoveAvatarConfirm by remember { mutableStateOf(false) }
     var showRemoveDisplayNameConfirm by remember { mutableStateOf(false) }
+    var showAddWidgetDialog by remember { mutableStateOf(false) }
     var deletePassword by remember { mutableStateOf("") }
     var selectedAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var committedAvatarPreviewUri by remember { mutableStateOf<Uri?>(null) }
@@ -164,6 +170,7 @@ fun ProfileScreen(
             }
         )
     }
+    var hasRequestedNotificationPermission by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -184,6 +191,40 @@ fun ProfileScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         notificationsEnabled = granted
+        if (granted) {
+            coroutineScope.launch {
+                appContainer?.pushNotificationCoordinator?.preparePushToken()
+                appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated()
+            }
+        }
+    }
+
+    LaunchedEffect(appContainer) {
+        hasRequestedNotificationPermission =
+            appContainer?.pushNotificationCoordinator?.hasRequestedNotificationPermission() ?: false
+    }
+
+    fun requestNotificationPermissionFromToggle() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            notificationsEnabled = true
+            return
+        }
+
+        val activity = context.findActivity()
+        val shouldOpenSettings = hasRequestedNotificationPermission &&
+                activity != null &&
+                activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) == false
+
+        if (shouldOpenSettings) {
+            context.openAppNotificationSettings()
+            return
+        }
+
+        coroutineScope.launch {
+            appContainer?.pushNotificationCoordinator?.markNotificationPermissionRequested()
+            hasRequestedNotificationPermission = true
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     val avatarPicker = rememberLauncherForActivityResult(
@@ -678,19 +719,9 @@ fun ProfileScreen(
                         title = if (notificationsEnabled) "Notifications Enabled" else "Notifications Disabled",
                         onClick = {
                             if (notificationsEnabled) {
-                                // Open OS notification settings so user can revoke
-                                val intent = Intent().apply {
-                                    action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
-                                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                }
-                                context.startActivity(intent)
+                                context.openAppNotificationSettings()
                             } else {
-                                // Request permission on SDK 33+; for older devices notifications are always enabled
-                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                    notificationPermissionLauncher.launch(
-                                        Manifest.permission.POST_NOTIFICATIONS
-                                    )
-                                }
+                                requestNotificationPermissionFromToggle()
                             }
                         },
                         trailing = {
@@ -698,17 +729,9 @@ fun ProfileScreen(
                                 checked = notificationsEnabled,
                                 onCheckedChange = { enable ->
                                     if (enable) {
-                                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                            notificationPermissionLauncher.launch(
-                                                Manifest.permission.POST_NOTIFICATIONS
-                                            )
-                                        }
+                                        requestNotificationPermissionFromToggle()
                                     } else {
-                                        val intent = Intent().apply {
-                                            action = Settings.ACTION_APP_NOTIFICATION_SETTINGS
-                                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
-                                        }
-                                        context.startActivity(intent)
+                                        context.openAppNotificationSettings()
                                     }
                                 },
                                 colors = SwitchDefaults.colors(
@@ -725,31 +748,9 @@ fun ProfileScreen(
                 item {
                     SettingsRow(
                         icon = Icons.Default.Widgets,
-                        title = "Add the Widget",
+                        title = "Add Widget",
                         onClick = {
-                            val appWidgetManager =
-                                android.appwidget.AppWidgetManager.getInstance(context)
-                            val myProvider = android.content.ComponentName(
-                                context,
-                                com.solari.app.widget.SolariWidgetProvider::class.java
-                            )
-
-                            if (appWidgetManager.isRequestPinAppWidgetSupported) {
-                                val successCallback = android.app.PendingIntent.getBroadcast(
-                                    context,
-                                    0,
-                                    android.content.Intent(
-                                        context,
-                                        com.solari.app.widget.WidgetPinReceiver::class.java
-                                    ),
-                                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-                                )
-                                appWidgetManager.requestPinAppWidget(
-                                    myProvider,
-                                    null,
-                                    successCallback
-                                )
-                            }
+                            showAddWidgetDialog = true
                         },
                         trailing = {
                             Icon(
@@ -877,6 +878,33 @@ fun ProfileScreen(
                 deleteAccountWithGoogleVerification()
             },
             onDismiss = { showGoogleDeleteConfirm = false }
+        )
+    }
+
+    if (showAddWidgetDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddWidgetDialog = false },
+            containerColor = SolariTheme.colors.surface,
+            title = {
+                Text(
+                    text = "Add widget",
+                    color = SolariTheme.colors.onSurface
+                )
+            },
+            text = {
+                Text(
+                    text = "Long press your home screen, choose Widgets, then place the Solari widget.",
+                    color = SolariTheme.colors.tertiary
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { showAddWidgetDialog = false }) {
+                    Text(
+                        text = "OK",
+                        color = SolariTheme.colors.primary
+                    )
+                }
+            }
         )
     }
 

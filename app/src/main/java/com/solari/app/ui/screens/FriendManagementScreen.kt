@@ -678,6 +678,7 @@ private fun FriendListItem(
     val menuOffsetY = with(density) { 30.dp.roundToPx() }
     val handle = "@${friend.username}"
     val hasNickname = !friend.nickname.isNullOrBlank()
+    val isOpeningMessage = friend.id in messagingFriendIds
 
     Row(
         modifier = modifier
@@ -685,6 +686,12 @@ private fun FriendListItem(
             .height(64.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(SolariTheme.colors.surface)
+            .scaledClickable(
+                pressedScale = 0.98f,
+                enabled = !isOpeningMessage
+            ) {
+                onMessage(friend)
+            }
             .padding(horizontal = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -784,7 +791,6 @@ private fun FriendListItem(
                                 )
                             }
                     ) {
-                        val isOpeningMessage = friend.id in messagingFriendIds
                         val actions = buildList {
                             add(
                                 FriendActionMenuEntry(

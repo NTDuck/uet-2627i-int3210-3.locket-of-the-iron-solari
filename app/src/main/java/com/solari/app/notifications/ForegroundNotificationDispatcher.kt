@@ -1,9 +1,13 @@
 package com.solari.app.notifications
 
+import android.app.PendingIntent
 import android.app.NotificationManager
 import android.content.Context
+import android.content.Intent
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.RemoteMessage
+import com.solari.app.MainActivity
+import com.solari.app.navigation.SolariLaunchIntent
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
@@ -51,6 +55,11 @@ object ForegroundNotificationDispatcher {
         val channelId = resolveChannelId(type)
         val priority = resolveNotificationPriority(type)
         val notificationId = notificationIdCounter.getAndIncrement()
+        val contentIntent = buildContentIntent(
+            context = context,
+            notificationId = notificationId,
+            data = message.data
+        )
 
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(android.R.drawable.ic_dialog_info)
@@ -58,6 +67,7 @@ object ForegroundNotificationDispatcher {
             .setContentText(body)
             .setPriority(priority)
             .setAutoCancel(true)
+            .setContentIntent(contentIntent)
 
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
@@ -65,6 +75,27 @@ object ForegroundNotificationDispatcher {
 
         notificationManager.notify(notificationId, builder.build())
         return true
+    }
+
+    private fun buildContentIntent(
+        context: Context,
+        notificationId: Int,
+        data: Map<String, String>
+    ): PendingIntent {
+        val intent = Intent(context, MainActivity::class.java).apply {
+            action = SolariLaunchIntent.ACTION_OPEN_PUSH
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            data.forEach { (key, value) ->
+                putExtra(key, value)
+            }
+        }
+
+        return PendingIntent.getActivity(
+            context,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private fun resolveChannelId(type: String): String = when (type) {

@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.solari.app.ui.theme.SolariThemeVariant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 
@@ -42,7 +43,9 @@ class UserPreferencesStore(context: Context) {
                 } ?: SolariThemeVariant.DEFAULT_DARK,
                 isFlashEnabled = preferences[IsFlashEnabledKey] ?: false,
                 timerValue = preferences[TimerValueKey] ?: 0,
-                lastFeedViewedTimestamp = preferences[LastFeedViewedTimestampKey] ?: 0L
+                lastFeedViewedTimestamp = preferences[LastFeedViewedTimestampKey] ?: 0L,
+                hasRequestedCameraPermission = preferences[CameraPermissionRequestedKey] ?: false,
+                hasRequestedLocationPermission = preferences[LocationPermissionRequestedKey] ?: false
             )
         }
 
@@ -96,6 +99,44 @@ class UserPreferencesStore(context: Context) {
         applicationContext.sendBroadcast(intent)
     }
 
+    suspend fun hasRequestedCameraPermission(): Boolean {
+        return dataStore.data
+            .catch { error ->
+                if (error is IOException) {
+                    emit(emptyPreferences())
+                } else {
+                    throw error
+                }
+            }
+            .map { preferences -> preferences[CameraPermissionRequestedKey] ?: false }
+            .first()
+    }
+
+    suspend fun markCameraPermissionRequested() {
+        dataStore.edit { preferences ->
+            preferences[CameraPermissionRequestedKey] = true
+        }
+    }
+
+    suspend fun hasRequestedLocationPermission(): Boolean {
+        return dataStore.data
+            .catch { error ->
+                if (error is IOException) {
+                    emit(emptyPreferences())
+                } else {
+                    throw error
+                }
+            }
+            .map { preferences -> preferences[LocationPermissionRequestedKey] ?: false }
+            .first()
+    }
+
+    suspend fun markLocationPermissionRequested() {
+        dataStore.edit { preferences ->
+            preferences[LocationPermissionRequestedKey] = true
+        }
+    }
+
     private companion object {
         val IsDarkModeKey = booleanPreferencesKey("is_dark_mode")
         val CurrentLightThemeKey = stringPreferencesKey("current_light_theme")
@@ -104,6 +145,8 @@ class UserPreferencesStore(context: Context) {
         val TimerValueKey = intPreferencesKey("timer_value")
         val LastFeedViewedTimestampKey =
             androidx.datastore.preferences.core.longPreferencesKey("last_feed_viewed_timestamp")
+        val CameraPermissionRequestedKey = booleanPreferencesKey("camera_permission_requested")
+        val LocationPermissionRequestedKey = booleanPreferencesKey("location_permission_requested")
     }
 }
 
@@ -113,5 +156,7 @@ data class UserPreferences(
     val currentDarkTheme: SolariThemeVariant,
     val isFlashEnabled: Boolean,
     val timerValue: Int,
-    val lastFeedViewedTimestamp: Long
+    val lastFeedViewedTimestamp: Long,
+    val hasRequestedCameraPermission: Boolean,
+    val hasRequestedLocationPermission: Boolean
 )
