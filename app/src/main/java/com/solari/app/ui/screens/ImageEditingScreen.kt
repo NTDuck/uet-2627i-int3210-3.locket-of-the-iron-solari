@@ -1,5 +1,6 @@
 package com.solari.app.ui.screens
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
@@ -106,6 +107,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
 import androidx.core.graphics.withRotation
 import com.solari.app.ui.models.CapturedMedia
+import com.solari.app.ui.models.CapturedMediaEditState
+import com.solari.app.ui.models.DrawPath
+import com.solari.app.ui.models.TextOverlayState
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
@@ -115,7 +119,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.util.UUID
 import kotlin.math.abs
 import kotlin.math.atan2
 import kotlin.math.min
@@ -137,26 +140,33 @@ private enum class AdjustType {
     Exposure, Contrast, Brightness, Saturation, Temperature
 }
 
-data class DrawPath(
-    val path: NativePath,
-    val color: Color,
-    val strokeWidth: Float,
-    val isEraser: Boolean
-)
-
-private class TextOverlay(
-    val id: String = UUID.randomUUID().toString(),
+private class EditableTextOverlay(
+    val id: String,
     text: String = "",
     position: Offset = Offset.Zero,
     rotation: Float = 0f,
     scale: Float = 1f,
-    color: Color = Color.Red
+    color: Color = Color.Red,
+    fontSizePx: Float = 48f
 ) {
     var text by mutableStateOf(text)
     var position by mutableStateOf(position)
     var rotation by mutableFloatStateOf(rotation)
     var scale by mutableFloatStateOf(scale)
     var color by mutableStateOf(color)
+    var fontSizePx by mutableFloatStateOf(fontSizePx)
+
+    fun toState(): TextOverlayState {
+        return TextOverlayState(
+            id = id,
+            text = text,
+            position = position,
+            rotation = rotation,
+            scale = scale,
+            color = color,
+            fontSizePx = fontSizePx
+        )
+    }
 }
 
 private val PresetColors = listOf(
@@ -217,9 +227,10 @@ fun ImageEditingScreen(
         if (initialMedia != null && baseBitmap == null) {
             withContext(Dispatchers.IO) {
                 try {
+                    val sourceUri = initialMedia.editState?.baseUri ?: initialMedia.uri
                     val source = android.graphics.ImageDecoder.createSource(
                         context.contentResolver,
-                        initialMedia.uri
+                        sourceUri
                     )
                     val bitmap =
                         android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
@@ -230,7 +241,12 @@ fun ImageEditingScreen(
                         }
                     val softwareBitmap = bitmap.copy(Bitmap.Config.ARGB_8888, true)
                     baseBitmap = softwareBitmap
-                    softwareBitmap?.let { viewModel.setInitialBitmap(it) }
+                    softwareBitmap?.let {
+                        viewModel.setInitialBitmap(
+                            bitmap = it,
+                            editState = initialMedia.editState?.deepCopy()
+                        )
+                    }
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -261,53 +277,38 @@ fun ImageEditingScreen(
                         onApply = {
                             coroutineScope.launch {
                                 val base = currentBitmap ?: return@launch
+                                val drawingPaths = viewModel.drawingPaths.map { it.deepCopy() }
+                                val textOverlays = viewModel.textOverlays.toList()
                                 val finalBitmap = withContext(Dispatchers.Default) {
-                                    val result = base.copy(Bitmap.Config.ARGB_8888, true)
-                                    if (viewModel.drawingPaths.isNotEmpty()) {
-                                        val canvas = AndroidCanvas(result)
-                                        val layerBitmap = Bitmap.createBitmap(result.width, result.height, Bitmap.Config.ARGB_8888)
-                                        val layerCanvas = AndroidCanvas(layerBitmap)
-                                        val paint = AndroidPaint().apply {
-                                            isAntiAlias = true
-                                            style = AndroidPaint.Style.STROKE
-                                            strokeJoin = AndroidPaint.Join.ROUND
-                                            strokeCap = AndroidPaint.Cap.ROUND
-                                        }
-                                        viewModel.drawingPaths.forEach { drawPath ->
-                                            paint.strokeWidth = drawPath.strokeWidth
-                                            if (drawPath.isEraser) {
-                                                paint.xfermode =
-                                                    android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-                                            } else {
-                                                paint.xfermode = null
-                                                paint.color = drawPath.color.toArgb()
-                                            }
-                                            layerCanvas.drawPath(drawPath.path, paint)
-                                        }
-                                        canvas.drawBitmap(layerBitmap, 0f, 0f, null)
-                                        layerBitmap.recycle()
-                                    }
-                                    result
+                                    renderCompositeBitmap(
+                                        bitmap = base,
+                                        drawingPaths = drawingPaths,
+                                        textOverlays = textOverlays
+                                    )
                                 }
-                                val file = File(
-                                    context.cacheDir,
-                                    "edited_${System.currentTimeMillis()}.jpg"
-                                )
-                                withContext(Dispatchers.IO) {
-                                    try {
-                                        FileOutputStream(file).use { out ->
-                                            finalBitmap.compress(
-                                                Bitmap.CompressFormat.JPEG,
-                                                95,
-                                                out
-                                            )
-                                        }
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
+                                val baseUri = withContext(Dispatchers.IO) {
+                                    writeBitmapToCacheFile(
+                                        context = context,
+                                        bitmap = base,
+                                        prefix = "edit_base"
+                                    )
+                                }
+                                val finalUri = withContext(Dispatchers.IO) {
+                                    writeBitmapToCacheFile(
+                                        context = context,
+                                        bitmap = finalBitmap,
+                                        prefix = "edited"
+                                    )
                                 }
                                 onNavigateBack(
-                                    initialMedia?.copy(uri = android.net.Uri.fromFile(file))
+                                    initialMedia?.copy(
+                                        uri = finalUri,
+                                        editState = CapturedMediaEditState(
+                                            baseUri = baseUri,
+                                            drawingPaths = drawingPaths,
+                                            textOverlays = textOverlays
+                                        )
+                                    )
                                 )
                             }
                         },
@@ -404,6 +405,7 @@ fun ImageEditingScreen(
                                 EditableImagePreview(
                                     bitmap = bitmap,
                                     drawingPaths = viewModel.drawingPaths,
+                                    textOverlays = viewModel.textOverlays,
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .clip(RoundedCornerShape(12.dp))
@@ -414,6 +416,7 @@ fun ImageEditingScreen(
                                 CropWorkspace(
                                     bitmap = bitmap,
                                     drawingPaths = viewModel.drawingPaths,
+                                    textOverlays = viewModel.textOverlays,
                                     rotation = cropRotation,
                                     flipH = cropFlipH,
                                     flipV = cropFlipV,
@@ -424,7 +427,21 @@ fun ImageEditingScreen(
                                             newPath.transform(matrix)
                                             drawPath.copy(path = newPath)
                                         }
-                                        viewModel.updateBitmapAndDrawingPaths(edited, transformedPaths)
+                                        val transformedTextOverlays = viewModel.textOverlays
+                                            .mapNotNull { overlay ->
+                                                overlay.transform(
+                                                    matrix = matrix,
+                                                    targetBitmap = edited,
+                                                    rotationDegrees = cropRotation,
+                                                    flipH = cropFlipH,
+                                                    flipV = cropFlipV
+                                                )
+                                            }
+                                        viewModel.updateBitmapDrawingPathsAndTextOverlays(
+                                            edited,
+                                            transformedPaths,
+                                            transformedTextOverlays
+                                        )
                                         currentMode = EditMode.Main
                                         applyTrigger = false
                                     }
@@ -435,6 +452,7 @@ fun ImageEditingScreen(
                                 DrawWorkspace(
                                     bitmap = bitmap,
                                     paths = activeDrawPaths,
+                                    textOverlays = viewModel.textOverlays,
                                     selectedColor = drawColor,
                                     selectedTool = drawTool,
                                     selectedBrushSize = selectedBrushSize,
@@ -451,10 +469,11 @@ fun ImageEditingScreen(
                                 TextWorkspace(
                                     bitmap = bitmap,
                                     drawingPaths = viewModel.drawingPaths,
+                                    textOverlays = viewModel.textOverlays,
                                     selectedColor = textColor,
                                     applyTrigger = applyTrigger,
-                                    onApply = { edited ->
-                                        viewModel.updateBitmap(edited)
+                                    onApply = { overlays ->
+                                        viewModel.updateTextOverlays(overlays)
                                         currentMode = EditMode.Main
                                         applyTrigger = false
                                     }
@@ -465,6 +484,7 @@ fun ImageEditingScreen(
                                 AdjustWorkspace(
                                     bitmap = bitmap,
                                     drawingPaths = viewModel.drawingPaths,
+                                    textOverlays = viewModel.textOverlays,
                                     values = adjustValues,
                                     applyTrigger = applyTrigger,
                                     onApply = { edited ->
@@ -610,6 +630,7 @@ private fun EditModeButton(
 private fun CropWorkspace(
     bitmap: Bitmap,
     drawingPaths: List<DrawPath>,
+    textOverlays: List<TextOverlayState>,
     rotation: Float,
     flipH: Float,
     flipV: Float,
@@ -625,33 +646,12 @@ private fun CropWorkspace(
     var cropRect by remember { mutableStateOf(RectF()) }
     var draggingEdge by remember { mutableStateOf(CropEdge.None) }
 
-    val compositeBitmapForCrop = remember(bitmap, drawingPaths) {
-        val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
-        if (drawingPaths.isNotEmpty()) {
-            val canvas = AndroidCanvas(result)
-            val layerBitmap = Bitmap.createBitmap(result.width, result.height, Bitmap.Config.ARGB_8888)
-            val layerCanvas = AndroidCanvas(layerBitmap)
-            val paint = AndroidPaint().apply {
-                isAntiAlias = true
-                style = AndroidPaint.Style.STROKE
-                strokeJoin = AndroidPaint.Join.ROUND
-                strokeCap = AndroidPaint.Cap.ROUND
-            }
-            drawingPaths.forEach { drawPath ->
-                paint.strokeWidth = drawPath.strokeWidth
-                if (drawPath.isEraser) {
-                    paint.xfermode =
-                        android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-                } else {
-                    paint.xfermode = null
-                    paint.color = drawPath.color.toArgb()
-                }
-                layerCanvas.drawPath(drawPath.path, paint)
-            }
-            canvas.drawBitmap(layerBitmap, 0f, 0f, null)
-            layerBitmap.recycle()
-        }
-        result
+    val compositeBitmapForCrop = remember(bitmap, drawingPaths, textOverlays) {
+        renderCompositeBitmap(
+            bitmap = bitmap,
+            drawingPaths = drawingPaths,
+            textOverlays = textOverlays
+        )
     }
 
     val transformedBitmap = remember(compositeBitmapForCrop, rotation, flipH, flipV) {
@@ -1040,6 +1040,7 @@ private enum class CropEdge { None, Left, Top, Right, Bottom, TopLeft, TopRight,
 private fun DrawWorkspace(
     bitmap: Bitmap,
     paths: androidx.compose.runtime.snapshots.SnapshotStateList<DrawPath>,
+    textOverlays: List<TextOverlayState>,
     selectedColor: Color,
     selectedTool: DrawTool,
     selectedBrushSize: Float,
@@ -1194,6 +1195,13 @@ private fun DrawWorkspace(
                     )
                     layerBitmap.recycle()
                 }
+                drawTextOverlays(
+                    canvas = nativeCanvas,
+                    textOverlays = textOverlays,
+                    scale = screenScale,
+                    imgLeft = imgLeft,
+                    imgTop = imgTop
+                )
             }
 
             eraserCursorPosition
@@ -1313,186 +1321,199 @@ private fun DrawBottomRow(
 private fun TextWorkspace(
     bitmap: Bitmap,
     drawingPaths: List<DrawPath>,
+    textOverlays: List<TextOverlayState>,
     selectedColor: Color,
     applyTrigger: Boolean,
-    onApply: (Bitmap) -> Unit
+    onApply: (List<TextOverlayState>) -> Unit
 ) {
-    var overlay by remember { mutableStateOf<TextOverlay?>(null) }
     var canvasSize by remember { mutableStateOf(Size.Zero) }
-    var currentWorkingBitmap by remember { mutableStateOf(bitmap) }
+    val workingOverlays = remember { mutableStateListOf<EditableTextOverlay>() }
+    var selectedOverlayId by remember { mutableStateOf<String?>(null) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val density = LocalDensity.current
 
-    val bakeText = {
-        overlay?.let { o ->
-            if (o.text.isNotEmpty()) {
-                val result = currentWorkingBitmap.copy(Bitmap.Config.ARGB_8888, true)
-                val canvas = AndroidCanvas(result)
-
-                val imageWidth = currentWorkingBitmap.width.toFloat()
-                val imageHeight = currentWorkingBitmap.height.toFloat()
-                val containerWidth = canvasSize.width
-                val containerHeight = canvasSize.height
-
-                val scale = min(containerWidth / imageWidth, containerHeight / imageHeight)
-                val drawWidth = imageWidth * scale
-                val drawHeight = imageHeight * scale
-                val left = (containerWidth - drawWidth) / 2
-                val top = (containerHeight - drawHeight) / 2
-
-                val bitmapX = (o.position.x - left) / scale
-                val bitmapY = (o.position.y - top) / scale
-
-                val paint = AndroidPaint().apply {
-                    color = o.color.toArgb()
-                    textSize = with(density) { 24.sp.toPx() } * o.scale / scale
-                    textAlign = AndroidPaint.Align.CENTER
-                    isAntiAlias = true
-                    typeface = android.graphics.Typeface.DEFAULT_BOLD
-                }
-
-                val fontMetrics = paint.fontMetrics
-                val verticalOffset = (fontMetrics.ascent + fontMetrics.descent) / 2f
-                val finalY = bitmapY - verticalOffset
-
-                canvas.withRotation(o.rotation, bitmapX, bitmapY) {
-                    drawText(o.text, bitmapX, finalY, paint)
-                }
-                currentWorkingBitmap = result
-            }
-        }
-        overlay = null
+    LaunchedEffect(textOverlays) {
+        workingOverlays.clear()
+        workingOverlays.addAll(textOverlays.map { it.toEditableTextOverlay() })
+        selectedOverlayId = null
     }
 
     LaunchedEffect(applyTrigger) {
         if (applyTrigger) {
-            if (overlay != null) {
-                bakeText()
-            }
-            onApply(currentWorkingBitmap)
+            onApply(
+                workingOverlays
+                    .map { it.toState() }
+                    .filter { it.text.isNotBlank() }
+            )
         }
     }
 
     LaunchedEffect(selectedColor) {
-        overlay?.color = selectedColor
+        workingOverlays
+            .firstOrNull { it.id == selectedOverlayId }
+            ?.let { it.color = selectedColor }
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .onGloballyPositioned { canvasSize = it.size.toSize() }
-            .pointerInput(Unit) {
+            .pointerInput(bitmap, canvasSize, selectedColor) {
                 detectTapGestures { offset ->
-                    if (overlay == null) {
-                        overlay = TextOverlay(position = offset, color = selectedColor)
-                    } else {
-                        if (overlay?.text?.isNotEmpty() == true) {
-                            bakeText()
-                        } else {
-                            overlay = null
-                        }
+                    val layout = calculateImageLayout(canvasSize, bitmap) ?: return@detectTapGestures
+                    if (!layout.containsScreen(offset)) {
+                        selectedOverlayId = null
+                        return@detectTapGestures
                     }
+
+                    val baseFontSizePx = with(density) { 24.sp.toPx() } / layout.scale
+                    val newOverlay = TextOverlayState(
+                        position = layout.screenToBitmap(offset),
+                        color = selectedColor,
+                        fontSizePx = baseFontSizePx
+                    ).toEditableTextOverlay()
+                    workingOverlays.add(newOverlay)
+                    selectedOverlayId = newOverlay.id
                 }
             },
         contentAlignment = Alignment.TopStart
     ) {
         EditableImagePreview(
-            bitmap = currentWorkingBitmap,
+            bitmap = bitmap,
             drawingPaths = drawingPaths,
             modifier = Modifier.fillMaxSize()
         )
 
-        overlay?.let { o ->
-            var boxSize by remember(o.id) { mutableStateOf(Size.Zero) }
-            val handlePadding = 8.dp
-            val handleSize = 28.dp
-
-            Box(
-                modifier = Modifier
-                    .offset {
-                        IntOffset(
-                            (o.position.x - boxSize.width / 2).toInt(),
-                            (o.position.y - boxSize.height / 2).toInt()
-                        )
-                    }
-                    .onGloballyPositioned { boxSize = it.size.toSize() }
-                    .pointerInput(o.id) {
-                        detectDragGestures { change, dragAmount ->
-                            change.consume()
-                            o.position += dragAmount
-                        }
-                    }
-                    .graphicsLayer(
-                        rotationZ = o.rotation,
-                        scaleX = o.scale,
-                        scaleY = o.scale
-                    )
-                    .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
-                    .border(1.dp, Color.White.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                    .padding(handlePadding)
-            ) {
-                IconButton(
-                    onClick = { overlay = null },
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .size(handleSize)
-                ) {
-                    Icon(
-                        Icons.Default.Delete,
-                        null,
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
-                    )
+        val layout = calculateImageLayout(canvasSize, bitmap)
+        if (layout != null) {
+            workingOverlays.forEach { overlay ->
+                val isSelected = overlay.id == selectedOverlayId
+                var boxSize by remember(overlay.id) { mutableStateOf(Size.Zero) }
+                val handlePadding = 8.dp
+                val handleSize = 28.dp
+                val screenPosition = layout.bitmapToScreen(overlay.position)
+                val displayFontSize = with(density) {
+                    (overlay.fontSizePx * layout.scale).coerceAtLeast(1f).toSp()
                 }
 
-                RotateHandle(
+                Box(
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .size(handleSize),
-                    boxSize = boxSize,
-                    handlePaddingPx = with(density) { handlePadding.toPx() },
-                    handleSizePx = with(density) { handleSize.toPx() },
-                    onRotate = { deltaDegrees -> o.rotation += deltaDegrees }
-                )
-
-                BasicTextField(
-                    value = o.text,
-                    onValueChange = { newVal -> o.text = newVal },
-                    modifier = Modifier
-                        .padding(32.dp, 24.dp, 32.dp, 24.dp)
-                        .focusRequester(focusRequester)
-                        .onGloballyPositioned {
-                            if (o.text.isEmpty()) {
-                                focusRequester.requestFocus()
-                                keyboardController?.show()
+                        .offset {
+                            IntOffset(
+                                (screenPosition.x - boxSize.width / 2).toInt(),
+                                (screenPosition.y - boxSize.height / 2).toInt()
+                            )
+                        }
+                        .onGloballyPositioned { boxSize = it.size.toSize() }
+                        .pointerInput(overlay.id, layout.scale) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                selectedOverlayId = overlay.id
+                                overlay.position += Offset(
+                                    x = dragAmount.x / layout.scale,
+                                    y = dragAmount.y / layout.scale
+                                )
                             }
-                        },
-                    textStyle = TextStyle(
-                        color = o.color,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                        fontFamily = PlusJakartaSans
-                    ),
-                    cursorBrush = androidx.compose.ui.graphics.SolidColor(o.color),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                    keyboardActions = KeyboardActions(onDone = {
-                        keyboardController?.hide()
-                    })
-                )
+                        }
+                        .graphicsLayer(
+                            rotationZ = overlay.rotation,
+                            scaleX = overlay.scale,
+                            scaleY = overlay.scale
+                        )
+                        .then(
+                            if (isSelected) {
+                                Modifier
+                                    .background(Color.Black.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                                    .border(
+                                        1.dp,
+                                        Color.White.copy(alpha = 0.5f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .clickable { selectedOverlayId = overlay.id }
+                        .padding(if (isSelected) handlePadding else 0.dp)
+                ) {
+                    if (isSelected) {
+                        IconButton(
+                            onClick = {
+                                workingOverlays.remove(overlay)
+                                selectedOverlayId = null
+                            },
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .size(handleSize)
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                null,
+                                tint = Color.White,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
 
-                ScaleHandle(
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .size(handleSize),
-                    boxSize = boxSize,
-                    handlePaddingPx = with(density) { handlePadding.toPx() },
-                    handleSizePx = with(density) { handleSize.toPx() },
-                    onScale = { scaleFactor ->
-                        o.scale = (o.scale * scaleFactor).coerceIn(0.5f, 5f)
+                        RotateHandle(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .size(handleSize),
+                            boxSize = boxSize,
+                            handlePaddingPx = with(density) { handlePadding.toPx() },
+                            handleSizePx = with(density) { handleSize.toPx() },
+                            onRotate = { deltaDegrees -> overlay.rotation += deltaDegrees }
+                        )
+
+                        BasicTextField(
+                            value = overlay.text,
+                            onValueChange = { newVal -> overlay.text = newVal },
+                            modifier = Modifier
+                                .padding(32.dp, 24.dp, 32.dp, 24.dp)
+                                .focusRequester(focusRequester)
+                                .onGloballyPositioned {
+                                    if (overlay.text.isEmpty() && selectedOverlayId == overlay.id) {
+                                        focusRequester.requestFocus()
+                                        keyboardController?.show()
+                                    }
+                                },
+                            textStyle = TextStyle(
+                                color = overlay.color,
+                                fontSize = displayFontSize,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                fontFamily = PlusJakartaSans
+                            ),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(overlay.color),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = {
+                                keyboardController?.hide()
+                            })
+                        )
+
+                        ScaleHandle(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .size(handleSize),
+                            boxSize = boxSize,
+                            handlePaddingPx = with(density) { handlePadding.toPx() },
+                            handleSizePx = with(density) { handleSize.toPx() },
+                            onScale = { scaleFactor ->
+                                overlay.scale = (overlay.scale * scaleFactor).coerceIn(0.5f, 5f)
+                            }
+                        )
+                    } else {
+                        Text(
+                            text = overlay.text,
+                            color = overlay.color,
+                            fontSize = displayFontSize,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            fontFamily = PlusJakartaSans,
+                            modifier = Modifier.padding(8.dp)
+                        )
                     }
-                )
+                }
             }
         }
     }
@@ -1639,6 +1660,7 @@ private fun TextBottomRow(
 private fun AdjustWorkspace(
     bitmap: Bitmap,
     drawingPaths: List<DrawPath>,
+    textOverlays: List<TextOverlayState>,
     values: Map<AdjustType, Float>,
     applyTrigger: Boolean,
     onApply: (Bitmap) -> Unit
@@ -1694,6 +1716,7 @@ private fun AdjustWorkspace(
         EditableImagePreview(
             bitmap = adjustedBitmap,
             drawingPaths = drawingPaths,
+            textOverlays = textOverlays,
             modifier = Modifier.fillMaxSize()
         )
     }
@@ -1869,6 +1892,7 @@ private fun ToolButton(label: String, icon: ImageVector, isSelected: Boolean, on
 private fun EditableImagePreview(
     bitmap: Bitmap,
     drawingPaths: List<DrawPath>,
+    textOverlays: List<TextOverlayState> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -1902,49 +1926,243 @@ private fun EditableImagePreview(
                         null
                     )
 
-                    if (drawingPaths.isNotEmpty()) {
-                        val layerW = drawWidth.toInt().coerceAtLeast(1)
-                        val layerH = drawHeight.toInt().coerceAtLeast(1)
-                        val layerBitmap = Bitmap.createBitmap(layerW, layerH, Bitmap.Config.ARGB_8888)
-                        val layerCanvas = AndroidCanvas(layerBitmap)
-
-                        val paint = AndroidPaint().apply {
-                            isAntiAlias = true
-                            style = AndroidPaint.Style.STROKE
-                            strokeJoin = AndroidPaint.Join.ROUND
-                            strokeCap = AndroidPaint.Cap.ROUND
-                        }
-
-                        val scale = drawWidth / bitmap.width.toFloat()
-
-                        drawingPaths.forEach { drawPath ->
-                            paint.strokeWidth = drawPath.strokeWidth * scale
-                            if (drawPath.isEraser) {
-                                paint.xfermode =
-                                    android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
-                            } else {
-                                paint.xfermode = null
-                                paint.color = drawPath.color.toArgb()
-                            }
-                            val matrix = AndroidMatrix()
-                            matrix.postScale(scale, scale)
-                            val scaledPath = NativePath(drawPath.path)
-                            scaledPath.transform(matrix)
-                            layerCanvas.drawPath(scaledPath, paint)
-                        }
-
-                        nativeCanvas.drawBitmap(
-                            layerBitmap,
-                            null,
-                            RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight),
-                            null
-                        )
-                        layerBitmap.recycle()
-                    }
+                    drawDrawingPaths(
+                        nativeCanvas = nativeCanvas,
+                        drawingPaths = drawingPaths,
+                        bitmapWidth = bitmap.width,
+                        drawWidth = drawWidth,
+                        drawHeight = drawHeight,
+                        imgLeft = imgLeft,
+                        imgTop = imgTop
+                    )
+                    drawTextOverlays(
+                        canvas = nativeCanvas,
+                        textOverlays = textOverlays,
+                        scale = screenScale,
+                        imgLeft = imgLeft,
+                        imgTop = imgTop
+                    )
                 }
             }
         }
     }
+}
+
+private data class ImageLayout(
+    val scale: Float,
+    val imgLeft: Float,
+    val imgTop: Float,
+    val drawWidth: Float,
+    val drawHeight: Float
+) {
+    fun containsScreen(offset: Offset): Boolean {
+        return offset.x >= imgLeft &&
+                offset.x <= imgLeft + drawWidth &&
+                offset.y >= imgTop &&
+                offset.y <= imgTop + drawHeight
+    }
+
+    fun screenToBitmap(offset: Offset): Offset {
+        return Offset(
+            x = (offset.x - imgLeft) / scale,
+            y = (offset.y - imgTop) / scale
+        )
+    }
+
+    fun bitmapToScreen(offset: Offset): Offset {
+        return Offset(
+            x = imgLeft + offset.x * scale,
+            y = imgTop + offset.y * scale
+        )
+    }
+}
+
+private fun calculateImageLayout(
+    containerSize: Size,
+    bitmap: Bitmap
+): ImageLayout? {
+    val containerWidth = containerSize.width
+    val containerHeight = containerSize.height
+    if (containerWidth <= 0f || containerHeight <= 0f || bitmap.width <= 0 || bitmap.height <= 0) {
+        return null
+    }
+
+    val scale = min(
+        containerWidth / bitmap.width.toFloat(),
+        containerHeight / bitmap.height.toFloat()
+    )
+    val drawWidth = bitmap.width * scale
+    val drawHeight = bitmap.height * scale
+    return ImageLayout(
+        scale = scale,
+        imgLeft = (containerWidth - drawWidth) / 2f,
+        imgTop = (containerHeight - drawHeight) / 2f,
+        drawWidth = drawWidth,
+        drawHeight = drawHeight
+    )
+}
+
+private fun renderCompositeBitmap(
+    bitmap: Bitmap,
+    drawingPaths: List<DrawPath>,
+    textOverlays: List<TextOverlayState>
+): Bitmap {
+    val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+    val canvas = AndroidCanvas(result)
+    drawDrawingPaths(
+        nativeCanvas = canvas,
+        drawingPaths = drawingPaths,
+        bitmapWidth = result.width,
+        drawWidth = result.width.toFloat(),
+        drawHeight = result.height.toFloat(),
+        imgLeft = 0f,
+        imgTop = 0f
+    )
+    drawTextOverlays(
+        canvas = canvas,
+        textOverlays = textOverlays,
+        scale = 1f,
+        imgLeft = 0f,
+        imgTop = 0f
+    )
+    return result
+}
+
+private fun drawDrawingPaths(
+    nativeCanvas: AndroidCanvas,
+    drawingPaths: List<DrawPath>,
+    bitmapWidth: Int,
+    drawWidth: Float,
+    drawHeight: Float,
+    imgLeft: Float,
+    imgTop: Float
+) {
+    if (drawingPaths.isEmpty()) return
+
+    val layerW = drawWidth.toInt().coerceAtLeast(1)
+    val layerH = drawHeight.toInt().coerceAtLeast(1)
+    val layerBitmap = Bitmap.createBitmap(layerW, layerH, Bitmap.Config.ARGB_8888)
+    val layerCanvas = AndroidCanvas(layerBitmap)
+    val paint = AndroidPaint().apply {
+        isAntiAlias = true
+        style = AndroidPaint.Style.STROKE
+        strokeJoin = AndroidPaint.Join.ROUND
+        strokeCap = AndroidPaint.Cap.ROUND
+    }
+    val scale = drawWidth / bitmapWidth.toFloat()
+
+    drawingPaths.forEach { drawPath ->
+        paint.strokeWidth = drawPath.strokeWidth * scale
+        if (drawPath.isEraser) {
+            paint.xfermode =
+                android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+        } else {
+            paint.xfermode = null
+            paint.color = drawPath.color.toArgb()
+        }
+        val matrix = AndroidMatrix()
+        matrix.postScale(scale, scale)
+        val scaledPath = NativePath(drawPath.path)
+        scaledPath.transform(matrix)
+        layerCanvas.drawPath(scaledPath, paint)
+    }
+
+    nativeCanvas.drawBitmap(
+        layerBitmap,
+        null,
+        RectF(imgLeft, imgTop, imgLeft + drawWidth, imgTop + drawHeight),
+        null
+    )
+    layerBitmap.recycle()
+}
+
+private fun drawTextOverlays(
+    canvas: AndroidCanvas,
+    textOverlays: List<TextOverlayState>,
+    scale: Float,
+    imgLeft: Float,
+    imgTop: Float
+) {
+    val paint = AndroidPaint().apply {
+        isAntiAlias = true
+        textAlign = AndroidPaint.Align.CENTER
+        typeface = android.graphics.Typeface.DEFAULT_BOLD
+    }
+
+    textOverlays
+        .filter { it.text.isNotBlank() }
+        .forEach { overlay ->
+            val x = imgLeft + overlay.position.x * scale
+            val y = imgTop + overlay.position.y * scale
+            paint.color = overlay.color.toArgb()
+            paint.textSize = overlay.fontSizePx * scale * overlay.scale
+
+            val fontMetrics = paint.fontMetrics
+            val verticalOffset = (fontMetrics.ascent + fontMetrics.descent) / 2f
+            val finalY = y - verticalOffset
+
+            canvas.withRotation(overlay.rotation, x, y) {
+                drawText(overlay.text, x, finalY, paint)
+            }
+        }
+}
+
+private fun writeBitmapToCacheFile(
+    context: Context,
+    bitmap: Bitmap,
+    prefix: String
+): android.net.Uri {
+    val file = File(
+        context.cacheDir,
+        "${prefix}_${System.currentTimeMillis()}_${System.nanoTime()}.jpg"
+    )
+    FileOutputStream(file).use { out ->
+        bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)
+    }
+    return android.net.Uri.fromFile(file)
+}
+
+private fun TextOverlayState.toEditableTextOverlay(): EditableTextOverlay {
+    return EditableTextOverlay(
+        id = id,
+        text = text,
+        position = position,
+        rotation = rotation,
+        scale = scale,
+        color = color,
+        fontSizePx = fontSizePx
+    )
+}
+
+private fun TextOverlayState.transform(
+    matrix: AndroidMatrix,
+    targetBitmap: Bitmap,
+    rotationDegrees: Float,
+    flipH: Float,
+    flipV: Float
+): TextOverlayState? {
+    val points = floatArrayOf(position.x, position.y)
+    matrix.mapPoints(points)
+    val transformedPosition = Offset(points[0], points[1])
+    if (
+        transformedPosition.x < 0f ||
+        transformedPosition.y < 0f ||
+        transformedPosition.x > targetBitmap.width ||
+        transformedPosition.y > targetBitmap.height
+    ) {
+        return null
+    }
+
+    val isMirrored = (flipH < 0f) xor (flipV < 0f)
+    val transformedRotation = if (isMirrored) {
+        -rotation + rotationDegrees
+    } else {
+        rotation + rotationDegrees
+    }
+    return copy(
+        position = transformedPosition,
+        rotation = transformedRotation
+    )
 }
 
 @Composable
