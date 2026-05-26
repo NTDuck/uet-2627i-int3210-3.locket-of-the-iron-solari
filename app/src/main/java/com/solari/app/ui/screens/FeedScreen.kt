@@ -996,7 +996,7 @@ private fun FeedFeedbackPill(message: String) {
 
             Text(
                 text = message,
-                color = SolariTheme.colors.onBackground,
+                color = Color(0xFFE7E7E7),
 
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,

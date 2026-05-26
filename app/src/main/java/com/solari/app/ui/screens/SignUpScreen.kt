@@ -48,6 +48,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
@@ -374,7 +375,7 @@ private fun SignUpFeedbackPill(message: String) {
 
             Text(
                 text = message,
-                color = SolariTheme.colors.onBackground,
+                color = Color(0xFFE7E7E7),
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
