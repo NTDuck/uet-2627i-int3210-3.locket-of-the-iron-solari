@@ -25,6 +25,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -132,11 +133,15 @@ import com.solari.app.ui.models.CapturedMediaSource
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
+import com.solari.app.ui.util.findActivity
+import com.solari.app.ui.util.openAppSettings
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.HomepageAfterCapturingViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.math.roundToInt
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -149,6 +154,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import android.graphics.Canvas as AndroidCanvas
 import android.graphics.Matrix as AndroidMatrix
 import android.graphics.Paint as AndroidPaint
+import kotlin.coroutines.resume
 
 private val CapturePreviewCornerRadius = 24.dp
 
@@ -197,6 +203,8 @@ fun HomepageAfterCapturingScreen(
     var selectedWeatherCondition by remember { mutableStateOf<String?>(null) }
     var weatherTempCText by remember { mutableStateOf("") }
     var isWeatherSheetOpen by remember { mutableStateOf(false) }
+    var isWeatherLoading by remember { mutableStateOf(false) }
+    var weatherRequestedLocationAfterPermission by remember { mutableStateOf(false) }
 
     LaunchedEffect(
         pagerState.currentPage,
@@ -216,7 +224,13 @@ fun HomepageAfterCapturingScreen(
                 val fallback = if (temp != null) "$condition $temp°C" else condition
                 viewModel.updateCaption("weather", com.solari.app.ui.models.CaptionMetadata.Weather(condition, temp), fallback)
             }
-            3 -> viewModel.updateCaption("location", com.solari.app.ui.models.CaptionMetadata.Location(locationText), locationText)
+            3 -> {
+                if (locationText.isBlank()) {
+                    viewModel.updateCaption("text", null, "")
+                } else {
+                    viewModel.updateCaption("location", com.solari.app.ui.models.CaptionMetadata.Location(locationText), "📍 $locationText")
+                }
+            }
             4 -> {
                 val fallback = "Rating: $ratingValue" + if (ratingReviewText.isNotBlank()) " - $ratingReviewText" else ""
                 viewModel.updateCaption("rating", com.solari.app.ui.models.CaptionMetadata.Rating(ratingValue, ratingReviewText.takeIf { it.isNotBlank() }), fallback)
@@ -257,6 +271,125 @@ fun HomepageAfterCapturingScreen(
             }
         } else {
             pendingLegacyDownload = false
+        }
+    }
+
+    suspend fun fetchAndSetWeather(context: android.content.Context) {
+        isWeatherLoading = true
+        try {
+            val loc = getCurrentLocation(context)
+            if (loc != null) {
+                val weatherResult = fetchWeatherForLocation(loc.latitude, loc.longitude)
+                if (weatherResult != null) {
+                    selectedWeatherCondition = weatherResult.first
+                    weatherTempCText = String.format(Locale.US, "%.1f", weatherResult.second)
+                } else {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        android.widget.Toast.makeText(context, "Failed to fetch weather. Select manually.", android.widget.Toast.LENGTH_SHORT).show()
+                        isWeatherSheetOpen = true
+                    }
+                }
+            } else {
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    android.widget.Toast.makeText(context, "Unable to get current location. Select manually.", android.widget.Toast.LENGTH_SHORT).show()
+                    isWeatherSheetOpen = true
+                }
+            }
+        } catch (e: Exception) {
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                android.widget.Toast.makeText(context, "Error: ${e.localizedMessage}. Select manually.", android.widget.Toast.LENGTH_SHORT).show()
+                isWeatherSheetOpen = true
+            }
+        } finally {
+            isWeatherLoading = false
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val fineGranted = permissions[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+        val coarseGranted = permissions[Manifest.permission.ACCESS_COARSE_LOCATION] ?: false
+        if (fineGranted || coarseGranted) {
+            coroutineScope.launch {
+                if (weatherRequestedLocationAfterPermission) {
+                    weatherRequestedLocationAfterPermission = false
+                    fetchAndSetWeather(context)
+                } else {
+                    val city = getCityFromLocation(context)
+                    if (!city.isNullOrBlank()) {
+                        locationText = city
+                    }
+                }
+            }
+        } else {
+            val activity = context.findActivity()
+            if (activity != null &&
+                (activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) ||
+                 activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION))
+            ) {
+                viewModel.markLocationPermissionRequested()
+            }
+        }
+    }
+
+    fun hasLocationPermission(): Boolean {
+        val fineLocationCheck = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        val coarseLocationCheck = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        return fineLocationCheck || coarseLocationCheck
+    }
+
+    fun requestLocationPermission(afterGrantFetchesWeather: Boolean) {
+        if (hasLocationPermission()) return
+
+        val activity = context.findActivity()
+        val shouldOpenSettings = viewModel.hasRequestedLocationPermission &&
+                activity != null &&
+                !activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) &&
+                !activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION)
+
+        if (shouldOpenSettings) {
+            context.openAppSettings()
+            return
+        }
+
+        weatherRequestedLocationAfterPermission = afterGrantFetchesWeather
+        locationPermissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        )
+    }
+
+    val requestWeather = {
+        if (hasLocationPermission()) {
+            coroutineScope.launch {
+                fetchAndSetWeather(context)
+            }
+        } else {
+            requestLocationPermission(afterGrantFetchesWeather = true)
+        }
+        Unit
+    }
+
+    val requestLocation = {
+        if (hasLocationPermission()) {
+            coroutineScope.launch {
+                val city = getCityFromLocation(context)
+                if (!city.isNullOrBlank()) {
+                    locationText = city
+                }
+            }
+            Unit
+        } else {
+            requestLocationPermission(afterGrantFetchesWeather = false)
         }
     }
 
@@ -307,6 +440,7 @@ fun HomepageAfterCapturingScreen(
             return
         }
 
+        android.util.Log.d("SolariDownload", "downloadPreviewMedia: media uri = ${media?.uri}, viewModel capturedMedia uri = ${viewModel.capturedMedia?.uri}, initialCapturedMedia uri = ${initialCapturedMedia?.uri}")
         coroutineScope.launch {
             saveMediaToPictures(context, media)
                 .onSuccess { showTopFeedback("Saved to Pictures/Solari", true) }
@@ -350,6 +484,7 @@ fun HomepageAfterCapturingScreen(
                         onCustomCaptionChange = { customCaptionText = it },
                         locationText = locationText,
                         onLocationTextChange = { locationText = it },
+                        onRequestLocation = requestLocation,
                         ratingValue = ratingValue,
                         onRatingValueChange = { ratingValue = it },
                         ratingReviewText = ratingReviewText,
@@ -358,9 +493,11 @@ fun HomepageAfterCapturingScreen(
                         weatherTempCText = weatherTempCText,
                         onWeatherTempCTextChange = { weatherTempCText = it },
                         onOpenWeatherSheet = { isWeatherSheetOpen = true },
+                        isWeatherLoading = isWeatherLoading,
+                        onAutoFetchWeather = requestWeather,
                         pagerState = pagerState,
                         focusRequester = focusRequester,
-                        onDownload = ::downloadPreviewMedia,
+                        onDownload = { downloadPreviewMedia() },
                         onCaptionBoundsChanged = { captionBounds = it },
                         onCaptionFocusChanged = { isFocused -> isCaptionFocused = isFocused },
                         onCaptionDone = ::clearCaptionFocus,
@@ -553,6 +690,7 @@ fun HomepageAfterCapturingScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun CapturePreviewCard(
     mediaUri: Uri?,
@@ -561,6 +699,7 @@ private fun CapturePreviewCard(
     onCustomCaptionChange: (String) -> Unit,
     locationText: String,
     onLocationTextChange: (String) -> Unit,
+    onRequestLocation: () -> Unit,
     ratingValue: Float,
     onRatingValueChange: (Float) -> Unit,
     ratingReviewText: String,
@@ -569,6 +708,8 @@ private fun CapturePreviewCard(
     weatherTempCText: String,
     onWeatherTempCTextChange: (String) -> Unit,
     onOpenWeatherSheet: () -> Unit,
+    isWeatherLoading: Boolean,
+    onAutoFetchWeather: () -> Unit,
     pagerState: PagerState,
     focusRequester: FocusRequester,
     onDownload: () -> Unit,
@@ -782,7 +923,7 @@ private fun CapturePreviewCard(
                 when (page) {
                     0 -> {
                         Surface(
-                            color = SolariTheme.colors.background.copy(alpha = 0.58f),
+                            color = SolariTheme.colors.background.copy(alpha = 0.7f),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .padding(bottom = 15.dp)
@@ -816,7 +957,7 @@ private fun CapturePreviewCard(
                                 textStyle = TextStyle(
                                     color = SolariTheme.colors.onBackground,
                                     fontSize = 14.sp,
-                                    lineHeight = 19.sp,
+                                    lineHeight = 16.sp,
                                     fontFamily = PlusJakartaSans,
                                     textAlign = TextAlign.Center
                                 ),
@@ -834,7 +975,7 @@ private fun CapturePreviewCard(
                                                 text = "Add a message",
                                                 color = SolariTheme.colors.onBackground.copy(alpha = 0.72f),
                                                 fontSize = 14.sp,
-                                                lineHeight = 19.sp,
+                                                lineHeight = 16.sp,
                                                 fontFamily = PlusJakartaSans,
                                                 textAlign = TextAlign.Center
                                             )
@@ -847,7 +988,7 @@ private fun CapturePreviewCard(
                     }
                     1 -> {
                         Surface(
-                            color = androidx.compose.ui.graphics.Color(0xFF8A2BE2).copy(alpha = 0.85f),
+                            color = androidx.compose.ui.graphics.Color(0xFFE4E4E4),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.padding(bottom = 15.dp)
                         ) {
@@ -856,17 +997,15 @@ private fun CapturePreviewCard(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.glasses),
-                                    contentDescription = null,
-                                    tint = androidx.compose.ui.graphics.Color.White,
-                                    modifier = Modifier.size(18.dp)
+                                Text(
+                                    text = "🕶️",
+                                    fontSize = 16.sp
                                 )
                                 Text(
                                     text = "OOTD",
-                                    color = SolariTheme.colors.onBackground,
+                                    color = androidx.compose.ui.graphics.Color(0xFF252525),
                                     fontSize = 14.sp,
-                                    lineHeight = 19.sp,
+                                    lineHeight = 16.sp,
                                     fontFamily = PlusJakartaSans,
                                     textAlign = TextAlign.Center,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
@@ -875,81 +1014,100 @@ private fun CapturePreviewCard(
                         }
                     }
                     2 -> {
+                        val condition = selectedWeatherCondition
+                        val surfaceColor = if (isWeatherLoading || condition == null) {
+                            SolariTheme.colors.background.copy(alpha = 0.7f)
+                        } else {
+                            getWeatherConditionColor(condition)
+                        }
                         Surface(
-                            color = androidx.compose.ui.graphics.Color(0xFF00ACC1).copy(alpha = 0.85f),
+                            color = surfaceColor,
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
                                 .padding(bottom = 15.dp)
-                                .scaledClickable(pressedScale = 1.08f) { onOpenWeatherSheet() }
+                                .then(
+                                    if (isWeatherLoading) {
+                                        Modifier
+                                    } else {
+                                        Modifier.combinedClickable(
+                                            onClick = onAutoFetchWeather,
+                                            onLongClick = onOpenWeatherSheet
+                                        )
+                                    }
+                                )
                         ) {
-                            Column(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                val condition = selectedWeatherCondition ?: "Sunny"
-                                val iconMap = mapOf("Sunny" to "☀️", "Cloudy" to "☁️", "Cool" to "❄️", "Cold" to "🥶", "Rainy" to "🌧️", "Snowy" to "🌨️", "Windy" to "💨", "Stormy" to "⛈️")
+                            if (isWeatherLoading) {
                                 Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = iconMap[condition] ?: "☀️",
-                                        fontSize = 18.sp
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(16.dp),
+                                        color = SolariTheme.colors.onBackground,
+                                        strokeWidth = 2.dp
                                     )
                                     Text(
-                                        text = condition,
+                                        text = "Fetching weather...",
                                         color = SolariTheme.colors.onBackground,
                                         fontSize = 14.sp,
-                                        lineHeight = 19.sp,
+                                        lineHeight = 16.sp,
                                         fontFamily = PlusJakartaSans,
                                         fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                                     )
                                 }
-                                BasicTextField(
-                                    value = weatherTempCText,
-                                    onValueChange = { onWeatherTempCTextChange(it.take(5)) },
-                                    modifier = Modifier
-                                        .widthIn(min = 72.dp, max = 100.dp)
-                                        .height(20.dp),
-                                    textStyle = TextStyle(
+                            } else if (condition == null) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(text = "☁️", fontSize = 18.sp)
+                                    Text(
+                                        text = "Get Weather",
                                         color = SolariTheme.colors.onBackground,
                                         fontSize = 14.sp,
-                                        lineHeight = 19.sp,
+                                        lineHeight = 16.sp,
                                         fontFamily = PlusJakartaSans,
-                                        textAlign = TextAlign.Center
-                                    ),
-                                    cursorBrush = SolidColor(SolariTheme.colors.onBackground),
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number, imeAction = ImeAction.Done),
-                                    keyboardActions = KeyboardActions(onDone = { onCaptionDone() }),
-                                    decorationBox = { innerTextField ->
-                                        Box(contentAlignment = Alignment.Center) {
-                                            if (weatherTempCText.isBlank()) {
-                                                Text(
-                                                    text = "Temp °C",
-                                                    color = SolariTheme.colors.onBackground.copy(alpha = 0.5f),
-                                                    fontSize = 14.sp,
-                                                    lineHeight = 19.sp,
-                                                    fontFamily = PlusJakartaSans,
-                                                    maxLines = 1
-                                                )
-                                            }
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                innerTextField()
-                                                if (weatherTempCText.isNotBlank()) {
-                                                    Text(
-                                                        text = "°C",
-                                                        color = SolariTheme.colors.onBackground,
-                                                        fontSize = 14.sp,
-                                                        lineHeight = 19.sp,
-                                                        fontFamily = PlusJakartaSans
-                                                    )
-                                                }
-                                            }
-                                        }
+                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                    )
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    val iconMap = mapOf("Sunny" to "☀️", "Cloudy" to "☁️", "Cool" to "❄️", "Cold" to "🥶", "Rainy" to "🌧️", "Snowy" to "🌨️", "Windy" to "💨", "Stormy" to "⛈️")
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = iconMap[condition] ?: "☀️",
+                                            fontSize = 18.sp
+                                        )
+                                        Text(
+                                            text = condition,
+                                            color = SolariTheme.colors.onBackground,
+                                            fontSize = 14.sp,
+                                            lineHeight = 16.sp,
+                                            fontFamily = PlusJakartaSans,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                        )
                                     }
-                                )
+                                    val tempVal = weatherTempCText.toFloatOrNull()
+                                    if (tempVal != null) {
+                                        Text(
+                                            text = "${tempVal.formatCaptionTemperature()}°C",
+                                            color = SolariTheme.colors.onBackground.copy(alpha = 0.7f),
+                                            fontSize = 14.sp,
+                                            lineHeight = 16.sp,
+                                            fontFamily = PlusJakartaSans,
+                                            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -958,7 +1116,9 @@ private fun CapturePreviewCard(
                             color = SolariTheme.colors.background.copy(alpha = 0.85f),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.padding(bottom = 15.dp)
-                                .scaledClickable(pressedScale = 1.08f) { focusRequester.requestFocus() }
+                                .scaledClickable(pressedScale = 1.08f) {
+                                    onRequestLocation()
+                                }
                                 .onGloballyPositioned { onCaptionBoundsChanged(it.boundsInRoot()) }
                         ) {
                             Row(
@@ -969,51 +1129,34 @@ private fun CapturePreviewCard(
                                 Icon(
                                     painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.location),
                                     contentDescription = null,
-                                    tint = androidx.compose.ui.graphics.Color.White,
+                                    tint = if (locationText.isBlank()) {
+                                        SolariTheme.colors.onBackground.copy(alpha = 0.7f)
+                                    } else {
+                                        SolariTheme.colors.onBackground
+                                    },
                                     modifier = Modifier.size(16.dp)
                                 )
-                                BasicTextField(
-                                    value = locationText,
-                                    onValueChange = { onLocationTextChange(it.take(48)) },
-                                    modifier = Modifier
-                                        .widthIn(min = 122.dp, max = 280.dp)
-                                        .focusRequester(focusRequester)
-                                        .onFocusChanged { onCaptionFocusChanged(it.isFocused) },
-                                    textStyle = TextStyle(
-                                        color = SolariTheme.colors.onBackground,
-                                        fontSize = 14.sp,
-                                        lineHeight = 19.sp,
-                                        fontFamily = PlusJakartaSans,
-                                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                        textAlign = TextAlign.Start
-                                    ),
-                                    cursorBrush = SolidColor(SolariTheme.colors.onBackground),
-                                    singleLine = true,
-                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                                    keyboardActions = KeyboardActions(onDone = { onCaptionDone() }),
-                                    decorationBox = { innerTextField ->
-                                        Box {
-                                            if (locationText.isBlank()) {
-                                                Text(
-                                                    text = "Location name",
-                                                    color = SolariTheme.colors.onBackground.copy(alpha = 0.7f),
-                                                    fontSize = 14.sp,
-                                                    lineHeight = 19.sp,
-                                                    fontFamily = PlusJakartaSans,
-                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                                                    maxLines = 1
-                                                )
-                                            }
-                                            innerTextField()
-                                        }
-                                    }
+                                Text(
+                                    text = locationText.ifBlank { "Location name" },
+                                    color = if (locationText.isBlank()) {
+                                        SolariTheme.colors.onBackground.copy(alpha = 0.7f)
+                                    } else {
+                                        SolariTheme.colors.onBackground
+                                    },
+                                    fontSize = 14.sp,
+                                    lineHeight = 16.sp,
+                                    fontFamily = PlusJakartaSans,
+                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.widthIn(max = 280.dp)
                                 )
                             }
                         }
                     }
                     4 -> {
                         Surface(
-                            color = androidx.compose.ui.graphics.Color(0xFFF57C00).copy(alpha = 0.85f),
+                            color = androidx.compose.ui.graphics.Color(0xFF000000).copy(alpha = 0.6f),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.padding(bottom = 15.dp)
                                 .onGloballyPositioned { onCaptionBoundsChanged(it.boundsInRoot()) }
@@ -1035,7 +1178,7 @@ private fun CapturePreviewCard(
                                         textStyle = TextStyle(
                                             color = SolariTheme.colors.onBackground,
                                             fontSize = 14.sp,
-                                            lineHeight = 19.sp,
+                                            lineHeight = 16.sp,
                                             fontFamily = PlusJakartaSans,
                                             textAlign = TextAlign.Center
                                         ),
@@ -1047,7 +1190,7 @@ private fun CapturePreviewCard(
                                         decorationBox = { innerTextField ->
                                             Box(contentAlignment = Alignment.Center) {
                                                 if (ratingReviewText.isBlank()) {
-                                                    Text("Write a review...", color = SolariTheme.colors.onBackground.copy(alpha = 0.7f), fontSize = 14.sp, fontFamily = PlusJakartaSans)
+                                                    Text("Write a review...", color = SolariTheme.colors.onBackground.copy(alpha = 0.7f), fontSize = 14.sp, lineHeight = 16.sp, fontFamily = PlusJakartaSans)
                                                 }
                                                 innerTextField()
                                             }
@@ -1059,7 +1202,7 @@ private fun CapturePreviewCard(
                     }
                     5 -> {
                         Surface(
-                            color = androidx.compose.ui.graphics.Color(0xFF1E88E5).copy(alpha = 0.85f),
+                            color = androidx.compose.ui.graphics.Color(0xFF000000).copy(alpha = 0.7f),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.padding(bottom = 15.dp)
                         ) {
@@ -1071,15 +1214,15 @@ private fun CapturePreviewCard(
                                 Icon(
                                     painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.clock),
                                     contentDescription = null,
-                                    tint = androidx.compose.ui.graphics.Color.White,
+                                    tint = androidx.compose.ui.graphics.Color(0xFFD9D9D9),
                                     modifier = Modifier.size(18.dp)
                                 )
                                 val timeFormat = SimpleDateFormat("h:mm a", Locale.getDefault())
                                 Text(
                                     text = timeFormat.format(Date()),
-                                    color = SolariTheme.colors.onBackground,
+                                    color = androidx.compose.ui.graphics.Color(0xFFD9D9D9),
                                     fontSize = 14.sp,
-                                    lineHeight = 19.sp,
+                                    lineHeight = 16.sp,
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
                                 )
@@ -1632,16 +1775,21 @@ private fun StarRatingInput(
             .onGloballyPositioned { width = it.size.width.toFloat() }
             .pointerInput(Unit) {
                 awaitEachGesture {
-                    val down = awaitFirstDown()
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    down.consume()
                     var x = down.position.x
                     if (width > 0) {
                         onRatingChange((Math.round((x / width * 5f).coerceIn(0f, 5f) * 2) / 2.0).toFloat())
                     }
                     do {
                         val event = awaitPointerEvent()
-                        x = event.changes.first().position.x
-                        if (width > 0) {
-                            onRatingChange((Math.round((x / width * 5f).coerceIn(0f, 5f) * 2) / 2.0).toFloat())
+                        val changes = event.changes
+                        changes.forEach { it.consume() }
+                        if (changes.isNotEmpty()) {
+                            x = changes.first().position.x
+                            if (width > 0) {
+                                onRatingChange((Math.round((x / width * 5f).coerceIn(0f, 5f) * 2) / 2.0).toFloat())
+                            }
                         }
                     } while (event.changes.any { it.pressed })
                 }
@@ -1675,4 +1823,183 @@ private fun Bitmap.centerCropSquare(): Bitmap {
     val left = (width - side) / 2
     val top = (height - side) / 2
     return Bitmap.createBitmap(this, left, top, side, side)
+}
+
+private suspend fun getCurrentLocation(context: android.content.Context): android.location.Location? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val locationManager = context.getSystemService(android.content.Context.LOCATION_SERVICE) as? android.location.LocationManager ?: return@withContext null
+        if (androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_COARSE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED &&
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.ACCESS_FINE_LOCATION) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            return@withContext null
+        }
+        
+        val providers = locationManager.getProviders(true)
+        var bestLocation: android.location.Location? = null
+        for (provider in providers) {
+            val loc = locationManager.getLastKnownLocation(provider) ?: continue
+            if (bestLocation == null || loc.accuracy < bestLocation.accuracy) {
+                bestLocation = loc
+            }
+        }
+        
+        if (bestLocation == null) {
+            val provider = if (locationManager.isProviderEnabled(android.location.LocationManager.NETWORK_PROVIDER)) {
+                android.location.LocationManager.NETWORK_PROVIDER
+            } else if (locationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER)) {
+                android.location.LocationManager.GPS_PROVIDER
+            } else {
+                null
+            }
+            
+            if (provider != null) {
+                val locationDeferred = kotlinx.coroutines.CompletableDeferred<android.location.Location?>()
+                var activeListener: android.location.LocationListener? = null
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    try {
+                        val listener = object : android.location.LocationListener {
+                            override fun onLocationChanged(location: android.location.Location) {
+                                locationDeferred.complete(location)
+                                locationManager.removeUpdates(this)
+                            }
+                            @Deprecated("Deprecated in Java")
+                            override fun onStatusChanged(p0: String?, p1: Int, p2: android.os.Bundle?) {}
+                            override fun onProviderEnabled(p0: String) {}
+                            override fun onProviderDisabled(p0: String) {}
+                        }
+                        activeListener = listener
+                        locationManager.requestLocationUpdates(provider, 0L, 0f, listener, android.os.Looper.getMainLooper())
+                    } catch (e: Exception) {
+                        locationDeferred.complete(null)
+                    }
+                }
+                
+                try {
+                    kotlinx.coroutines.withTimeoutOrNull(4000) {
+                        val newLoc = locationDeferred.await()
+                        if (newLoc != null) {
+                            bestLocation = newLoc
+                        }
+                    }
+                } finally {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        activeListener?.let { locationManager.removeUpdates(it) }
+                    }
+                }
+            }
+        }
+        bestLocation
+    } catch (e: Exception) {
+        null
+    }
+}
+
+private suspend fun getCityFromLocation(context: android.content.Context): String? {
+    val loc = getCurrentLocation(context) ?: return null
+    return try {
+        val geocoder = android.location.Geocoder(context, java.util.Locale.getDefault())
+        val addresses = geocoder.getFromLocationCompat(loc.latitude, loc.longitude, 1)
+        val address = addresses?.firstOrNull()
+        address?.locality ?: address?.subAdminArea ?: address?.adminArea ?: address?.featureName
+    } catch (e: Exception) {
+        android.util.Log.e("SolariLocation", "Failed to fetch city name", e)
+        null
+    }
+}
+
+private suspend fun android.location.Geocoder.getFromLocationCompat(
+    latitude: Double,
+    longitude: Double,
+    maxResults: Int
+): List<android.location.Address>? {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        suspendCancellableCoroutine { continuation ->
+            getFromLocation(
+                latitude,
+                longitude,
+                maxResults,
+                object : android.location.Geocoder.GeocodeListener {
+                    override fun onGeocode(addresses: MutableList<android.location.Address>) {
+                        if (continuation.isActive) {
+                            continuation.resume(addresses)
+                        }
+                    }
+
+                    override fun onError(errorMessage: String?) {
+                        if (continuation.isActive) {
+                            continuation.resume(null)
+                        }
+                    }
+                }
+            )
+        }
+    } else {
+        @Suppress("DEPRECATION")
+        getFromLocation(latitude, longitude, maxResults)
+    }
+}
+
+private suspend fun fetchWeatherForLocation(lat: Double, lon: Double): Pair<String, Float>? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    try {
+        val client = okhttp3.OkHttpClient()
+        val url = "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&current=temperature_2m,weather_code"
+        val request = okhttp3.Request.Builder().url(url).build()
+        val response = client.newCall(request).execute()
+        val body = response.body?.string() ?: return@withContext null
+        
+        val tempPattern = Regex("\"temperature_2m\"\\s*:\\s*(-?\\d+(?:\\.\\d+)?)")
+        val codePattern = Regex("\"weather_code\"\\s*:\\s*(\\d+)")
+        
+        val tempMatch = tempPattern.find(body)
+        val codeMatch = codePattern.find(body)
+        
+        val temp = tempMatch?.groupValues?.get(1)?.toFloatOrNull() ?: return@withContext null
+        val code = codeMatch?.groupValues?.get(1)?.toIntOrNull() ?: return@withContext null
+        
+        val baseCondition = when (code) {
+            0 -> "Sunny"
+            1, 2, 3 -> "Cloudy"
+            45, 48 -> "Cloudy"
+            51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82 -> "Rainy"
+            71, 73, 75, 77, 85, 86 -> "Snowy"
+            95, 96, 99 -> "Stormy"
+            else -> "Sunny"
+        }
+        
+        val condition = if (baseCondition == "Sunny" || baseCondition == "Cloudy") {
+            if (temp < 10f) {
+                "Cold"
+            } else if (temp < 20f) {
+                "Cool"
+            } else {
+                baseCondition
+            }
+        } else {
+            baseCondition
+        }
+        
+        Pair(condition, temp)
+    } catch (e: Exception) {
+        android.util.Log.e("SolariWeather", "Failed to fetch weather", e)
+        null
+    }
+}
+
+private fun getWeatherConditionColor(condition: String): androidx.compose.ui.graphics.Color {
+    val colorHex = when (condition) {
+        "Sunny" -> 0xFFFFA726    // Vibrant Orange
+        "Cloudy" -> 0xFF78909C   // Muted Slate Gray
+        "Cool" -> 0xFF26C6DA     // Cool Teal/Cyan
+        "Cold" -> 0xFF42A5F5     // Freezing Sky Blue
+        "Rainy" -> 0xFF5C6BC0    // Rainy Indigo
+        "Snowy" -> 0xFF90A4AE    // Soft Lavender Gray
+        "Windy" -> 0xFF26A69A    // Mint Green
+        "Stormy" -> 0xFF5E35B1   // Deep Violet/Purple
+        else -> 0xFF00ACC1       // Default Cyan
+    }
+    return androidx.compose.ui.graphics.Color(colorHex).copy(alpha = 0.85f)
+}
+
+private fun Float.formatCaptionTemperature(): String {
+    val rounded = roundToInt()
+    return if (this == rounded.toFloat()) rounded.toString() else toString()
 }

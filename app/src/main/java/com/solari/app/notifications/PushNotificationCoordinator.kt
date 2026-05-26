@@ -46,15 +46,15 @@ class PushNotificationCoordinator(
             }
     }
 
-    suspend fun registerStoredDeviceIfAuthenticated() {
+    suspend fun registerStoredDeviceIfAuthenticated(): Boolean {
         if (authRepository.getCurrentSession() == null) {
-            return
+            return false
         }
 
         val token = pushNotificationStore.getCurrentDeviceToken()
             ?: fetchAndStoreCurrentToken()
-            ?: return
-        registerDeviceToken(token)
+            ?: return false
+        return registerDeviceToken(token)
     }
 
     suspend fun onNewToken(token: String) {
@@ -68,18 +68,54 @@ class PushNotificationCoordinator(
         registerStoredDeviceIfAuthenticated()
     }
 
-    private suspend fun registerDeviceToken(token: String) {
+    /**
+     * Unregisters the current device from push notifications on the backend.
+     * Returns true if the device was successfully unregistered, false otherwise.
+     */
+    suspend fun unregisterDevice(): Boolean {
+        val token = pushNotificationStore.getCurrentDeviceToken() ?: return false
+
+        return when (userRepository.unregisterDevice(token)) {
+            is ApiResult.Success -> {
+                pushNotificationStore.clearRegisteredDeviceToken()
+                true
+            }
+            is ApiResult.Failure -> {
+                Log.w(LOG_TAG, "Failed to unregister device.")
+                false
+            }
+        }
+    }
+
+    /**
+     * Checks whether the current device is registered for push notifications on the backend.
+     * Returns true if registered, false if not registered or if the check fails.
+     */
+    suspend fun getDeviceNotificationStatus(): Boolean {
+        val token = pushNotificationStore.getCurrentDeviceToken() ?: return false
+
+        return when (val result = userRepository.getDeviceNotificationStatus(token)) {
+            is ApiResult.Success -> result.data
+            is ApiResult.Failure -> false
+        }
+    }
+
+    private suspend fun registerDeviceToken(token: String): Boolean {
         if (pushNotificationStore.getRegisteredDeviceToken() == token) {
-            return
+            return true
         }
 
-        when (val result = userRepository.registerDevice(token, platform = ANDROID_PLATFORM)) {
-            is ApiResult.Success -> pushNotificationStore.markRegisteredDeviceToken(token)
+        return when (val result = userRepository.registerDevice(token, platform = ANDROID_PLATFORM)) {
+            is ApiResult.Success -> {
+                pushNotificationStore.markRegisteredDeviceToken(token)
+                true
+            }
             is ApiResult.Failure -> {
                 Log.w(
                     LOG_TAG,
                     "Failed to register device. statusCode=${result.statusCode}, type=${result.type}, message=${result.message}"
                 )
+                false
             }
         }
     }

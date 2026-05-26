@@ -25,6 +25,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -62,6 +64,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Reply
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.CircularProgressIndicator
@@ -92,7 +95,6 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.geometry.CornerRadius
@@ -143,7 +145,7 @@ import kotlin.math.roundToInt
 private val ChatBackground @Composable get() = SolariTheme.colors.background
 private val ChatHeader @Composable get() = SolariTheme.colors.surface
 private val ChatIncomingBubble @Composable get() = SolariTheme.colors.surfaceVariant
-private val ChatOutgoingBubble @Composable get() = lerp(ChatIncomingBubble, Color.White, 0.10f)
+private val ChatOutgoingBubble @Composable get() = SolariTheme.colors.secondary
 private val ChatInput @Composable get() = SolariTheme.colors.surfaceVariant
 private val ChatPrimary @Composable get() = SolariTheme.colors.primary
 private val ChatText @Composable get() = SolariTheme.colors.onBackground
@@ -160,7 +162,7 @@ private const val OlderMessagesSpinnerItemThreshold = 5
 private const val MinuteMillis = 60_000L
 private const val HourMillis = 60L * MinuteMillis
 private const val DayMillis = 24L * HourMillis
-private const val MessageJumpHighlightDurationMillis = 1_500
+private const val MessageJumpHighlightDurationMillis = 1_000
 
 private val QuickReactionEmojis = listOf("❤️", "😂", "😮", "😢", "😡", "👍")
 
@@ -186,8 +188,11 @@ private data class ChatMessageItem(
 
 private data class ChatViewportAnchor(
     val firstVisibleItemIndex: Int,
+    val firstVisibleItemKey: String?,
     val firstVisibleItemScrollOffset: Int,
-    val isScrolledToBottom: Boolean
+    val isScrolledToBottom: Boolean,
+    val itemSize: Int,
+    val viewportHeight: Int
 )
 
 private data class ChatListItemAnchor(
@@ -247,6 +252,7 @@ fun ChatScreen(
     onNavigateToSettings: (chatId: String, partner: User?) -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToFeed: () -> Unit,
+    onNavigateToPost: (postId: String) -> Unit,
     onNavigateToProfile: () -> Unit
 ) {
     val currentUser = viewModel.currentUser
@@ -318,6 +324,7 @@ fun ChatScreen(
 
     Scaffold(
         containerColor = ChatBackground,
+        contentWindowInsets = androidx.compose.material3.ScaffoldDefaults.contentWindowInsets.exclude(WindowInsets.ime)
     ) { innerPadding ->
         val scaffoldBottomPadding = innerPadding.calculateBottomPadding()
         val targetContentBottomPadding = max(
@@ -331,6 +338,7 @@ fun ChatScreen(
             isLoadingMessages = viewModel.isLoadingMessages,
             lastListItemIndex = chatListModel.lastListItemIndex,
             lastMessageId = lastMessage?.id,
+            listItemIndexes = chatListModel.listItemIndexes,
             keyboardAnchorResetToken = keyboardAnchorResetToken,
             state = chatMessageListState
         )
@@ -353,6 +361,7 @@ fun ChatScreen(
                 partnerAvatarUrl = displayPartnerAvatarUrl,
                 partner = if (isReadOnly) null else partner,
                 isSettingsEnabled = !isDraftConversation,
+                isMuted = currentConversation?.isMuted == true,
                 onNavigateBack = onNavigateBack,
                 onNavigateToSettings = onNavigateToSettings
             )
@@ -422,7 +431,8 @@ fun ChatScreen(
                                                 chatMessageListState.pendingJumpToMessageId =
                                                     messageId
                                             }
-                                        }
+                                        },
+                                        onNavigateToPost = onNavigateToPost
                                     )
                                 }
                             }
@@ -496,11 +506,13 @@ fun ChatScreen(
                     },
                     onCancelReply = { replyingToMessage = null },
                     onInputFocused = {
-                        chatMessageListState.shouldKeepChatPinnedToBottom = true
-                        if (chatMessageListState.isMessageScrollInitialized && chatListModel.lastListItemIndex >= 0) {
-                            coroutineScope.launch {
-                                messageListState.scrollToMessageBottom(chatListModel.lastListItemIndex)
-                                chatMessageListState.lastBottomVisibleMessageId = lastMessage?.id
+                        if (messageListState.isScrolledToBottom()) {
+                            chatMessageListState.shouldKeepChatPinnedToBottom = true
+                            if (chatMessageListState.isMessageScrollInitialized && chatListModel.lastListItemIndex >= 0) {
+                                coroutineScope.launch {
+                                    messageListState.scrollToMessageBottom(chatListModel.lastListItemIndex)
+                                    chatMessageListState.lastBottomVisibleMessageId = lastMessage?.id
+                                }
                             }
                         }
                     },
@@ -728,6 +740,7 @@ private fun BindChatMessageListEffects(
 
             if (viewModel.canLoadOlderMessages &&
                 !viewModel.isLoadingOlderMessages &&
+                messageListState.isScrollInProgress &&
                 oldestVisibleOrdinal <= boundaryOrdinal
             ) {
                 requestOlderMessagesLoad()
@@ -898,6 +911,7 @@ private fun rememberChatContentPaddingState(
     isLoadingMessages: Boolean,
     lastListItemIndex: Int,
     lastMessageId: String?,
+    listItemIndexes: Map<String, Int>,
     keyboardAnchorResetToken: Int,
     state: ChatMessageListState
 ): ChatContentPaddingState {
@@ -911,9 +925,36 @@ private fun rememberChatContentPaddingState(
     var keyboardRestoreAnchor by remember(chatId) {
         mutableStateOf<ChatViewportAnchor?>(null)
     }
+    var hasUserDraggedSinceKeyboardOpen by remember(chatId) {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(state.listState.interactionSource) {
+        state.listState.interactionSource.interactions.collect { interaction ->
+            if (interaction is DragInteraction.Start) {
+                hasUserDraggedSinceKeyboardOpen = true
+            }
+        }
+    }
 
     LaunchedEffect(keyboardAnchorResetToken) {
         keyboardRestoreAnchor = null
+    }
+
+    LaunchedEffect(
+        state.listState,
+        targetContentBottomPadding,
+        scaffoldBottomPadding,
+        hasUserDraggedSinceKeyboardOpen
+    ) {
+        snapshotFlow {
+            state.listState.firstVisibleItemIndex to state.listState.firstVisibleItemScrollOffset
+        }.collect {
+            val isKeyboardOpen = (targetContentBottomPadding - scaffoldBottomPadding) > 1.dp
+            if (isKeyboardOpen && state.listState.isScrollInProgress && hasUserDraggedSinceKeyboardOpen) {
+                keyboardRestoreAnchor = null
+            }
+        }
     }
 
     LaunchedEffect(
@@ -922,6 +963,7 @@ private fun rememberChatContentPaddingState(
         isLoadingMessages,
         lastListItemIndex,
         lastMessageId,
+        listItemIndexes,
         keyboardAnchorResetToken,
         state.shouldKeepChatPinnedToBottom
     ) {
@@ -929,6 +971,16 @@ private fun rememberChatContentPaddingState(
             previousTargetContentBottomPadding = targetContentBottomPadding
             displayedContentBottomPadding = targetContentBottomPadding
             keyboardRestoreAnchor = null
+            hasUserDraggedSinceKeyboardOpen = false
+            return@LaunchedEffect
+        }
+
+        val isClosed = (targetContentBottomPadding - scaffoldBottomPadding) <= 1.dp
+        if (isClosed) {
+            previousTargetContentBottomPadding = scaffoldBottomPadding
+            displayedContentBottomPadding = scaffoldBottomPadding
+            keyboardRestoreAnchor = null
+            hasUserDraggedSinceKeyboardOpen = false
             return@LaunchedEffect
         }
 
@@ -948,23 +1000,47 @@ private fun rememberChatContentPaddingState(
                     state.lastBottomVisibleMessageId = lastMessageId
                     state.shouldKeepChatPinnedToBottom = true
                 } else {
-                    state.listState.scrollBy(with(density) { bottomInsetDelta.toPx() })
+                    keyboardRestoreAnchor?.let { anchor ->
+                        val totalDeltaPx = with(density) {
+                            (targetContentBottomPadding - scaffoldBottomPadding).toPx().toInt()
+                        }
+                        val currentIndex = anchor.firstVisibleItemKey?.let { key ->
+                            listItemIndexes[key]
+                        } ?: anchor.firstVisibleItemIndex
+
+                        val viewportHeightCurrent = anchor.viewportHeight - totalDeltaPx
+                        val targetScrollOffset = anchor.firstVisibleItemScrollOffset + anchor.itemSize - viewportHeightCurrent
+
+                        state.listState.requestScrollToItem(
+                            currentIndex,
+                            targetScrollOffset
+                        )
+                    }
                 }
             }
 
             bottomInsetDelta < 0.dp -> {
-                val restoreAnchor = keyboardRestoreAnchor
+                displayedContentBottomPadding = targetContentBottomPadding
                 if (state.shouldKeepChatPinnedToBottom && lastListItemIndex >= 0) {
                     state.listState.scrollToMessageBottom(lastListItemIndex)
-                } else if (restoreAnchor != null) {
-                    state.listState.restoreViewportAnchor(restoreAnchor)
-                }
-                displayedContentBottomPadding = scaffoldBottomPadding
-                keyboardRestoreAnchor = null
-            }
+                } else {
+                    keyboardRestoreAnchor?.let { anchor ->
+                        val totalDeltaPx = with(density) {
+                            (targetContentBottomPadding - scaffoldBottomPadding).toPx().toInt()
+                        }
+                        val currentIndex = anchor.firstVisibleItemKey?.let { key ->
+                            listItemIndexes[key]
+                        } ?: anchor.firstVisibleItemIndex
 
-            targetContentBottomPadding == scaffoldBottomPadding -> {
-                displayedContentBottomPadding = scaffoldBottomPadding
+                        val viewportHeightCurrent = anchor.viewportHeight - totalDeltaPx
+                        val targetScrollOffset = anchor.firstVisibleItemScrollOffset + anchor.itemSize - viewportHeightCurrent
+
+                        state.listState.requestScrollToItem(
+                            currentIndex,
+                            targetScrollOffset
+                        )
+                    }
+                }
             }
         }
     }
@@ -983,6 +1059,7 @@ private fun ChatHeaderBar(
     partnerAvatarUrl: String?,
     partner: User?,
     isSettingsEnabled: Boolean,
+    isMuted: Boolean,
     onNavigateBack: () -> Unit,
     onNavigateToSettings: (chatId: String, partner: User?) -> Unit
 ) {
@@ -1015,28 +1092,54 @@ private fun ChatHeaderBar(
 
             Spacer(modifier = Modifier.width(14.dp))
 
-            SolariAvatar(
-                imageUrl = partnerAvatarUrl,
-                username = partnerUsername,
-                contentDescription = "$partnerName avatar",
+            Row(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(CircleShape),
-                fontSize = 18.sp
-            )
+                    .weight(1f)
+                    .scaledClickable(
+                        pressedScale = 0.98f,
+                        enabled = isSettingsEnabled
+                    ) {
+                        onNavigateToSettings(chatId, partner)
+                    },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                SolariAvatar(
+                    imageUrl = partnerAvatarUrl,
+                    username = partnerUsername,
+                    contentDescription = "$partnerName avatar",
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(CircleShape),
+                    fontSize = 18.sp
+                )
 
-            Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-            Text(
-                text = partnerName,
-                color = ChatText,
-                fontSize = 17.sp,
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = partnerName,
+                        color = ChatText,
+                        fontSize = 17.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (isMuted) {
+                        Spacer(modifier = Modifier.width(7.dp))
+                        Icon(
+                            imageVector = Icons.Default.NotificationsOff,
+                            contentDescription = "Muted conversation",
+                            tint = ChatMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
 
             Box(
                 modifier = Modifier
@@ -1175,7 +1278,8 @@ private fun ChatMessageRow(
     onUnsendMessage: (Message) -> Unit,
     onReactToMessage: (Message, String) -> Unit,
     onReplyToMessage: (Message) -> Unit,
-    onJumpToMessage: (String) -> Unit
+    onJumpToMessage: (String) -> Unit,
+    onNavigateToPost: (String) -> Unit
 ) {
     val message = item.message
 
@@ -1198,7 +1302,8 @@ private fun ChatMessageRow(
                 onUnsendMessage = onUnsendMessage,
                 onReactToMessage = onReactToMessage,
                 onReplyToMessage = onReplyToMessage,
-                onJumpToMessage = onJumpToMessage
+                onJumpToMessage = onJumpToMessage,
+                onNavigateToPost = onNavigateToPost
             )
 
             if (item.showDeliveryFooter) {
@@ -1252,7 +1357,8 @@ private fun ChatMessageRow(
                 onUnsendMessage = onUnsendMessage,
                 onReactToMessage = onReactToMessage,
                 onReplyToMessage = onReplyToMessage,
-                onJumpToMessage = onJumpToMessage
+                onJumpToMessage = onJumpToMessage,
+                onNavigateToPost = onNavigateToPost
             )
         }
     }
@@ -1274,7 +1380,8 @@ private fun ChatBubble(
     onUnsendMessage: (Message) -> Unit,
     onReactToMessage: (Message, String) -> Unit,
     onReplyToMessage: (Message) -> Unit,
-    onJumpToMessage: (String) -> Unit
+    onJumpToMessage: (String) -> Unit,
+    onNavigateToPost: (String) -> Unit
 ) {
     var isActionMenuExpanded by remember { mutableStateOf(false) }
     var isEmojiPickerExpanded by remember { mutableStateOf(false) }
@@ -1288,19 +1395,23 @@ private fun ChatBubble(
     val replySwipeThresholdPx = with(LocalDensity.current) { 90.dp.toPx() }
     val bubbleShape = RoundedCornerShape(12.dp)
     val highlightScale by animateFloatAsState(
-        targetValue = if (isHighlighted) 1.1f else 1f,
+        targetValue = if (isHighlighted) 1.02f else 1f,
         animationSpec = tween(durationMillis = 220),
         label = "messageHighlightScale"
     )
+    val outgoingContentColor = SolariTheme.colors.onSecondary
+    val usesOutgoingContrast = isFromMe
     val bubbleBackgroundColor = when {
-        isHighlighted -> SolariTheme.colors.primary
         isFromMe -> ChatOutgoingBubble
+        isHighlighted -> SolariTheme.colors.tertiary.copy(alpha = 0.5f)
         else -> ChatIncomingBubble
     }
+    val bubbleContentColor = if (usesOutgoingContrast) outgoingContentColor else ChatText
+    val bubbleAccentColor = if (usesOutgoingContrast) outgoingContentColor else ChatPrimary
     val messageTextColor = when {
-        isHighlighted -> SolariTheme.colors.onPrimary
-        message.isDeleted -> ChatText.copy(alpha = 0.8f)
-        else -> ChatText
+        isHighlighted && !isFromMe -> ChatText
+        message.isDeleted -> bubbleContentColor.copy(alpha = 0.8f)
+        else -> bubbleContentColor
     }
     val currentUserReactionEmoji = message.reactions
         .firstOrNull { it.userId == currentUserId }
@@ -1316,7 +1427,7 @@ private fun ChatBubble(
     Box(
         modifier = Modifier
             .offset { IntOffset(dragOffsetPx.roundToInt(), 0) }
-            .widthIn(max = if (isFromMe) 292.dp else 248.dp)
+            .widthIn(max = if (isFromMe) 234.dp else 206.dp)
             .padding(bottom = if (hasReactions) 8.dp else 0.dp)
             .then(
                 if (message.isDeleted || !areActionsEnabled) {
@@ -1366,12 +1477,12 @@ private fun ChatBubble(
                     .scale(highlightScale)
                     .scaleOnPress(
                         interactionSource = bubbleInteractionSource,
-                        pressedScale = 1.1f
+                        pressedScale = 1.05f
                     )
                     .clip(bubbleShape)
                     .then(
                         if (message.isDeleted) {
-                            if (isHighlighted) {
+                            if (isFromMe || isHighlighted) {
                                 Modifier.background(bubbleBackgroundColor, bubbleShape)
                             } else {
                                 Modifier.border(
@@ -1407,8 +1518,11 @@ private fun ChatBubble(
                             message = message,
                             isFromMe = isFromMe,
                             partnerName = partnerName,
+                            contentColor = bubbleContentColor,
+                            accentColor = bubbleAccentColor,
                             isClickEnabled = areActionsEnabled,
-                            onReplyPreviewClick = onJumpToMessage
+                            onReplyPreviewClick = onJumpToMessage,
+                            onPostPreviewClick = onNavigateToPost
                         )
                     }
 
@@ -1427,6 +1541,12 @@ private fun ChatBubble(
             if (hasReactions) {
                 MessageReactionPill(
                     reactions = message.reactions,
+                    backgroundColor = if (usesOutgoingContrast) {
+                        outgoingContentColor.copy(alpha = 0.18f)
+                    } else {
+                        ChatReactionSurface
+                    },
+                    contentColor = if (usesOutgoingContrast) outgoingContentColor else ChatText,
                     onClick = { isReactionSheetExpanded = true },
                     modifier = Modifier
                         .align(Alignment.BottomEnd)
@@ -1498,8 +1618,11 @@ private fun MessageContextPreview(
     message: Message,
     isFromMe: Boolean,
     partnerName: String,
+    contentColor: Color,
+    accentColor: Color,
     isClickEnabled: Boolean,
-    onReplyPreviewClick: (String) -> Unit
+    onReplyPreviewClick: (String) -> Unit,
+    onPostPreviewClick: (String) -> Unit
 ) {
     val hasReferencedPost = message.referencedPostId != null
     val replyPreview = message.repliedMessagePreview
@@ -1517,25 +1640,36 @@ private fun MessageContextPreview(
         modifier = Modifier
             .widthIn(min = 160.dp, max = 220.dp)
             .clip(RoundedCornerShape(10.dp))
-            .background(SolariTheme.colors.onSurface.copy(alpha = 0.12f))
+            .background(contentColor.copy(alpha = 0.12f))
             .padding(8.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
         if (hasReferencedPost) {
             Row(
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .then(
+                        if (isClickEnabled) {
+                            Modifier.clickable {
+                                message.referencedPostId?.let(onPostPreviewClick)
+                            }
+                        } else {
+                            Modifier
+                        }
+                    )
             ) {
                 Box(
                     modifier = Modifier
                         .size(42.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(ChatHeader),
+                        .background(contentColor.copy(alpha = 0.10f)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (message.referencedPostThumbnailUrl.isNullOrBlank()) {
                         Text(
                             text = "Post",
-                            color = ChatMuted,
+                            color = contentColor.copy(alpha = 0.72f),
                             fontSize = 10.sp,
                             fontFamily = PlusJakartaSans,
                             fontWeight = FontWeight.Bold
@@ -1554,7 +1688,7 @@ private fun MessageContextPreview(
 
                 Text(
                     text = "Replied to a post",
-                    color = ChatText.copy(alpha = 0.86f),
+                    color = contentColor.copy(alpha = 0.86f),
                     fontSize = 12.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
@@ -1579,7 +1713,7 @@ private fun MessageContextPreview(
                     )
                     .border(
                         width = 1.dp,
-                        color = ChatMuted.copy(alpha = 0.28f),
+                        color = contentColor.copy(alpha = 0.28f),
                         shape = RoundedCornerShape(8.dp)
                     )
                     .padding(horizontal = 8.dp, vertical = 6.dp)
@@ -1590,7 +1724,7 @@ private fun MessageContextPreview(
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Reply,
                         contentDescription = null,
-                        tint = ChatPrimary,
+                        tint = accentColor,
                         modifier = Modifier.size(14.dp)
                     )
 
@@ -1598,7 +1732,7 @@ private fun MessageContextPreview(
 
                     Text(
                         text = replyLabel,
-                        color = ChatPrimary,
+                        color = accentColor,
                         fontSize = 11.sp,
                         lineHeight = 13.sp,
                         fontFamily = PlusJakartaSans,
@@ -1612,7 +1746,7 @@ private fun MessageContextPreview(
 
                 Text(
                     text = replyPreview,
-                    color = ChatText.copy(alpha = 0.72f),
+                    color = contentColor.copy(alpha = 0.72f),
                     fontSize = 12.sp,
                     lineHeight = 16.sp,
                     fontFamily = PlusJakartaSans,
@@ -1628,6 +1762,8 @@ private fun MessageContextPreview(
 @Composable
 private fun MessageReactionPill(
     reactions: List<MessageReaction>,
+    backgroundColor: Color,
+    contentColor: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -1639,13 +1775,13 @@ private fun MessageReactionPill(
     Box(
         modifier = modifier
             .clip(CircleShape)
-            .background(ChatReactionSurface)
+            .background(backgroundColor)
             .scaledClickable(pressedScale = 1.15f, onClick = onClick)
             .padding(horizontal = 3.dp)
     ) {
         Text(
             text = text,
-            color = ChatText,
+            color = contentColor,
             fontSize = 12.sp,
             fontFamily = PlusJakartaSans,
             fontWeight = FontWeight.Medium,
@@ -2591,10 +2727,22 @@ private fun chatMessageIdFromItemKey(itemKey: String): String? {
 private const val TypingIndicatorItemKey = "typing-indicator"
 
 private fun LazyListState.viewportAnchor(): ChatViewportAnchor {
+    val layoutInfo = layoutInfo
+    val visibleItems = layoutInfo.visibleItemsInfo
+    val bottomItem = visibleItems.lastOrNull()
+    val viewportHeight = layoutInfo.viewportEndOffset - layoutInfo.viewportStartOffset
+    val offsetFromBottom = if (bottomItem != null) {
+        viewportHeight - (bottomItem.offset + bottomItem.size)
+    } else {
+        0
+    }
     return ChatViewportAnchor(
-        firstVisibleItemIndex = firstVisibleItemIndex,
-        firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
-        isScrolledToBottom = isScrolledToBottom()
+        firstVisibleItemIndex = bottomItem?.index ?: 0,
+        firstVisibleItemKey = bottomItem?.key as? String,
+        firstVisibleItemScrollOffset = offsetFromBottom,
+        isScrolledToBottom = isScrolledToBottom(),
+        itemSize = bottomItem?.size ?: 0,
+        viewportHeight = viewportHeight
     )
 }
 
@@ -2620,12 +2768,6 @@ private fun LazyListState.isScrolledToBottom(): Boolean {
             lastVisibleItem.offset + lastVisibleItem.size <= layoutInfo.viewportEndOffset
 }
 
-private suspend fun LazyListState.restoreViewportAnchor(anchor: ChatViewportAnchor) {
-    scrollToItem(
-        index = anchor.firstVisibleItemIndex,
-        scrollOffset = anchor.firstVisibleItemScrollOffset
-    )
-}
 
 private fun Message.deliveryFooterText(partnerLastReadAt: Long?): String {
     return when (deliveryState) {

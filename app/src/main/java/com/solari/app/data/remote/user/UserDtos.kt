@@ -65,6 +65,12 @@ data class RegisterDeviceRequestDto(
 )
 
 @Serializable
+data class DeviceNotificationStatusDto(
+    @SerialName("is_enabled")
+    val isEnabled: Boolean
+)
+
+@Serializable
 data class GetBlockedUsersResponseDto(
     val items: List<BlockedUserDto>,
     @SerialName("next_cursor")

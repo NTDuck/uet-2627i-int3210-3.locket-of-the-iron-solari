@@ -6,14 +6,18 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.solari.app.data.conversation.ConversationRepository
+import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.data.user.UserRepository
+import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.User
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 class ChatSettingsViewModel(
     private val conversationRepository: ConversationRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val friendRepository: FriendRepository
 ) : ViewModel() {
     var partner by mutableStateOf<User?>(null)
         private set
@@ -35,9 +39,18 @@ class ChatSettingsViewModel(
     var successMessage by mutableStateOf<String?>(null)
         private set
 
+    var isNicknameMutating by mutableStateOf(false)
+        private set
+
+    private var partnerProfileDisplayName: String? = null
+
     fun setInitialPartner(initialPartner: User?) {
         if (partner == null) {
             partner = initialPartner
+            username = initialPartner?.username
+            if (initialPartner?.nickname.isNullOrBlank()) {
+                partnerProfileDisplayName = initialPartner?.displayName
+            }
         }
     }
 
@@ -52,18 +65,19 @@ class ChatSettingsViewModel(
             errorMessage = null
             successMessage = null
 
-            when (val result = conversationRepository.getConversation(chatId)) {
-                is ApiResult.Success -> {
-                    val conversation = result.data
-                    partner = conversation.otherUser
-                    username = conversation.otherUser.username
-                    isMuted = conversation.isMuted
-                    isReadOnly = conversation.isReadOnly
-                }
+            try {
+                when (val result = conversationRepository.getConversation(chatId)) {
+                    is ApiResult.Success -> {
+                        applyConversation(result.data)
+                    }
 
-                is ApiResult.Failure -> {
-                    errorMessage = result.message
+                    is ApiResult.Failure -> {
+                        errorMessage = result.message
+                    }
                 }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to load chat settings"
             }
 
             isLoading = false
@@ -125,8 +139,148 @@ class ChatSettingsViewModel(
         }
     }
 
+    fun setNickname(chatId: String, nickname: String) {
+        submitNicknameMutation(
+            chatId = chatId,
+            nickname = nickname,
+            successMessage = "Nickname set"
+        ) { partnerId, trimmedNickname ->
+            friendRepository.setNickname(partnerId, trimmedNickname)
+        }
+    }
+
+    fun updateNickname(chatId: String, nickname: String) {
+        submitNicknameMutation(
+            chatId = chatId,
+            nickname = nickname,
+            successMessage = "Nickname updated"
+        ) { partnerId, trimmedNickname ->
+            friendRepository.updateNickname(partnerId, trimmedNickname)
+        }
+    }
+
+    fun removeNickname(chatId: String) {
+        val targetPartner = partner ?: run {
+            errorMessage = "Missing chat partner"
+            return
+        }
+        if (isNicknameMutating) return
+
+        successMessage = null
+        errorMessage = null
+
+        viewModelScope.launch {
+            isNicknameMutating = true
+            try {
+                when (val result = friendRepository.removeNickname(targetPartner.id)) {
+                    is ApiResult.Success -> {
+                        partner = targetPartner.copy(
+                            displayName = partnerProfileDisplayName
+                                ?: targetPartner.username,
+                            nickname = null
+                        )
+                        refreshConversation(chatId)
+                        successMessage = "Nickname removed"
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to remove nickname"
+            } finally {
+                isNicknameMutating = false
+            }
+        }
+    }
+
     fun clearMessages() {
         errorMessage = null
         successMessage = null
+    }
+
+    @Suppress("SameParameterValue")
+    private fun submitNicknameMutation(
+        chatId: String,
+        nickname: String,
+        successMessage: String,
+        request: suspend (partnerId: String, nickname: String) -> ApiResult<Unit>
+    ) {
+        val targetPartner = partner ?: run {
+            errorMessage = "Missing chat partner"
+            return
+        }
+        if (isNicknameMutating) return
+
+        val trimmedNickname = nickname.trim()
+        if (trimmedNickname.isBlank()) {
+            return
+        }
+
+        this.successMessage = null
+        errorMessage = null
+
+        viewModelScope.launch {
+            isNicknameMutating = true
+            try {
+                when (val result = request(targetPartner.id, trimmedNickname)) {
+                    is ApiResult.Success -> {
+                        partner = targetPartner.copy(
+                            displayName = trimmedNickname,
+                            nickname = trimmedNickname
+                        )
+                        refreshConversation(chatId)
+                        this@ChatSettingsViewModel.successMessage = successMessage
+                    }
+
+                    is ApiResult.Failure -> errorMessage = result.message
+                }
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to update nickname"
+            } finally {
+                isNicknameMutating = false
+            }
+        }
+    }
+
+    private suspend fun refreshConversation(chatId: String) {
+        if (chatId.isBlank()) return
+        when (val result = conversationRepository.getConversation(chatId)) {
+            is ApiResult.Success -> applyConversation(result.data)
+            is ApiResult.Failure -> errorMessage = result.message
+        }
+    }
+
+    private suspend fun applyConversation(conversation: Conversation) {
+        val rawPartner = conversation.otherUser
+        val nickname = if (conversation.isReadOnly) {
+            null
+        } else {
+            when (val result = friendRepository.getNicknames()) {
+                is ApiResult.Success -> result.data[rawPartner.id]?.takeIf { it.isNotBlank() }
+                    ?: rawPartner.nickname?.takeIf { it.isNotBlank() }
+
+                is ApiResult.Failure -> {
+                    if (errorMessage == null) {
+                        errorMessage = result.message
+                    }
+                    rawPartner.nickname?.takeIf { it.isNotBlank() }
+                }
+            }
+        }
+
+        partnerProfileDisplayName = rawPartner.displayName
+        partner = if (nickname == null || conversation.isReadOnly) {
+            rawPartner.copy(nickname = null)
+        } else {
+            rawPartner.copy(
+                displayName = nickname,
+                nickname = nickname
+            )
+        }
+        username = rawPartner.username
+        isMuted = conversation.isMuted
+        isReadOnly = conversation.isReadOnly
     }
 }

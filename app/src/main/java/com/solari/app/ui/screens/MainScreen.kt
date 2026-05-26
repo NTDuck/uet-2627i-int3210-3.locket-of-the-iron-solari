@@ -31,6 +31,8 @@ import com.solari.app.ui.viewmodels.HomepageBeforeCapturingViewModel
 import com.solari.app.ui.viewmodels.ProfileViewModel
 import com.solari.app.ui.viewmodels.SettingsViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(
     ExperimentalFoundationApi::class,
@@ -66,7 +68,8 @@ fun MainScreen(
     onCapture: (CapturedMedia) -> Unit,
     onLogout: () -> Unit,
     onProfileFeedbackConsumed: () -> Unit = {},
-    onConversationFeedbackConsumed: () -> Unit = {}
+    onConversationFeedbackConsumed: () -> Unit = {},
+    onChatsBadgeChanged: (Boolean) -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 4 }
 
@@ -79,10 +82,21 @@ fun MainScreen(
         }
     }
 
+    val conversationViewModel: ConversationViewModel = viewModel(factory = viewModelFactory)
+
+    LaunchedEffect(conversationViewModel) {
+        snapshotFlow { conversationViewModel.hasUnreadActivity }
+            .distinctUntilChanged()
+            .collect { onChatsBadgeChanged(it) }
+    }
+
     LaunchedEffect(pagerState.currentPage) {
         onCurrentPageChange(pagerState.currentPage)
         if (pageHistory.lastOrNull() != pagerState.currentPage) {
             onPageHistoryChange(pageHistory + pagerState.currentPage)
+        }
+        if (pagerState.currentPage == 2) {
+            conversationViewModel.markFriendRequestsAsSeen()
         }
     }
 
@@ -161,9 +175,8 @@ fun MainScreen(
                 }
 
                 2 -> {
-                    val viewModel: ConversationViewModel = viewModel(factory = viewModelFactory)
                     ConversationScreen(
-                        viewModel = viewModel,
+                        viewModel = conversationViewModel,
                         externalFeedbackMessage = conversationFeedbackMessage,
                         onExternalFeedbackConsumed = onConversationFeedbackConsumed,
                         onNavigateToChat = onNavigateToChat,

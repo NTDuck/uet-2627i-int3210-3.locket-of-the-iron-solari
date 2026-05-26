@@ -28,6 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GroupAdd
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -134,6 +135,7 @@ fun ConversationScreen(
     PullToRefreshBox(
         isRefreshing = isUserRefreshing,
         onRefresh = {
+            isUserRefreshing = true
             viewModel.refresh()
         },
         modifier = Modifier
@@ -247,25 +249,18 @@ fun ConversationScreen(
                             )
                         }
 
-                        if (viewModel.canViewMoreFriendRequests || viewModel.canViewLessFriendRequests) {
+                        if (viewModel.canViewMoreFriendRequests) {
                             item {
                                 Box(
                                     modifier = Modifier.fillMaxWidth(),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     FriendRequestTogglePill(
-                                        text = when {
-                                            viewModel.canViewMoreFriendRequests -> "View more"
-                                            else -> "View less"
-                                        },
+                                        text = "View more",
                                         isLoading = viewModel.isLoadingMoreFriendRequests,
                                         enabled = !viewModel.isLoadingMoreFriendRequests,
                                         onClick = {
-                                            if (viewModel.canViewMoreFriendRequests) {
-                                                viewModel.expandFriendRequests()
-                                            } else {
-                                                viewModel.collapseFriendRequests()
-                                            }
+                                            viewModel.loadMoreFriendRequests()
                                         }
                                     )
                                 }
@@ -324,6 +319,26 @@ fun ConversationScreen(
                                 },
                                 modifier = Modifier.animateItem()
                             )
+                        }
+
+                        if (viewModel.canViewMoreConversations) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    FriendRequestTogglePill(
+                                        text = "View more",
+                                        isLoading = viewModel.isFetchingMoreConversations,
+                                        enabled = !viewModel.isFetchingMoreConversations,
+                                        onClick = {
+                                            viewModel.loadMoreConversations()
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -543,7 +558,7 @@ private fun ConversationFeedbackPill(
 
             Text(
                 text = message,
-                color = SolariTheme.colors.onBackground,
+                color = Color(0xFFE7E7E7),
 
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
@@ -638,14 +653,30 @@ fun ConversationItem(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = displayName,
-                            color = SolariTheme.colors.onBackground,
-
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            fontFamily = PlusJakartaSans
-                        )
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = displayName,
+                                color = SolariTheme.colors.onBackground,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp,
+                                fontFamily = PlusJakartaSans,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (conversation.isMuted) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.Default.NotificationsOff,
+                                    contentDescription = "Muted conversation",
+                                    tint = SolariTheme.colors.onSurfaceVariant.copy(alpha = 0.72f),
+                                    modifier = Modifier.size(14.dp)
+                                )
+                            }
+                        }
                         Text(
                             text = conversation.timestamp.toRelativeTimeLabel(),
                             color = if (conversation.isUnread) SolariTheme.colors.secondary else SolariTheme.colors.onSurfaceVariant,

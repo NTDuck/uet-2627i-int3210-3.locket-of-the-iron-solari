@@ -30,6 +30,14 @@ class SolariFirebaseMessagingService : FirebaseMessagingService() {
         val type = message.data["type"]
 
         if (type == "NEW_POST_PUBLISHED") {
+            val postId = message.data["postId"]
+            if (postId != null) {
+                CoroutineScope(Dispatchers.IO).launch {
+                    val appContainer = (application as? com.solari.app.SolariApplication)?.appContainer
+                    appContainer?.feedRepository?.emitNewlyPublishedPost(postId)
+                }
+            }
+
             val ids = AppWidgetManager.getInstance(applicationContext)
                 .getAppWidgetIds(
                     ComponentName(
@@ -52,5 +60,11 @@ class SolariFirebaseMessagingService : FirebaseMessagingService() {
         } else {
             Log.d("SolariWidgetUpdate", "Ignored widget update for FCM type: $type")
         }
+
+        // Display foreground notification for all types (dispatcher handles suppression)
+        ForegroundNotificationDispatcher.dispatchForegroundNotification(
+            context = applicationContext,
+            message = message
+        )
     }
 }

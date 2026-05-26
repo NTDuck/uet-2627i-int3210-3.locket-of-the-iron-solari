@@ -43,6 +43,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -57,6 +59,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.VerticalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -82,6 +85,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -166,7 +170,6 @@ private const val FeedSharedMediaTransitionMillis = 200
 private val FeedSharedMediaCornerRadius = 8.dp
 private val FeedPostMediaCornerRadius = 14.dp
 private val FeedInputOverlayKeyboardGap = 14.dp
-private val FeedInputOverlayBottomBarCompensation = 104.dp
 private const val FeedNeighborPrefetchDistance = 2
 private const val FeedNeighborPrefetchParallelism = 4
 
@@ -243,7 +246,13 @@ fun FeedScreen(
             } else {
                 emptyList()
             }
-            syncedInitialPosts + additionalPosts
+            
+            val newestInitialTimestamp = visibleInitialPosts.maxOfOrNull { it.timestamp } ?: 0L
+            val (newPrependedPosts, oldAppendedPosts) = additionalPosts.partition {
+                it.timestamp > newestInitialTimestamp
+            }
+            
+            newPrependedPosts.sortedByDescending { it.timestamp } + syncedInitialPosts + oldAppendedPosts.sortedByDescending { it.timestamp }
         } else {
             val initialSelectedPost = initialPost?.takeIf { it.id !in deletedPostIds }
             val selectedPost = initialPostId
@@ -272,7 +281,11 @@ fun FeedScreen(
             }
 
             if (selectedPost != null) {
-                listOf(selectedPost) + sortedPosts
+                val newestTimestamp = selectedPost.timestamp
+                val (newPrependedPosts, remainingSortedPosts) = sortedPosts.partition {
+                    it.timestamp > newestTimestamp
+                }
+                newPrependedPosts.sortedByDescending { it.timestamp } + selectedPost + remainingSortedPosts
             } else {
                 sortedPosts
             }
@@ -287,6 +300,22 @@ fun FeedScreen(
     }
     val pagerState = rememberPagerState(initialPage = initialPostPage) { posts.size }
     var isInitialScrollDone by remember { mutableStateOf(initialPostId == null) }
+
+    var lastPosts by remember { mutableStateOf<List<Post>>(emptyList()) }
+
+    LaunchedEffect(posts) {
+        if (lastPosts.isNotEmpty() && posts.isNotEmpty()) {
+            val prevVisibleIndex = pagerState.currentPage
+            if (prevVisibleIndex in lastPosts.indices) {
+                val prevVisiblePostId = lastPosts[prevVisibleIndex].id
+                val newIndex = posts.indexOfFirst { it.id == prevVisiblePostId }
+                if (newIndex >= 0 && newIndex != prevVisibleIndex) {
+                    pagerState.scrollToPage(newIndex)
+                }
+            }
+        }
+        lastPosts = posts
+    }
 
     LaunchedEffect(initialPostId, posts.size) {
         if (initialPostId != null && !isInitialScrollDone) {
@@ -593,6 +622,12 @@ fun FeedScreen(
                 ?.let { viewModel.postActivities[it] }
                 .orEmpty(),
             isLoading = currentActivitySheetPostId in viewModel.loadingPostActivityIds,
+            isLoadingMore = currentActivitySheetPostId in viewModel.loadingMorePostActivityIds,
+            canLoadMore = currentActivitySheetPostId
+                ?.let { viewModel.canLoadMorePostActivity(it) } == true,
+            onLoadMore = {
+                currentActivitySheetPostId?.let { viewModel.loadMorePostActivity(it) }
+            },
             onDismiss = { isActivitySheetVisible = false }
         )
 
@@ -704,11 +739,16 @@ fun FeedScreen(
             val overlayMode = activeInputOverlay!!
             val density = LocalDensity.current
             val keyboardBottom = WindowInsets.ime.getBottom(density)
+            val navBarsBottom = WindowInsets.navigationBars.getBottom(density)
             val keyboardBottomPadding = with(density) { keyboardBottom.toDp() }
-            // Subtract the Scaffold bottom bar height from IME inset — our container's
-            // bottom is already offset upward by the nav bar, so raw IME inset overshoots.
+            val navBarsBottomPadding = with(density) { navBarsBottom.toDp() }
+            // MainScreen has a bottom padding of 59.dp + navigationBarsPadding()
+            val bottomOffset = navBarsBottomPadding + 59.dp
+            
+            // Subtract the bottom offset from IME inset — our container's
+            // bottom is already offset upward by the nav bar and spacer, so raw IME inset overshoots.
             val compensatedKeyboardPadding = if (keyboardBottom > 0) {
-                (keyboardBottomPadding - FeedInputOverlayBottomBarCompensation).coerceAtLeast(0.dp)
+                (keyboardBottomPadding - bottomOffset).coerceAtLeast(0.dp)
             } else {
                 0.dp
             }
@@ -956,7 +996,7 @@ private fun FeedFeedbackPill(message: String) {
 
             Text(
                 text = message,
-                color = SolariTheme.colors.onBackground,
+                color = Color(0xFFE7E7E7),
 
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
@@ -1524,9 +1564,9 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
             modifier = modifier
                 .widthIn(max = 280.dp)
                 .wrapContentWidth()
-                .clip(RoundedCornerShape(10.dp))
+                .clip(RoundedCornerShape(12.dp))
                 .background(SolariTheme.colors.background.copy(alpha = 0.7f))
-                .padding(horizontal = 12.dp, vertical = 6.dp)
+                .padding(horizontal = 12.dp, vertical = 9.dp)
         )
         return
     }
@@ -1537,22 +1577,21 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                 modifier = modifier
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SolariTheme.colors.background.copy(alpha = 0.85f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(androidx.compose.ui.graphics.Color(0xFFE4E4E4))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.glasses),
-                    contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color.White,
-                    modifier = Modifier.size(16.dp)
+                Text(
+                    text = "🕶️",
+                    fontSize = 16.sp
                 )
                 Text(
                     text = "OOTD",
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = androidx.compose.ui.graphics.Color(0xFF252525),
                     fontSize = 14.sp,
+                    lineHeight = 16.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold
                 )
@@ -1560,22 +1599,36 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
         }
         is CaptionMetadata.Weather -> {
             val iconMap = mapOf("Sunny" to "☀️", "Cloudy" to "☁️", "Cool" to "❄️", "Cold" to "🥶", "Rainy" to "🌧️", "Snowy" to "🌨️", "Windy" to "💨", "Stormy" to "⛈️")
-            Row(
+            Column(
                 modifier = modifier
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(androidx.compose.ui.graphics.Color(0xFF00ACC1).copy(alpha = 0.85f)) // Cyan for Weather
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(getWeatherConditionColor(metadata.condition))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(text = iconMap[metadata.condition] ?: "☀️", fontSize = 16.sp)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = iconMap[metadata.condition] ?: "☀️", fontSize = 18.sp)
+                    Text(
+                        text = metadata.condition,
+                        color = SolariTheme.colors.onBackground,
+                        fontSize = 14.sp,
+                        lineHeight = 16.sp,
+                        fontFamily = PlusJakartaSans,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
                 if (metadata.temperatureC != null) {
                     Text(
                         text = "${metadata.temperatureC.formatCaptionTemperature()}°C",
-                        color = androidx.compose.ui.graphics.Color.White,
+                        color = SolariTheme.colors.onBackground,
                         fontSize = 14.sp,
+                        lineHeight = 16.sp,
                         fontFamily = PlusJakartaSans,
                         fontWeight = FontWeight.Bold
                     )
@@ -1587,22 +1640,23 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                 modifier = modifier
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
-                    .clip(RoundedCornerShape(10.dp))
+                    .clip(RoundedCornerShape(12.dp))
                     .background(SolariTheme.colors.background.copy(alpha = 0.85f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.location),
                     contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color.White,
+                    tint = SolariTheme.colors.onBackground,
                     modifier = Modifier.size(16.dp)
                 )
                 Text(
                     text = metadata.placeName,
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = SolariTheme.colors.onBackground,
                     fontSize = 14.sp,
+                    lineHeight = 16.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
@@ -1615,39 +1669,43 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                 modifier = modifier
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SolariTheme.colors.background.copy(alpha = 0.85f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(androidx.compose.ui.graphics.Color(0xFF000000).copy(alpha = 0.7f))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     painter = androidx.compose.ui.res.painterResource(com.solari.app.R.drawable.clock),
                     contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color.White,
+                    tint = androidx.compose.ui.graphics.Color(0xFFD9D9D9),
                     modifier = Modifier.size(18.dp)
                 )
                 Text(
                     text = metadata.time,
-                    color = androidx.compose.ui.graphics.Color.White,
+                    color = androidx.compose.ui.graphics.Color(0xFFD9D9D9),
                     fontSize = 14.sp,
+                    lineHeight = 16.sp,
                     fontFamily = PlusJakartaSans,
                     fontWeight = FontWeight.Bold
                 )
             }
         }
         is CaptionMetadata.Rating -> {
-            Row(
+            Column(
                 modifier = modifier
                     .widthIn(max = 280.dp)
                     .wrapContentWidth()
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(SolariTheme.colors.background.copy(alpha = 0.85f))
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(androidx.compose.ui.graphics.Color(0xFF000000).copy(alpha = 0.6f))
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     for (i in 1..5) {
                         val fraction = (metadata.starRating - (i - 1)).coerceIn(0f, 1f)
                         Box(modifier = Modifier.size(16.dp)) {
@@ -1670,12 +1728,12 @@ private fun FeedCaptionPill(post: Post, modifier: Modifier = Modifier) {
                 }
                 if (!metadata.review.isNullOrBlank()) {
                     Text(
-                        text = " - \"${metadata.review}\"",
-                        color = androidx.compose.ui.graphics.Color.White,
+                        text = "\"${metadata.review}\"",
+                        color = SolariTheme.colors.onBackground,
                         fontSize = 14.sp,
+                        lineHeight = 16.sp,
                         fontFamily = PlusJakartaSans,
-                        fontStyle = androidx.compose.ui.text.font.FontStyle.Italic,
-                        maxLines = 1,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
@@ -1743,10 +1801,13 @@ private fun Post.resolvedCaptionMetadata(): CaptionMetadata? {
             CaptionMetadata.Weather(condition, temperatureC)
         }
         "location" -> trimmedCaption
+            .removePrefix("📍")
+            .trim()
             .takeIf { it.isNotEmpty() }
             ?.let(CaptionMetadata::Location)
         "clock" -> trimmedCaption
             .removePrefix("⏱️")
+            .removePrefix("⏱")
             .trim()
             .takeIf { it.isNotEmpty() }
             ?.let(CaptionMetadata::Clock)
@@ -1756,7 +1817,7 @@ private fun Post.resolvedCaptionMetadata(): CaptionMetadata? {
                 ?.groupValues
                 ?.getOrNull(1)
                 ?.toFloatOrNull()
-                ?: return null
+                ?: 5f
             val review = trimmedCaption
                 .substringAfter(" - ", missingDelimiterValue = "")
                 .takeIf { it.isNotBlank() }
@@ -1805,6 +1866,12 @@ private fun String.toGeneratedCaptionMetadataOrNull(): CaptionMetadata? {
         return CaptionMetadata.Clock(clockCaption)
     }
 
+    val locationCaption = removePrefix("📍")
+        .trim()
+    if (locationCaption != this && locationCaption.isNotEmpty()) {
+        return CaptionMetadata.Location(locationCaption)
+    }
+
     return null
 }
 
@@ -1818,10 +1885,14 @@ private fun FeedActivitySheet(
     visible: Boolean,
     activities: List<PostActivityEntry>,
     isLoading: Boolean,
+    isLoadingMore: Boolean,
+    canLoadMore: Boolean,
+    onLoadMore: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val dismissInteractionSource = remember { MutableInteractionSource() }
     val sheetInteractionSource = remember { MutableInteractionSource() }
+    val listState = rememberLazyListState()
     var isSheetDragging by remember { mutableStateOf(false) }
     var sheetDragOffsetPx by remember { mutableFloatStateOf(0f) }
     var expandedUserIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -1835,6 +1906,15 @@ private fun FeedActivitySheet(
                 )
             }
     }
+    val shouldLoadMore by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?: return@derivedStateOf false
+            layoutInfo.totalItemsCount > 0 &&
+                lastVisibleItemIndex >= layoutInfo.totalItemsCount - 1
+        }
+    }
     val animatedSheetDragOffsetPx by animateFloatAsState(
         targetValue = sheetDragOffsetPx,
         animationSpec = tween(durationMillis = if (isSheetDragging) 0 else 180),
@@ -1845,6 +1925,13 @@ private fun FeedActivitySheet(
         if (visible) {
             sheetDragOffsetPx = 0f
             expandedUserIds = emptySet()
+            listState.scrollToItem(0)
+        }
+    }
+
+    LaunchedEffect(visible, shouldLoadMore, canLoadMore, isLoadingMore, isLoading, activities.size) {
+        if (visible && shouldLoadMore && canLoadMore && !isLoadingMore && !isLoading) {
+            onLoadMore()
         }
     }
 
@@ -1974,6 +2061,7 @@ private fun FeedActivitySheet(
                     }
 
                     else -> LazyColumn(
+                        state = listState,
                         modifier = Modifier.fillMaxSize(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         contentPadding = PaddingValues(start = 19.dp, end = 19.dp, bottom = 26.dp)
@@ -1995,6 +2083,23 @@ private fun FeedActivitySheet(
                                     expandedUserIds = expandedUserIds - group.user.id
                                 }
                             )
+                        }
+                        if (isLoadingMore) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = SolariTheme.colors.primary,
+                                        trackColor = SolariTheme.colors.surfaceVariant,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -2642,7 +2747,13 @@ private fun FeedMessageField(
                     }
                     innerTextField()
                 }
-            }
+            },
+            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                imeAction = androidx.compose.ui.text.input.ImeAction.Send
+            ),
+            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                onSend = { onSend() }
+            )
         )
 
         Icon(
@@ -2692,4 +2803,19 @@ private fun FeedBrowseButton(
             fontWeight = FontWeight.Bold
         )
     }
+}
+
+private fun getWeatherConditionColor(condition: String): androidx.compose.ui.graphics.Color {
+    val colorHex = when (condition) {
+        "Sunny" -> 0xFFFFA726    // Vibrant Orange
+        "Cloudy" -> 0xFF78909C   // Muted Slate Gray
+        "Cool" -> 0xFF26C6DA     // Cool Teal/Cyan
+        "Cold" -> 0xFF42A5F5     // Freezing Sky Blue
+        "Rainy" -> 0xFF5C6BC0    // Rainy Indigo
+        "Snowy" -> 0xFF90A4AE    // Soft Lavender Gray
+        "Windy" -> 0xFF26A69A    // Mint Green
+        "Stormy" -> 0xFF5E35B1   // Deep Violet/Purple
+        else -> 0xFF00ACC1       // Default Cyan
+    }
+    return androidx.compose.ui.graphics.Color(colorHex).copy(alpha = 0.85f)
 }
