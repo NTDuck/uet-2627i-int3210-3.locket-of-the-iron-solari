@@ -87,7 +87,8 @@ class SolariViewModelFactory(
             modelClass.isAssignableFrom(ChatSettingsViewModel::class.java) -> {
                 ChatSettingsViewModel(
                     conversationRepository = conversationRepository,
-                    userRepository = userRepository
+                    userRepository = userRepository,
+                    friendRepository = friendRepository
                 )
             }
 
