@@ -1404,23 +1404,21 @@ private fun SolariApp(
                 composable(SolariRoute.Screen.CameraAfter.name) {
                     val viewModel: HomepageAfterCapturingViewModel =
                         viewModel(factory = appContainer.viewModelFactory)
-                    val capturedMediaUri = navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.get<String>(CapturedMediaUriKey)
-                    val capturedMediaType = navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.get<String>(CapturedMediaTypeKey)
+                    val currentSavedStateHandle = navController.currentBackStackEntry?.savedStateHandle
+                    val previousSavedStateHandle = navController.previousBackStackEntry?.savedStateHandle
+
+                    val capturedMediaUri = currentSavedStateHandle?.get<String>(CapturedMediaUriKey)
+                        ?: previousSavedStateHandle?.get<String>(CapturedMediaUriKey)
+                    val capturedMediaType = currentSavedStateHandle?.get<String>(CapturedMediaTypeKey)
+                        ?: previousSavedStateHandle?.get<String>(CapturedMediaTypeKey)
                         ?: "image/jpeg"
-                    val capturedMediaIsVideo = navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.get<Boolean>(CapturedMediaIsVideoKey)
+                    val capturedMediaIsVideo = currentSavedStateHandle?.get<Boolean>(CapturedMediaIsVideoKey)
+                        ?: previousSavedStateHandle?.get<Boolean>(CapturedMediaIsVideoKey)
                         ?: false
-                    val capturedMediaDuration = navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.get<Long>(CapturedMediaDurationKey)
-                    val capturedMediaSource = navController.previousBackStackEntry
-                        ?.savedStateHandle
-                        ?.get<String>(CapturedMediaSourceKey)
+                    val capturedMediaDuration = currentSavedStateHandle?.get<Long>(CapturedMediaDurationKey)
+                        ?: previousSavedStateHandle?.get<Long>(CapturedMediaDurationKey)
+                    val capturedMediaSource = (currentSavedStateHandle?.get<String>(CapturedMediaSourceKey)
+                        ?: previousSavedStateHandle?.get<String>(CapturedMediaSourceKey))
                         ?.let { runCatching { CapturedMediaSource.valueOf(it) }.getOrNull() }
                         ?: CapturedMediaSource.Camera
                     val routeCapturedMedia =

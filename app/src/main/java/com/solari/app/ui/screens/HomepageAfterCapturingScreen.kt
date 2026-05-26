@@ -440,6 +440,7 @@ fun HomepageAfterCapturingScreen(
             return
         }
 
+        android.util.Log.d("SolariDownload", "downloadPreviewMedia: media uri = ${media?.uri}, viewModel capturedMedia uri = ${viewModel.capturedMedia?.uri}, initialCapturedMedia uri = ${initialCapturedMedia?.uri}")
         coroutineScope.launch {
             saveMediaToPictures(context, media)
                 .onSuccess { showTopFeedback("Saved to Pictures/Solari", true) }
@@ -496,7 +497,7 @@ fun HomepageAfterCapturingScreen(
                         onAutoFetchWeather = requestWeather,
                         pagerState = pagerState,
                         focusRequester = focusRequester,
-                        onDownload = ::downloadPreviewMedia,
+                        onDownload = { downloadPreviewMedia() },
                         onCaptionBoundsChanged = { captionBounds = it },
                         onCaptionFocusChanged = { isFocused -> isCaptionFocused = isFocused },
                         onCaptionDone = ::clearCaptionFocus,
