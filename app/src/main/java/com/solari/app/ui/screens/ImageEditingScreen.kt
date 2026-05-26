@@ -47,6 +47,7 @@ import androidx.compose.material.icons.filled.AutoFixNormal
 import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Crop
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Flip
@@ -80,6 +81,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -192,6 +194,9 @@ fun ImageEditingScreen(
     var selectedBrushSize by remember { mutableFloatStateOf(15f) }
 
     var textColor by remember { mutableStateOf(Color.Red) }
+
+    var colorPickerColor by remember { mutableStateOf<Color?>(null) }
+    var onColorPickedCallback by remember { mutableStateOf<((Color) -> Unit)?>(null) }
 
     var adjustType by remember { mutableStateOf<AdjustType?>(AdjustType.Exposure) }
     var adjustValues by remember { mutableStateOf(AdjustType.entries.associateWith { 0f }) }
@@ -350,12 +355,20 @@ fun ImageEditingScreen(
                         selectedTool = drawTool,
                         onToolSelected = { drawTool = it },
                         selectedBrushSize = selectedBrushSize,
-                        onBrushSizeSelected = { selectedBrushSize = it }
+                        onBrushSizeSelected = { selectedBrushSize = it },
+                        onCustomColorClick = {
+                            colorPickerColor = drawColor
+                            onColorPickedCallback = { drawColor = it }
+                        }
                     )
 
                     EditMode.Text -> TextBottomRow(
                         selectedColor = textColor,
-                        onColorSelected = { textColor = it }
+                        onColorSelected = { textColor = it },
+                        onCustomColorClick = {
+                            colorPickerColor = textColor
+                            onColorPickedCallback = { textColor = it }
+                        }
                     )
 
                     EditMode.Adjust -> AdjustBottomRow(
@@ -466,6 +479,17 @@ fun ImageEditingScreen(
                 }
             }
         }
+    }
+
+    colorPickerColor?.let { initialColor ->
+        com.solari.app.ui.components.SolariColorPickerDialog(
+            initialColor = initialColor,
+            onDismiss = { colorPickerColor = null },
+            onColorConfirmed = { color ->
+                onColorPickedCallback?.invoke(color)
+                colorPickerColor = null
+            }
+        )
     }
 }
 
@@ -1198,7 +1222,8 @@ private fun DrawBottomRow(
     selectedTool: DrawTool,
     onToolSelected: (DrawTool) -> Unit,
     selectedBrushSize: Float,
-    onBrushSizeSelected: (Float) -> Unit
+    onBrushSizeSelected: (Float) -> Unit,
+    onCustomColorClick: () -> Unit
 ) {
     val brushSizes = listOf(
         "Small" to 15f,
@@ -1246,10 +1271,18 @@ private fun DrawBottomRow(
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(16.dp, 0.dp, 16.dp, 0.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             items(PresetColors) { color ->
                 ColorButton(color, isSelected = selectedColor == color) { onColorSelected(color) }
+            }
+            item {
+                CustomColorButton(
+                    selectedColor = selectedColor,
+                    presetColors = PresetColors,
+                    onClick = onCustomColorClick
+                )
             }
         }
         Spacer(modifier = Modifier.height(16.dp))
@@ -1569,7 +1602,8 @@ private fun ScaleHandle(
 @Composable
 private fun TextBottomRow(
     selectedColor: Color,
-    onColorSelected: (Color) -> Unit
+    onColorSelected: (Color) -> Unit,
+    onCustomColorClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -1580,10 +1614,18 @@ private fun TextBottomRow(
         LazyRow(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(16.dp, 0.dp, 16.dp, 0.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             items(PresetColors) { color ->
                 ColorButton(color, isSelected = selectedColor == color) { onColorSelected(color) }
+            }
+            item {
+                CustomColorButton(
+                    selectedColor = selectedColor,
+                    presetColors = PresetColors,
+                    onClick = onCustomColorClick
+                )
             }
         }
         Spacer(modifier = Modifier.height(56.dp))
@@ -1899,6 +1941,50 @@ private fun EditableImagePreview(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CustomColorButton(
+    selectedColor: Color,
+    presetColors: List<Color>,
+    onClick: () -> Unit
+) {
+    val isCustomActive = !presetColors.contains(selectedColor)
+    val sweepBrush = remember {
+        Brush.sweepGradient(
+            listOf(
+                Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red
+            )
+        )
+    }
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .then(
+                if (isCustomActive) {
+                    Modifier.background(selectedColor)
+                } else {
+                    Modifier.background(sweepBrush)
+                }
+            )
+            .border(
+                2.dp,
+                if (isCustomActive) SolariTheme.colors.primary else Color.Transparent,
+                CircleShape
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        if (!isCustomActive) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "Custom Color",
+                tint = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.size(16.dp)
+            )
         }
     }
 }
