@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 enum class FriendInviteRelationship {
     Self,
     None,
+    PendingIncoming,
     PendingOutgoing,
     Friend,
     Blocked
@@ -84,11 +85,8 @@ class FriendInvitePreviewViewModel(
                     is ApiResult.Success -> result.data.map { it.user }
                     is ApiResult.Failure -> emptyList()
                 }
-                val outgoingRequests = when (val result = friendRepository.getFriendRequests()) {
-                    is ApiResult.Success -> result.data.items.filter {
-                        it.direction == FriendRequestDirection.Outgoing
-                    }
-
+                val friendRequests = when (val result = friendRepository.getFriendRequests()) {
+                    is ApiResult.Success -> result.data.items
                     is ApiResult.Failure -> emptyList()
                 }
 
@@ -112,8 +110,23 @@ class FriendInvitePreviewViewModel(
                     return@launch
                 }
 
-                val outgoingRequest = outgoingRequests.firstOrNull {
-                    it.user.username.equals(normalizedUsername, ignoreCase = true)
+                val incomingRequest = friendRequests.firstOrNull {
+                    it.direction == FriendRequestDirection.Incoming &&
+                            it.user.username.equals(normalizedUsername, ignoreCase = true)
+                }
+                if (incomingRequest != null) {
+                    uiState = FriendInvitePreviewState(
+                        requestedUsername = normalizedUsername,
+                        user = incomingRequest.user,
+                        relationship = FriendInviteRelationship.PendingIncoming,
+                        friendRequestId = incomingRequest.id
+                    )
+                    return@launch
+                }
+
+                val outgoingRequest = friendRequests.firstOrNull {
+                    it.direction == FriendRequestDirection.Outgoing &&
+                        it.user.username.equals(normalizedUsername, ignoreCase = true)
                 }
                 if (outgoingRequest != null) {
                     uiState = FriendInvitePreviewState(
@@ -176,6 +189,26 @@ class FriendInvitePreviewViewModel(
         mutateOptimistically(
             previousState = currentState,
             successMessage = "Friend request canceled"
+        ) { friendRepository.deleteFriendRequest(requestId) }
+    }
+
+    fun acceptFriendRequest() {
+        val currentState = uiState
+        val requestId = currentState.friendRequestId ?: return
+
+        mutateOptimistically(
+            previousState = currentState,
+            successMessage = "Friend request accepted"
+        ) { friendRepository.acceptFriendRequest(requestId) }
+    }
+
+    fun rejectFriendRequest() {
+        val currentState = uiState
+        val requestId = currentState.friendRequestId ?: return
+
+        mutateOptimistically(
+            previousState = currentState,
+            successMessage = "Friend request rejected"
         ) { friendRepository.deleteFriendRequest(requestId) }
     }
 

@@ -58,6 +58,7 @@ import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.FriendRequest
 import com.solari.app.ui.models.FriendRequestDirection
+import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
@@ -73,6 +74,7 @@ fun ConversationScreen(
     onExternalFeedbackConsumed: () -> Unit = {},
     onNavigateToChat: (Conversation) -> Unit,
     onNavigateToManageFriends: () -> Unit,
+    onShowProfile: (User) -> Unit
 ) {
     var sortSelection by remember { mutableStateOf(SortSelection.Newest) }
     var isUserRefreshing by remember { mutableStateOf(false) }
@@ -245,6 +247,7 @@ fun ConversationScreen(
                                 onAccept = { viewModel.acceptFriendRequest(request.id) },
                                 onDecline = { viewModel.declineFriendRequest(request.id) },
                                 onCancel = { requestPendingCancel = request },
+                                onProfileClick = { onShowProfile(request.user) },
                                 modifier = Modifier.animateItem(fadeOutSpec = null)
                             )
                         }
@@ -430,6 +433,7 @@ fun FriendRequestItem(
     onAccept: () -> Unit,
     onDecline: () -> Unit,
     onCancel: () -> Unit,
+    onProfileClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isOutgoing = request.direction == FriendRequestDirection.Outgoing
@@ -437,7 +441,9 @@ fun FriendRequestItem(
     Surface(
         color = SolariTheme.colors.surface,
         shape = RoundedCornerShape(10.dp),
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
+            .scaledClickable(pressedScale = 0.98f, onClick = onProfileClick)
     ) {
         Row(
             modifier = Modifier.padding(13.dp),

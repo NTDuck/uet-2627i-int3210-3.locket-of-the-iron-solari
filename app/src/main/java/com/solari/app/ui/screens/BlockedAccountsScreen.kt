@@ -45,6 +45,7 @@ import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SortSelection
 import com.solari.app.ui.models.BlockedUser
+import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.scaledClickable
@@ -66,7 +67,8 @@ fun BlockedAccountsScreen(
     onNavigateToCamera: () -> Unit,
     onNavigateToFeed: () -> Unit,
     onNavigateToChat: () -> Unit,
-    onNavigateToProfile: () -> Unit
+    onNavigateToProfile: () -> Unit,
+    onShowProfile: (User) -> Unit
 ) {
     var pendingUnblock by remember { mutableStateOf<BlockedUser?>(null) }
     var isUserRefreshing by remember { mutableStateOf(false) }
@@ -189,7 +191,8 @@ fun BlockedAccountsScreen(
                         items(blockedAccounts) { account ->
                             BlockedAccountItem(
                                 account = account,
-                                onUnblock = { pendingUnblock = account }
+                                onUnblock = { pendingUnblock = account },
+                                onProfileClick = { onShowProfile(account.user) }
                             )
                         }
 
@@ -262,7 +265,8 @@ private fun BlockedAccountsHeader(onNavigateBack: () -> Unit) {
 @Composable
 private fun BlockedAccountItem(
     account: BlockedUser,
-    onUnblock: () -> Unit
+    onUnblock: () -> Unit,
+    onProfileClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -270,6 +274,7 @@ private fun BlockedAccountItem(
             .height(80.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(BlockedSurface)
+            .scaledClickable(pressedScale = 0.98f, onClick = onProfileClick)
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

@@ -253,7 +253,7 @@ fun ChatScreen(
     onNavigateToCamera: () -> Unit,
     onNavigateToFeed: () -> Unit,
     onNavigateToPost: (postId: String) -> Unit,
-    onNavigateToProfile: () -> Unit
+    onShowPartnerProfile: (User) -> Unit
 ) {
     val currentUser = viewModel.currentUser
     val currentUserId = currentUser?.id ?: viewModel.currentUserId
@@ -363,7 +363,8 @@ fun ChatScreen(
                 isSettingsEnabled = !isDraftConversation,
                 isMuted = currentConversation?.isMuted == true,
                 onNavigateBack = onNavigateBack,
-                onNavigateToSettings = onNavigateToSettings
+                onNavigateToSettings = onNavigateToSettings,
+                onShowPartnerProfile = onShowPartnerProfile
             )
 
             Box(
@@ -1061,7 +1062,8 @@ private fun ChatHeaderBar(
     isSettingsEnabled: Boolean,
     isMuted: Boolean,
     onNavigateBack: () -> Unit,
-    onNavigateToSettings: (chatId: String, partner: User?) -> Unit
+    onNavigateToSettings: (chatId: String, partner: User?) -> Unit,
+    onShowPartnerProfile: (User) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -1094,13 +1096,7 @@ private fun ChatHeaderBar(
 
             Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .scaledClickable(
-                        pressedScale = 0.98f,
-                        enabled = isSettingsEnabled
-                    ) {
-                        onNavigateToSettings(chatId, partner)
-                    },
+                    .weight(1f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 SolariAvatar(
@@ -1109,14 +1105,27 @@ private fun ChatHeaderBar(
                     contentDescription = "$partnerName avatar",
                     modifier = Modifier
                         .size(40.dp)
-                        .clip(CircleShape),
+                        .clip(CircleShape)
+                        .scaledClickable(
+                            pressedScale = 1.08f,
+                            enabled = partner != null
+                        ) {
+                            partner?.let(onShowPartnerProfile)
+                        },
                     fontSize = 18.sp
                 )
 
                 Spacer(modifier = Modifier.width(12.dp))
 
                 Row(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .scaledClickable(
+                            pressedScale = 0.98f,
+                            enabled = isSettingsEnabled
+                        ) {
+                            onNavigateToSettings(chatId, partner)
+                        },
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(

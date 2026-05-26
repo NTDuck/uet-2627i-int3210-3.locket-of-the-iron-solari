@@ -77,6 +77,7 @@ fun ChatSettingsScreen(
     viewModel: ChatSettingsViewModel,
     onNavigateBack: () -> Unit,
     onClearHistoryComplete: (String) -> Unit,
+    onShowProfile: (User) -> Unit
 ) {
     val isAllLoading = viewModel.isLoading &&
             viewModel.username == null &&
@@ -179,7 +180,17 @@ fun ChatSettingsScreen(
                         .padding(horizontal = 24.dp)
                 ) {
                     Column(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (!viewModel.isReadOnly && partner != null) {
+                                    Modifier.scaledClickable(pressedScale = 0.98f) {
+                                        partner?.let(onShowProfile)
+                                    }
+                                } else {
+                                    Modifier
+                                }
+                            ),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         SolariAvatar(

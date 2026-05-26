@@ -63,7 +63,7 @@ import com.solari.app.data.conversation.ConversationRepository
 import com.solari.app.data.network.ApiResult
 import com.solari.app.navigation.SolariLaunchIntent
 import com.solari.app.navigation.SolariRoute
-import com.solari.app.ui.components.FriendInvitePreviewDialog
+import com.solari.app.ui.components.ProfileDialog
 import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariFeedbackPill
@@ -72,6 +72,7 @@ import com.solari.app.ui.models.CapturedMediaSource
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.models.Post
+import com.solari.app.ui.models.User
 import com.solari.app.ui.screens.BlockedAccountsScreen
 import com.solari.app.ui.screens.ChangeThemeScreen
 import com.solari.app.ui.screens.ChatScreen
@@ -613,6 +614,14 @@ private fun SolariApp(
             .ifEmpty { listOf(selectedMainPage.coerceIn(0, 3)) }
         mainPageHistory = sanitizedHistory
         selectedMainPage = sanitizedHistory.last()
+    }
+
+    fun showProfileDialog(user: User) {
+        val username = user.username.trim()
+        if (username.isEmpty()) return
+
+        pendingFriendInviteConfirmation = null
+        friendInvitePreviewViewModel.show(username)
     }
 
     fun navigateToMainPage(page: Int, replaceCurrent: Boolean = false) {
@@ -1198,6 +1207,7 @@ private fun SolariApp(
                                 authorId
                             )
                         },
+                        onShowProfile = ::showProfileDialog,
                         optimisticPostDraft = optimisticPostDraft,
                         onOptimisticPostDraftConsumed = { consumedId ->
                             if (optimisticPostDraft?.id == consumedId) {
@@ -1309,6 +1319,7 @@ private fun SolariApp(
                                 authorId
                             )
                         },
+                        onShowProfile = ::showProfileDialog,
                         onNavigateBackFromFeedPost = { navController.popBackStack() },
                         optimisticPostDraft = optimisticPostDraft,
                         onOptimisticPostDraftConsumed = { consumedId ->
@@ -1566,7 +1577,7 @@ private fun SolariApp(
                                 sort = "default"
                             )
                         },
-                        onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) }
+                        onShowPartnerProfile = ::showProfileDialog
                     )
                 }
                 composable(SolariRoute.Screen.ChatSettings.name + "/{chatId}") { backStackEntry ->
@@ -1591,6 +1602,7 @@ private fun SolariApp(
                                 }
                             }
                         },
+                        onShowProfile = ::showProfileDialog,
                     )
                 }
                 composable(SolariRoute.Screen.ChangeTheme.name) {
@@ -1654,7 +1666,8 @@ private fun SolariApp(
                             recordMainPage(2)
                             navController.navigateToChat(conversation)
                         },
-                        onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) }
+                        onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) },
+                        onShowProfile = ::showProfileDialog
                     )
                 }
                 composable(SolariRoute.Screen.BlockedAccounts.name) {
@@ -1666,7 +1679,8 @@ private fun SolariApp(
                         onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
                         onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },
                         onNavigateToChat = { navigateToMainPage(2, replaceCurrent = true) },
-                        onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) }
+                        onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) },
+                        onShowProfile = ::showProfileDialog
                     )
                 }
             }
@@ -1740,12 +1754,13 @@ private fun SolariApp(
         }
 
         if (friendInvitePreviewState.requestedUsername != null) {
-            FriendInvitePreviewDialog(
+            ProfileDialog(
                 state = friendInvitePreviewState,
                 onPrimaryAction = {
                     when (friendInvitePreviewState.relationship) {
                         FriendInviteRelationship.Self -> Unit
                         FriendInviteRelationship.None -> friendInvitePreviewViewModel.sendFriendRequest()
+                        FriendInviteRelationship.PendingIncoming -> friendInvitePreviewViewModel.acceptFriendRequest()
                         FriendInviteRelationship.PendingOutgoing -> friendInvitePreviewViewModel.unsendFriendRequest()
                         FriendInviteRelationship.Friend,
                         FriendInviteRelationship.Blocked -> {
@@ -1753,6 +1768,7 @@ private fun SolariApp(
                         }
                     }
                 },
+                onRejectIncomingRequest = friendInvitePreviewViewModel::rejectFriendRequest,
                 onCancel = friendInvitePreviewViewModel::dismiss
             )
         }

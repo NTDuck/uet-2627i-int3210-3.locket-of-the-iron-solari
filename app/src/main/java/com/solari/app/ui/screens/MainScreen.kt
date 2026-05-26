@@ -24,6 +24,7 @@ import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.models.Post
+import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.ConversationViewModel
 import com.solari.app.ui.viewmodels.FeedViewModel
@@ -62,6 +63,7 @@ fun MainScreen(
     onNavigateToChangePassword: () -> Unit,
     onNavigateToChangeTheme: () -> Unit,
     onNavigateToFeedBrowse: (String?) -> Unit,
+    onShowProfile: (User) -> Unit,
     onNavigateBackFromFeedPost: () -> Unit = {},
     optimisticPostDraft: OptimisticPostDraft? = null,
     onOptimisticPostDraftConsumed: (String) -> Unit = {},
@@ -180,7 +182,8 @@ fun MainScreen(
                         externalFeedbackMessage = conversationFeedbackMessage,
                         onExternalFeedbackConsumed = onConversationFeedbackConsumed,
                         onNavigateToChat = onNavigateToChat,
-                        onNavigateToManageFriends = onNavigateToManageFriends
+                        onNavigateToManageFriends = onNavigateToManageFriends,
+                        onShowProfile = onShowProfile
                     )
                 }
 

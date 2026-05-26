@@ -111,7 +111,8 @@ fun FriendManagementScreen(
     onNavigateToFeed: () -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToConversation: (Conversation) -> Unit,
-    onNavigateToProfile: () -> Unit
+    onNavigateToProfile: () -> Unit,
+    onShowProfile: (User) -> Unit
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -375,7 +376,7 @@ fun FriendManagementScreen(
                             ) {
                                 Text(
                                     text = "View blocked accounts",
-                                    color = SolariTheme.colors.onBackground,
+                                    color = SolariTheme.colors.tertiary,
                                     fontSize = 13.sp,
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold
@@ -450,6 +451,7 @@ fun FriendManagementScreen(
                                 onMessage = { friend ->
                                     viewModel.openConversation(friend, onNavigateToConversation)
                                 },
+                                onShowProfile = onShowProfile,
                                 messagingFriendIds = viewModel.messagingFriendIds,
                                 onUnfriend = { friendPendingUnfriend = it },
                                 onBlock = { friendPendingBlock = it },
@@ -665,6 +667,7 @@ private fun FriendListItem(
     onUpdateNickname: (User) -> Unit,
     onRemoveNickname: (User) -> Unit,
     onMessage: (User) -> Unit,
+    onShowProfile: (User) -> Unit,
     messagingFriendIds: Set<String>,
     onUnfriend: (User) -> Unit,
     onBlock: (User) -> Unit,
@@ -792,6 +795,14 @@ private fun FriendListItem(
                             }
                     ) {
                         val actions = buildList {
+                            add(
+                                FriendActionMenuEntry(
+                                    text = "View profile",
+                                    color = SolariTheme.colors.onBackground,
+                                    enabled = true,
+                                    onClick = { onShowProfile(friend) }
+                                )
+                            )
                             add(
                                 FriendActionMenuEntry(
                                     text = if (isOpeningMessage) "Opening..." else "Message",
