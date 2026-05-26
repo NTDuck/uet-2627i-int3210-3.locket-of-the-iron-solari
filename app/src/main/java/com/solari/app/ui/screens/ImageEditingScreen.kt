@@ -1001,21 +1001,12 @@ private fun DrawWorkspace(
 ) {
     val paths = remember { mutableStateListOf<DrawPath>().apply { addAll(initialPaths) } }
     var currentPath by remember { mutableStateOf<NativePath?>(null) }
-    var canvasSize by remember { mutableStateOf(Size.Zero) }
     var eraserCursorPosition by remember { mutableStateOf<Offset?>(null) }
 
     var drawCounter by remember { mutableIntStateOf(0) }
 
     val imageWidth = bitmap.width.toFloat()
     val imageHeight = bitmap.height.toFloat()
-    val screenScale = if (canvasSize.width > 0) min(
-        canvasSize.width / imageWidth,
-        canvasSize.height / imageHeight
-    ) else 1f
-    val drawWidth = imageWidth * screenScale
-    val drawHeight = imageHeight * screenScale
-    val imgLeft = (canvasSize.width - drawWidth) / 2
-    val imgTop = (canvasSize.height - drawHeight) / 2
 
     LaunchedEffect(applyTrigger) {
         if (applyTrigger) {
@@ -1026,8 +1017,18 @@ private fun DrawWorkspace(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .onGloballyPositioned { canvasSize = it.size.toSize() }
-            .pointerInput(selectedColor, selectedTool, selectedEraserSize, imgLeft, imgTop, screenScale) {
+            .pointerInput(selectedColor, selectedTool, selectedEraserSize) {
+                val canvasWidth = size.width.toFloat()
+                val canvasHeight = size.height.toFloat()
+                val screenScale = if (canvasWidth > 0) min(
+                    canvasWidth / imageWidth,
+                    canvasHeight / imageHeight
+                ) else 1f
+                val drawWidth = imageWidth * screenScale
+                val drawHeight = imageHeight * screenScale
+                val imgLeft = (canvasWidth - drawWidth) / 2
+                val imgTop = (canvasHeight - drawHeight) / 2
+
                 detectDragGestures(
                     onDragStart = { offset ->
                         val path = NativePath()
@@ -1068,6 +1069,19 @@ private fun DrawWorkspace(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCounter
+
+            val canvasWidth = size.width
+            val canvasHeight = size.height
+            if (canvasWidth == 0f || canvasHeight == 0f) return@Canvas
+
+            val screenScale = min(
+                canvasWidth / imageWidth,
+                canvasHeight / imageHeight
+            )
+            val drawWidth = imageWidth * screenScale
+            val drawHeight = imageHeight * screenScale
+            val imgLeft = (canvasWidth - drawWidth) / 2
+            val imgTop = (canvasHeight - drawHeight) / 2
 
             drawIntoCanvas { canvas ->
                 val nativeCanvas = canvas.nativeCanvas
@@ -1770,24 +1784,23 @@ private fun EditableImagePreview(
         modifier = modifier,
         contentAlignment = Alignment.Center
     ) {
-        var canvasSize by remember { mutableStateOf(Size.Zero) }
         val imageWidth = bitmap.width.toFloat()
         val imageHeight = bitmap.height.toFloat()
 
         Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .onGloballyPositioned { canvasSize = it.size.toSize() }
+            modifier = Modifier.fillMaxSize()
         ) {
-            if (canvasSize.width > 0 && canvasSize.height > 0) {
+            val canvasWidth = size.width
+            val canvasHeight = size.height
+            if (canvasWidth > 0 && canvasHeight > 0) {
                 val screenScale = min(
-                    canvasSize.width / imageWidth,
-                    canvasSize.height / imageHeight
+                    canvasWidth / imageWidth,
+                    canvasHeight / imageHeight
                 )
                 val drawWidth = imageWidth * screenScale
                 val drawHeight = imageHeight * screenScale
-                val imgLeft = (canvasSize.width - drawWidth) / 2
-                val imgTop = (canvasSize.height - drawHeight) / 2
+                val imgLeft = (canvasWidth - drawWidth) / 2
+                val imgTop = (canvasHeight - drawHeight) / 2
 
                 drawIntoCanvas { canvas ->
                     val nativeCanvas = canvas.nativeCanvas
