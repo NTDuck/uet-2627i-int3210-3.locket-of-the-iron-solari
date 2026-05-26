@@ -24,18 +24,6 @@ class PushNotificationCoordinator(
         pushNotificationStore.markNotificationPermissionRequested()
     }
 
-    suspend fun shouldUseNotificationSettingsForToggle(): Boolean {
-        return pushNotificationStore.shouldUseNotificationSettingsForToggle()
-    }
-
-    suspend fun markNotificationSettingsUsedForToggle() {
-        pushNotificationStore.markNotificationSettingsUsedForToggle()
-    }
-
-    suspend fun clearNotificationSettingsUsedForToggle() {
-        pushNotificationStore.clearNotificationSettingsUsedForToggle()
-    }
-
     suspend fun preparePushToken(): String? {
         val existingToken = pushNotificationStore.getCurrentDeviceToken()
         if (!existingToken.isNullOrBlank()) {
@@ -78,6 +66,38 @@ class PushNotificationCoordinator(
         pushNotificationStore.saveCurrentDeviceToken(normalizedToken)
         pushNotificationStore.clearRegisteredDeviceToken()
         registerStoredDeviceIfAuthenticated()
+    }
+
+    /**
+     * Unregisters the current device from push notifications on the backend.
+     * Returns true if the device was successfully unregistered, false otherwise.
+     */
+    suspend fun unregisterDevice(): Boolean {
+        val token = pushNotificationStore.getCurrentDeviceToken() ?: return false
+
+        return when (userRepository.unregisterDevice(token)) {
+            is ApiResult.Success -> {
+                pushNotificationStore.clearRegisteredDeviceToken()
+                true
+            }
+            is ApiResult.Failure -> {
+                Log.w(LOG_TAG, "Failed to unregister device.")
+                false
+            }
+        }
+    }
+
+    /**
+     * Checks whether the current device is registered for push notifications on the backend.
+     * Returns true if registered, false if not registered or if the check fails.
+     */
+    suspend fun getDeviceNotificationStatus(): Boolean {
+        val token = pushNotificationStore.getCurrentDeviceToken() ?: return false
+
+        return when (val result = userRepository.getDeviceNotificationStatus(token)) {
+            is ApiResult.Success -> result.data
+            is ApiResult.Failure -> false
+        }
     }
 
     private suspend fun registerDeviceToken(token: String) {

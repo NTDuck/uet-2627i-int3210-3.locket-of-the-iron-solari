@@ -195,6 +195,7 @@ fun ImageEditingScreen(
 
     var adjustType by remember { mutableStateOf<AdjustType?>(AdjustType.Exposure) }
     var adjustValues by remember { mutableStateOf(AdjustType.entries.associateWith { 0f }) }
+    val adjustValuesHistory = remember { mutableStateListOf<Map<AdjustType, Float>>() }
 
     val activeDrawPaths = remember { mutableStateListOf<DrawPath>() }
 
@@ -202,6 +203,8 @@ fun ImageEditingScreen(
         if (currentMode == EditMode.Draw) {
             activeDrawPaths.clear()
             activeDrawPaths.addAll(viewModel.drawingPaths)
+        } else if (currentMode == EditMode.Adjust) {
+            adjustValuesHistory.clear()
         }
     }
 
@@ -311,8 +314,16 @@ fun ImageEditingScreen(
                     SubScreenTopBar(
                         onCancel = { currentMode = EditMode.Main },
                         onApply = { applyTrigger = true },
-                        onUndo = if (mode == EditMode.Draw) { { if (activeDrawPaths.isNotEmpty()) activeDrawPaths.removeAt(activeDrawPaths.size - 1) } } else null,
-                        canUndo = if (mode == EditMode.Draw) activeDrawPaths.isNotEmpty() else false
+                        onUndo = when (mode) {
+                            EditMode.Draw -> { { if (activeDrawPaths.isNotEmpty()) activeDrawPaths.removeAt(activeDrawPaths.size - 1) } }
+                            EditMode.Adjust -> { { if (adjustValuesHistory.isNotEmpty()) adjustValues = adjustValuesHistory.removeAt(adjustValuesHistory.size - 1) } }
+                            else -> null
+                        },
+                        canUndo = when (mode) {
+                            EditMode.Draw -> activeDrawPaths.isNotEmpty()
+                            EditMode.Adjust -> adjustValuesHistory.isNotEmpty()
+                            else -> false
+                        }
                     )
                 }
             }
@@ -351,7 +362,8 @@ fun ImageEditingScreen(
                         activeType = adjustType,
                         onTypeSelected = { adjustType = it },
                         values = adjustValues,
-                        onValuesChange = { adjustValues = it }
+                        onValuesChange = { adjustValues = it },
+                        onHistoryPush = { adjustValuesHistory.add(it) }
                     )
                 }
             }
@@ -1648,8 +1660,11 @@ private fun AdjustBottomRow(
     activeType: AdjustType?,
     onTypeSelected: (AdjustType) -> Unit,
     values: Map<AdjustType, Float>,
-    onValuesChange: (Map<AdjustType, Float>) -> Unit
+    onValuesChange: (Map<AdjustType, Float>) -> Unit,
+    onHistoryPush: (Map<AdjustType, Float>) -> Unit
 ) {
+    var preDragValues by remember { mutableStateOf<Map<AdjustType, Float>?>(null) }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1678,9 +1693,18 @@ private fun AdjustBottomRow(
             value = values[activeType] ?: 0f,
             onValueChange = { newVal ->
                 activeType?.let { type ->
+                    if (preDragValues == null) {
+                        preDragValues = values
+                    }
                     val updated = values.toMutableMap()
                     updated[type] = newVal
                     onValuesChange(updated)
+                }
+            },
+            onValueChangeFinished = {
+                preDragValues?.let { oldState ->
+                    onHistoryPush(oldState)
+                    preDragValues = null
                 }
             },
             valueRange = -1f..1f,

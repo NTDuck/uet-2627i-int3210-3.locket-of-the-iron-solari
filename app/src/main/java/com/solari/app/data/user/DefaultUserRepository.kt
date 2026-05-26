@@ -125,6 +125,46 @@ class DefaultUserRepository(
         }
     }
 
+    override suspend fun unregisterDevice(deviceToken: String): ApiResult<Unit> {
+        val normalizedDeviceToken = deviceToken.trim()
+        if (normalizedDeviceToken.isEmpty()) {
+            return ApiResult.Failure(
+                statusCode = null,
+                type = "MISSING_DEVICE_TOKEN",
+                message = "Device token is required."
+            )
+        }
+
+        return when (
+            val result = apiExecutor.execute {
+                userApi.unregisterDevice(normalizedDeviceToken)
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(Unit)
+        }
+    }
+
+    override suspend fun getDeviceNotificationStatus(deviceToken: String): ApiResult<Boolean> {
+        val normalizedDeviceToken = deviceToken.trim()
+        if (normalizedDeviceToken.isEmpty()) {
+            return ApiResult.Failure(
+                statusCode = null,
+                type = "MISSING_DEVICE_TOKEN",
+                message = "Device token is required."
+            )
+        }
+
+        return when (
+            val result = apiExecutor.execute {
+                userApi.getDeviceNotificationStatus(normalizedDeviceToken)
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(result.data.isEnabled)
+        }
+    }
+
     override suspend fun blockUser(userId: String): ApiResult<Unit> {
         return when (val result = apiExecutor.execute { userApi.blockUser(userId) }) {
             is ApiResult.Failure -> result

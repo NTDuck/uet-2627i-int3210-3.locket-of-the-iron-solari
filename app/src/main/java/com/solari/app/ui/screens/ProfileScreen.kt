@@ -174,78 +174,95 @@ fun ProfileScreen(
         return NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
 
-    // Notification permission state - re-checked on each resume (e.g. returning from OS settings)
-    var notificationsEnabled by remember {
+    // Notification state: derived from BOTH system permission AND backend registration
+    var systemNotificationsEnabled by remember {
         mutableStateOf(areSystemNotificationsEnabled())
     }
+    var backendRegistered by remember { mutableStateOf(false) }
+    var isNotificationStatusLoading by remember { mutableStateOf(true) }
+    var isNotificationToggling by remember { mutableStateOf(false) }
+    val notificationsEnabled = systemNotificationsEnabled && backendRegistered
     var hasRequestedNotificationPermission by remember { mutableStateOf(false) }
-    var shouldUseNotificationSettingsForToggle by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    fun clearNotificationSettingsUsedForToggle() {
-        if (!shouldUseNotificationSettingsForToggle) return
-        shouldUseNotificationSettingsForToggle = false
-        coroutineScope.launch {
-            appContainer?.pushNotificationCoordinator?.clearNotificationSettingsUsedForToggle()
-        }
+    // Fetch backend registration status on screen entry
+    LaunchedEffect(appContainer) {
+        val pushNotificationCoordinator = appContainer?.pushNotificationCoordinator
+        hasRequestedNotificationPermission =
+            pushNotificationCoordinator?.hasRequestedNotificationPermission() ?: false
+        systemNotificationsEnabled = areSystemNotificationsEnabled()
+        backendRegistered =
+            pushNotificationCoordinator?.getDeviceNotificationStatus() ?: false
+        isNotificationStatusLoading = false
     }
 
+    // Re-check system permission on resume (e.g. returning from OS settings)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                val systemEnabled = areSystemNotificationsEnabled()
-                notificationsEnabled = systemEnabled
-                if (systemEnabled) {
-                    clearNotificationSettingsUsedForToggle()
+                val previousSystemEnabled = systemNotificationsEnabled
+                val currentSystemEnabled = areSystemNotificationsEnabled()
+                systemNotificationsEnabled = currentSystemEnabled
+
+                // If system permission just got enabled (e.g. user returned from settings),
+                // register with backend automatically
+                if (!previousSystemEnabled && currentSystemEnabled) {
+                    coroutineScope.launch {
+                        isNotificationToggling = true
+                        appContainer?.pushNotificationCoordinator?.preparePushToken()
+                        appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated()
+                        backendRegistered =
+                            appContainer?.pushNotificationCoordinator?.getDeviceNotificationStatus() ?: false
+                        isNotificationToggling = false
+                    }
                 }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        val systemEnabled = areSystemNotificationsEnabled()
-        notificationsEnabled = granted && systemEnabled
-        if (granted && systemEnabled) {
+        val currentSystemEnabled = areSystemNotificationsEnabled()
+        systemNotificationsEnabled = granted && currentSystemEnabled
+        if (granted && currentSystemEnabled) {
             coroutineScope.launch {
+                isNotificationToggling = true
                 appContainer?.pushNotificationCoordinator?.preparePushToken()
                 appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated()
+                backendRegistered =
+                    appContainer?.pushNotificationCoordinator?.getDeviceNotificationStatus() ?: false
+                isNotificationToggling = false
             }
         }
     }
 
-    LaunchedEffect(appContainer) {
-        val pushNotificationCoordinator = appContainer?.pushNotificationCoordinator
-        hasRequestedNotificationPermission =
-            pushNotificationCoordinator?.hasRequestedNotificationPermission() ?: false
-        shouldUseNotificationSettingsForToggle =
-            pushNotificationCoordinator?.shouldUseNotificationSettingsForToggle() ?: false
-    }
+    fun enableNotificationsFromToggle() {
+        if (isNotificationToggling) return
 
-    fun requestNotificationPermissionFromToggle() {
         if (areSystemNotificationsEnabled()) {
-            notificationsEnabled = true
-            clearNotificationSettingsUsedForToggle()
+            // System notifications are ON but backend is not registered -> register
             coroutineScope.launch {
+                isNotificationToggling = true
                 appContainer?.pushNotificationCoordinator?.preparePushToken()
                 appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated()
+                backendRegistered =
+                    appContainer?.pushNotificationCoordinator?.getDeviceNotificationStatus() ?: false
+                isNotificationToggling = false
             }
             return
         }
 
+        // System notifications are OFF -> need to prompt for permission
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             context.openAppNotificationSettings()
             return
         }
 
-        if (shouldUseNotificationSettingsForToggle) {
-            context.openAppNotificationSettings()
-            return
-        }
-
         if (isNotificationRuntimePermissionGranted()) {
+            // Runtime permission granted but system channel disabled -> open settings
             context.openAppNotificationSettings()
             return
         }
@@ -253,13 +270,15 @@ fun ProfileScreen(
         val activity = context.findActivity()
         val shouldOpenSettings = hasRequestedNotificationPermission &&
                 activity != null &&
-                activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) == false
+                !activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
 
         if (shouldOpenSettings) {
+            // Permission permanently denied -> open system settings
             context.openAppNotificationSettings()
             return
         }
 
+        // First time or can still show rationale -> launch runtime permission dialog
         coroutineScope.launch {
             appContainer?.pushNotificationCoordinator?.markNotificationPermissionRequested()
             hasRequestedNotificationPermission = true
@@ -268,12 +287,17 @@ fun ProfileScreen(
     }
 
     fun disableNotificationsFromToggle() {
-        notificationsEnabled = areSystemNotificationsEnabled()
-        shouldUseNotificationSettingsForToggle = true
+        if (isNotificationToggling) return
+
+        // Unregister from backend only, keep system notifications enabled
         coroutineScope.launch {
-            appContainer?.pushNotificationCoordinator?.markNotificationSettingsUsedForToggle()
+            isNotificationToggling = true
+            val success = appContainer?.pushNotificationCoordinator?.unregisterDevice() ?: false
+            if (success) {
+                backendRegistered = false
+            }
+            isNotificationToggling = false
         }
-        context.openAppNotificationSettings()
     }
 
     val avatarPicker = rememberLauncherForActivityResult(
@@ -767,27 +791,37 @@ fun ProfileScreen(
                         icon = if (notificationsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
                         title = "Notifications",
                         onClick = {
-                            if (notificationsEnabled) {
-                                disableNotificationsFromToggle()
-                            } else {
-                                requestNotificationPermissionFromToggle()
+                            if (!isNotificationStatusLoading && !isNotificationToggling) {
+                                if (notificationsEnabled) {
+                                    disableNotificationsFromToggle()
+                                } else {
+                                    enableNotificationsFromToggle()
+                                }
                             }
                         },
                         trailing = {
-                            Switch(
-                                checked = notificationsEnabled,
-                                onCheckedChange = { enable ->
-                                    if (enable) {
-                                        requestNotificationPermissionFromToggle()
-                                    } else {
-                                        disableNotificationsFromToggle()
-                                    }
-                                },
-                                colors = SwitchDefaults.colors(
-                                    checkedThumbColor = SolariTheme.colors.onPrimary,
-                                    checkedTrackColor = SolariTheme.colors.primary
+                            if (isNotificationStatusLoading || isNotificationToggling) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = SolariTheme.colors.primary,
+                                    strokeWidth = 2.dp
                                 )
-                            )
+                            } else {
+                                Switch(
+                                    checked = notificationsEnabled,
+                                    onCheckedChange = { enable ->
+                                        if (enable) {
+                                            enableNotificationsFromToggle()
+                                        } else {
+                                            disableNotificationsFromToggle()
+                                        }
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = SolariTheme.colors.onPrimary,
+                                        checkedTrackColor = SolariTheme.colors.primary
+                                    )
+                                )
+                            }
                         }
                     )
                 }

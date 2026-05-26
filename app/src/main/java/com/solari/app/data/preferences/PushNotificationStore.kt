@@ -39,31 +39,6 @@ class PushNotificationStore(context: Context) {
         }
     }
 
-    suspend fun shouldUseNotificationSettingsForToggle(): Boolean {
-        return dataStore.data
-            .catch { error ->
-                if (error is IOException) {
-                    emit(emptyPreferences())
-                } else {
-                    throw error
-                }
-            }
-            .map { preferences -> preferences[UseNotificationSettingsForToggleKey] ?: false }
-            .first()
-    }
-
-    suspend fun markNotificationSettingsUsedForToggle() {
-        dataStore.edit { preferences ->
-            preferences[UseNotificationSettingsForToggleKey] = true
-        }
-    }
-
-    suspend fun clearNotificationSettingsUsedForToggle() {
-        dataStore.edit { preferences ->
-            preferences.remove(UseNotificationSettingsForToggleKey)
-        }
-    }
-
     suspend fun getCurrentDeviceToken(): String? {
         return dataStore.data
             .catch { error ->
@@ -113,8 +88,6 @@ class PushNotificationStore(context: Context) {
     private companion object {
         val NotificationPermissionRequestedKey =
             booleanPreferencesKey("notification_permission_requested")
-        val UseNotificationSettingsForToggleKey =
-            booleanPreferencesKey("use_notification_settings_for_toggle")
         val CurrentDeviceTokenKey = stringPreferencesKey("current_device_token")
         val RegisteredDeviceTokenKey = stringPreferencesKey("registered_device_token")
     }

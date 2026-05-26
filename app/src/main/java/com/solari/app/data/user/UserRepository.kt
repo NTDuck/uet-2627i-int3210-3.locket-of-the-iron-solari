@@ -51,5 +51,9 @@ interface UserRepository {
 
     suspend fun registerDevice(deviceToken: String, platform: String = "android"): ApiResult<Unit>
 
+    suspend fun unregisterDevice(deviceToken: String): ApiResult<Unit>
+
+    suspend fun getDeviceNotificationStatus(deviceToken: String): ApiResult<Boolean>
+
     suspend fun deleteAccount(verification: DeleteAccountVerification): ApiResult<Unit>
 }
