@@ -339,11 +339,12 @@ fun HomepageAfterCapturingScreen(
 
     fun requestLocationPermission(afterGrantFetchesWeather: Boolean) {
         if (hasLocationPermission()) return
+
         val activity = context.findActivity()
         val shouldOpenSettings = viewModel.hasRequestedLocationPermission &&
                 activity != null &&
-                activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) == false &&
-                activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION) == false
+                !activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) &&
+                !activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION)
 
         if (shouldOpenSettings) {
             context.openAppSettings()

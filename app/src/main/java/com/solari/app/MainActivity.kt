@@ -516,6 +516,8 @@ private fun SolariApp(
     }
     var shouldRequestNotificationAfterInitialCameraPrompt by remember { mutableStateOf(false) }
     var pendingInitialNotificationPermissionRequest by remember { mutableStateOf(false) }
+    var wasAuthenticatedAtStartup by remember { mutableStateOf(false) }
+    var isStartupPermissionChecked by remember { mutableStateOf(false) }
     val internetProbeClient = remember {
         okhttp3.OkHttpClient.Builder()
             .connectTimeout(
@@ -839,8 +841,20 @@ private fun SolariApp(
         }
     }
 
+    LaunchedEffect(authState.isCheckingSession) {
+        if (authState.isCheckingSession) return@LaunchedEffect
+        if (isStartupPermissionChecked) return@LaunchedEffect
+        isStartupPermissionChecked = true
+        wasAuthenticatedAtStartup = authState.isAuthenticated
+    }
+
     LaunchedEffect(authState.isAuthenticated) {
         if (!authState.isAuthenticated) return@LaunchedEffect
+        // If they were already authenticated at startup, don't auto-prompt here (avoid prompting on every launch if already logged in)
+        if (wasAuthenticatedAtStartup) return@LaunchedEffect
+
+        val hasRequestedCamera = appContainer.userPreferencesStore.hasRequestedCameraPermission()
+        val hasRequestedNotification = appContainer.pushNotificationCoordinator.hasRequestedNotificationPermission()
 
         cameraPermissionGranted = ContextCompat.checkSelfPermission(
             context,
@@ -859,10 +873,8 @@ private fun SolariApp(
         val shouldRequestNotification =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     !notificationPermissionGranted &&
-                    !appContainer.pushNotificationCoordinator.hasRequestedNotificationPermission()
-        val shouldRequestCamera =
-            !cameraPermissionGranted &&
-                    !appContainer.userPreferencesStore.hasRequestedCameraPermission()
+                    !hasRequestedNotification
+        val shouldRequestCamera = !cameraPermissionGranted && !hasRequestedCamera
 
         if (shouldRequestCamera) {
             shouldRequestNotificationAfterInitialCameraPrompt = shouldRequestNotification
@@ -873,8 +885,8 @@ private fun SolariApp(
         }
     }
 
-    LaunchedEffect(pendingInitialNotificationPermissionRequest, authState.isAuthenticated) {
-        if (!pendingInitialNotificationPermissionRequest || !authState.isAuthenticated) {
+    LaunchedEffect(pendingInitialNotificationPermissionRequest) {
+        if (!pendingInitialNotificationPermissionRequest) {
             return@LaunchedEffect
         }
         pendingInitialNotificationPermissionRequest = false
@@ -889,9 +901,7 @@ private fun SolariApp(
             Manifest.permission.POST_NOTIFICATIONS
         ) == PackageManager.PERMISSION_GRANTED
 
-        if (!notificationPermissionGranted &&
-            !appContainer.pushNotificationCoordinator.hasRequestedNotificationPermission()
-        ) {
+        if (!notificationPermissionGranted) {
             appContainer.pushNotificationCoordinator.markNotificationPermissionRequested()
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }

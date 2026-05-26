@@ -483,9 +483,11 @@ fun HomepageBeforeCapturingScreen(
 
     fun requestCameraPermissionFromPreview() {
         if (isCameraPermissionGranted) return
+
         val activity = context.findActivity()
         val shouldOpenSettings = viewModel.hasRequestedCameraPermission &&
-                activity?.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA) == false
+                activity != null &&
+                !activity.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)
 
         if (shouldOpenSettings) {
             context.openAppSettings()

@@ -181,9 +181,18 @@ fun ProfileScreen(
     var backendRegistered by remember { mutableStateOf(false) }
     var isNotificationStatusLoading by remember { mutableStateOf(true) }
     var isNotificationToggling by remember { mutableStateOf(false) }
-    val notificationsEnabled = systemNotificationsEnabled && backendRegistered
+    var isNotificationsEnabled by remember {
+        mutableStateOf(areSystemNotificationsEnabled() && backendRegistered)
+    }
     var hasRequestedNotificationPermission by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Sync isNotificationsEnabled with real status unless toggling
+    LaunchedEffect(systemNotificationsEnabled, backendRegistered) {
+        if (!isNotificationToggling) {
+            isNotificationsEnabled = systemNotificationsEnabled && backendRegistered
+        }
+    }
 
     // Fetch backend registration status on screen entry
     LaunchedEffect(appContainer) {
@@ -193,6 +202,7 @@ fun ProfileScreen(
         systemNotificationsEnabled = areSystemNotificationsEnabled()
         backendRegistered =
             pushNotificationCoordinator?.getDeviceNotificationStatus() ?: false
+        isNotificationsEnabled = systemNotificationsEnabled && backendRegistered
         isNotificationStatusLoading = false
     }
 
@@ -213,8 +223,11 @@ fun ProfileScreen(
                         appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated()
                         backendRegistered =
                             appContainer?.pushNotificationCoordinator?.getDeviceNotificationStatus() ?: false
+                        isNotificationsEnabled = currentSystemEnabled && backendRegistered
                         isNotificationToggling = false
                     }
+                } else {
+                    isNotificationsEnabled = currentSystemEnabled && backendRegistered
                 }
             }
         }
@@ -228,14 +241,20 @@ fun ProfileScreen(
         val currentSystemEnabled = areSystemNotificationsEnabled()
         systemNotificationsEnabled = granted && currentSystemEnabled
         if (granted && currentSystemEnabled) {
+            isNotificationsEnabled = true
             coroutineScope.launch {
                 isNotificationToggling = true
                 appContainer?.pushNotificationCoordinator?.preparePushToken()
-                appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated()
-                backendRegistered =
-                    appContainer?.pushNotificationCoordinator?.getDeviceNotificationStatus() ?: false
+                val success = appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated() ?: false
+                if (success) {
+                    backendRegistered = true
+                } else {
+                    isNotificationsEnabled = false
+                }
                 isNotificationToggling = false
             }
+        } else {
+            isNotificationsEnabled = false
         }
     }
 
@@ -244,12 +263,16 @@ fun ProfileScreen(
 
         if (areSystemNotificationsEnabled()) {
             // System notifications are ON but backend is not registered -> register
+            isNotificationsEnabled = true
             coroutineScope.launch {
                 isNotificationToggling = true
                 appContainer?.pushNotificationCoordinator?.preparePushToken()
-                appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated()
-                backendRegistered =
-                    appContainer?.pushNotificationCoordinator?.getDeviceNotificationStatus() ?: false
+                val success = appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated() ?: false
+                if (success) {
+                    backendRegistered = true
+                } else {
+                    isNotificationsEnabled = false
+                }
                 isNotificationToggling = false
             }
             return
@@ -257,13 +280,10 @@ fun ProfileScreen(
 
         // System notifications are OFF -> need to prompt for permission
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            context.openAppNotificationSettings()
             return
         }
 
         if (isNotificationRuntimePermissionGranted()) {
-            // Runtime permission granted but system channel disabled -> open settings
-            context.openAppNotificationSettings()
             return
         }
 
@@ -273,12 +293,11 @@ fun ProfileScreen(
                 !activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
 
         if (shouldOpenSettings) {
-            // Permission permanently denied -> open system settings
             context.openAppNotificationSettings()
             return
         }
 
-        // First time or can still show rationale -> launch runtime permission dialog
+        // Launch runtime permission dialog directly
         coroutineScope.launch {
             appContainer?.pushNotificationCoordinator?.markNotificationPermissionRequested()
             hasRequestedNotificationPermission = true
@@ -289,12 +308,18 @@ fun ProfileScreen(
     fun disableNotificationsFromToggle() {
         if (isNotificationToggling) return
 
+        // Optimistic update
+        isNotificationsEnabled = false
+
         // Unregister from backend only, keep system notifications enabled
         coroutineScope.launch {
             isNotificationToggling = true
             val success = appContainer?.pushNotificationCoordinator?.unregisterDevice() ?: false
             if (success) {
                 backendRegistered = false
+                systemNotificationsEnabled = areSystemNotificationsEnabled()
+            } else {
+                isNotificationsEnabled = true
             }
             isNotificationToggling = false
         }
@@ -788,11 +813,11 @@ fun ProfileScreen(
 
                 item {
                     SettingsRow(
-                        icon = if (notificationsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                        icon = if (isNotificationsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
                         title = "Notifications",
                         onClick = {
-                            if (!isNotificationStatusLoading && !isNotificationToggling) {
-                                if (notificationsEnabled) {
+                            if (!isNotificationStatusLoading) {
+                                if (isNotificationsEnabled) {
                                     disableNotificationsFromToggle()
                                 } else {
                                     enableNotificationsFromToggle()
@@ -800,7 +825,7 @@ fun ProfileScreen(
                             }
                         },
                         trailing = {
-                            if (isNotificationStatusLoading || isNotificationToggling) {
+                            if (isNotificationStatusLoading) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(24.dp),
                                     color = SolariTheme.colors.primary,
@@ -808,7 +833,7 @@ fun ProfileScreen(
                                 )
                             } else {
                                 Switch(
-                                    checked = notificationsEnabled,
+                                    checked = isNotificationsEnabled,
                                     onCheckedChange = { enable ->
                                         if (enable) {
                                             enableNotificationsFromToggle()
@@ -1412,7 +1437,10 @@ fun SettingsRow(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
