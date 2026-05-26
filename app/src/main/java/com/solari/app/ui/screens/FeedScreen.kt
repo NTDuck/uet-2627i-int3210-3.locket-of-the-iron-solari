@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.ime
@@ -203,6 +204,8 @@ fun FeedScreen(
     var postPendingDelete by remember { mutableStateOf<Post?>(null) }
     var postPendingLegacyDownload by remember { mutableStateOf<Post?>(null) }
     var isActivitySheetVisible by remember { mutableStateOf(false) }
+    val activeFloods = remember { androidx.compose.runtime.mutableStateListOf<ActiveFlood>() }
+    var floodCounter by remember { mutableStateOf(0L) }
     var activitySheetPostId by remember { mutableStateOf<String?>(null) }
     var feedbackPillVisible by remember { mutableStateOf(false) }
     var feedbackPillMessage by remember { mutableStateOf("") }
@@ -452,6 +455,10 @@ fun FeedScreen(
         val note = reactionNote.trim().takeIf { it.isNotEmpty() }
         reactionNote = ""
         dismissInputOverlay()
+        
+        val newId = floodCounter++
+        activeFloods.add(ActiveFlood(newId, emoji))
+        
         viewModel.sendPostReaction(post, emoji, note) {}
     }
 
@@ -816,6 +823,99 @@ fun FeedScreen(
                 recentEmojis = emptyList(),
                 onReact = ::sendReactionOptimistically
             )
+        }
+
+        activeFloods.forEach { flood ->
+            androidx.compose.runtime.key(flood.id) {
+                EmojiFloodOverlay(
+                    emoji = flood.emoji,
+                    onAnimationEnd = { activeFloods.remove(flood) },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        }
+    }
+}
+
+private data class ActiveFlood(
+    val id: Long,
+    val emoji: String
+)
+
+private data class EmojiParticle(
+    val id: Int,
+    val emoji: String,
+    val initialX: Float,
+    val speed: Float,
+    val delayMs: Int,
+    val size: Float
+)
+
+@Composable
+private fun EmojiFloodOverlay(
+    emoji: String,
+    onAnimationEnd: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val particles = remember {
+        List(22) { index ->
+            EmojiParticle(
+                id = index,
+                emoji = emoji,
+                initialX = 0.05f + 0.9f * kotlin.random.Random.nextFloat(),
+                speed = 0.7f + 0.5f * kotlin.random.Random.nextFloat(),
+                delayMs = index * 35,
+                size = 24f + 20f * kotlin.random.Random.nextFloat()
+            )
+        }
+    }
+
+    var progress by remember { mutableStateOf(0f) }
+
+    LaunchedEffect(Unit) {
+        val duration = 2500L
+        val startTime = System.currentTimeMillis()
+        while (true) {
+            val elapsed = System.currentTimeMillis() - startTime
+            val fraction = (elapsed.toFloat() / duration).coerceIn(0f, 1f)
+            progress = fraction
+            if (fraction >= 1f) {
+                onAnimationEnd()
+                break
+            }
+            delay(16)
+        }
+    }
+
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val widthPx = with(LocalDensity.current) { maxWidth.toPx() }
+        val heightPx = with(LocalDensity.current) { maxHeight.toPx() }
+
+        particles.forEach { particle ->
+            val particleDuration = 1500L * particle.speed
+            val totalElapsed = progress * 2500L
+            val activeElapsed = totalElapsed - particle.delayMs
+            if (activeElapsed > 0) {
+                val t = (activeElapsed.toFloat() / particleDuration).coerceIn(0f, 1f)
+                if (t < 1f) {
+                    val xOffset = java.lang.Math.sin(t * 2f * java.lang.Math.PI).toFloat() * 40f
+                    val alpha = if (t > 0.8f) 1f - (t - 0.8f) / 0.2f else 1f
+
+                    Text(
+                        text = particle.emoji,
+                        fontSize = particle.size.sp,
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .graphicsLayer {
+                                translationX = particle.initialX * widthPx + xOffset
+                                translationY = 50.dp.toPx() - t * (heightPx + 150.dp.toPx())
+                                this.alpha = alpha
+                                scaleX = 1f + 0.2f * java.lang.Math.sin(t * java.lang.Math.PI * 4f).toFloat()
+                                scaleY = scaleX
+                            }
+                    )
+                }
+            }
         }
     }
 }
