@@ -1268,24 +1268,26 @@ private fun DrawBottomRow(
             }
         }
 
-        LazyRow(
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(16.dp, 0.dp, 16.dp, 0.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            items(PresetColors) { color ->
-                ColorButton(color, isSelected = selectedColor == color) { onColorSelected(color) }
+        if (selectedTool != DrawTool.Eraser) {
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(16.dp, 0.dp, 16.dp, 0.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                item {
+                    CustomColorButton(
+                        selectedColor = selectedColor,
+                        presetColors = PresetColors,
+                        onClick = onCustomColorClick
+                    )
+                }
+                items(PresetColors) { color ->
+                    ColorButton(color, isSelected = selectedColor == color) { onColorSelected(color) }
+                }
             }
-            item {
-                CustomColorButton(
-                    selectedColor = selectedColor,
-                    presetColors = PresetColors,
-                    onClick = onCustomColorClick
-                )
-            }
+            Spacer(modifier = Modifier.height(16.dp))
         }
-        Spacer(modifier = Modifier.height(16.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
@@ -1617,15 +1619,15 @@ private fun TextBottomRow(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            items(PresetColors) { color ->
-                ColorButton(color, isSelected = selectedColor == color) { onColorSelected(color) }
-            }
             item {
                 CustomColorButton(
                     selectedColor = selectedColor,
                     presetColors = PresetColors,
                     onClick = onCustomColorClick
                 )
+            }
+            items(PresetColors) { color ->
+                ColorButton(color, isSelected = selectedColor == color) { onColorSelected(color) }
             }
         }
         Spacer(modifier = Modifier.height(56.dp))
