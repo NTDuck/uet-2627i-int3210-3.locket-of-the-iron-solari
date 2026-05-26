@@ -255,6 +255,13 @@ fun ProfileScreen(
             }
         } else {
             isNotificationsEnabled = false
+            val activity = context.findActivity()
+            if (activity != null && activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                coroutineScope.launch {
+                    appContainer?.pushNotificationCoordinator?.markNotificationPermissionRequested()
+                    hasRequestedNotificationPermission = true
+                }
+            }
         }
     }
 
@@ -299,8 +306,6 @@ fun ProfileScreen(
 
         // Launch runtime permission dialog directly
         coroutineScope.launch {
-            appContainer?.pushNotificationCoordinator?.markNotificationPermissionRequested()
-            hasRequestedNotificationPermission = true
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }

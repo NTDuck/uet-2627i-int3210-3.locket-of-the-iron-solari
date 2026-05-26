@@ -196,6 +196,12 @@ fun HomepageBeforeCapturingScreen(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         isCameraPermissionGranted = granted
+        if (!granted) {
+            val activity = context.findActivity()
+            if (activity != null && activity.shouldShowRequestPermissionRationale(Manifest.permission.CAMERA)) {
+                viewModel.markCameraPermissionRequested()
+            }
+        }
     }
     val galleryPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
@@ -494,7 +500,6 @@ fun HomepageBeforeCapturingScreen(
             return
         }
 
-        viewModel.markCameraPermissionRequested()
         cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
     }
 

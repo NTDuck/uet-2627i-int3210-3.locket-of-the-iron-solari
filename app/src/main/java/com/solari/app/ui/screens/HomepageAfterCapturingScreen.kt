@@ -322,6 +322,14 @@ fun HomepageAfterCapturingScreen(
                     }
                 }
             }
+        } else {
+            val activity = context.findActivity()
+            if (activity != null &&
+                (activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) ||
+                 activity.shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_COARSE_LOCATION))
+            ) {
+                viewModel.markLocationPermissionRequested()
+            }
         }
     }
 
@@ -352,7 +360,6 @@ fun HomepageAfterCapturingScreen(
         }
 
         weatherRequestedLocationAfterPermission = afterGrantFetchesWeather
-        viewModel.markLocationPermissionRequested()
         locationPermissionLauncher.launch(
             arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
