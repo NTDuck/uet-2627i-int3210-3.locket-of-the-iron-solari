@@ -227,6 +227,7 @@ class FeedViewModel(
         viewModelScope.launch {
             when (val result = feedRepository.deletePost(postId)) {
                 is ApiResult.Success -> {
+                    errorMessage = null
                     postUploadCoordinator.removePost(postId)
                     remotePosts = remotePosts.filter { it.id != postId }
                     applyDisplayPosts()
@@ -234,6 +235,7 @@ class FeedViewModel(
                     loadingPostActivityIds = loadingPostActivityIds - postId
                     loadingMorePostActivityIds = loadingMorePostActivityIds - postId
                     postActivityPaginationByPostId = postActivityPaginationByPostId - postId
+                    successMessage = "Post deleted"
                 }
 
                 is ApiResult.Failure -> errorMessage = result.message
@@ -458,7 +460,6 @@ class FeedViewModel(
             when (val result = feedRepository.sendPostReaction(post.id, emoji, trimmedNote)) {
                 is ApiResult.Success -> {
                     errorMessage = null
-                    successMessage = "Reacted to ${post.author.displayName}'s post"
                     onSent()
                 }
 
