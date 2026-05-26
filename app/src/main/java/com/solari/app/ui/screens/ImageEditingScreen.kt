@@ -196,6 +196,15 @@ fun ImageEditingScreen(
     var adjustType by remember { mutableStateOf<AdjustType?>(AdjustType.Exposure) }
     var adjustValues by remember { mutableStateOf(AdjustType.entries.associateWith { 0f }) }
 
+    val activeDrawPaths = remember { mutableStateListOf<DrawPath>() }
+
+    LaunchedEffect(currentMode) {
+        if (currentMode == EditMode.Draw) {
+            activeDrawPaths.clear()
+            activeDrawPaths.addAll(viewModel.drawingPaths)
+        }
+    }
+
     LaunchedEffect(initialMedia) {
         if (initialMedia != null && baseBitmap == null) {
             withContext(Dispatchers.IO) {
@@ -301,7 +310,9 @@ fun ImageEditingScreen(
                 } else {
                     SubScreenTopBar(
                         onCancel = { currentMode = EditMode.Main },
-                        onApply = { applyTrigger = true }
+                        onApply = { applyTrigger = true },
+                        onUndo = if (mode == EditMode.Draw) { { if (activeDrawPaths.isNotEmpty()) activeDrawPaths.removeAt(activeDrawPaths.size - 1) } } else null,
+                        canUndo = if (mode == EditMode.Draw) activeDrawPaths.isNotEmpty() else false
                     )
                 }
             }
@@ -398,7 +409,7 @@ fun ImageEditingScreen(
                             EditMode.Draw -> {
                                 DrawWorkspace(
                                     bitmap = bitmap,
-                                    initialPaths = viewModel.drawingPaths,
+                                    paths = activeDrawPaths,
                                     selectedColor = drawColor,
                                     selectedTool = drawTool,
                                     selectedBrushSize = selectedBrushSize,
@@ -992,14 +1003,13 @@ private enum class CropEdge { None, Left, Top, Right, Bottom, TopLeft, TopRight,
 @Composable
 private fun DrawWorkspace(
     bitmap: Bitmap,
-    initialPaths: List<DrawPath>,
+    paths: androidx.compose.runtime.snapshots.SnapshotStateList<DrawPath>,
     selectedColor: Color,
     selectedTool: DrawTool,
     selectedBrushSize: Float,
     applyTrigger: Boolean,
     onApply: (Bitmap, List<DrawPath>) -> Unit
 ) {
-    val paths = remember { mutableStateListOf<DrawPath>().apply { addAll(initialPaths) } }
     var currentPath by remember { mutableStateOf<NativePath?>(null) }
     var eraserCursorPosition by remember { mutableStateOf<Offset?>(null) }
 
@@ -1687,7 +1697,12 @@ private fun AdjustBottomRow(
 }
 
 @Composable
-private fun SubScreenTopBar(onCancel: () -> Unit, onApply: () -> Unit) {
+private fun SubScreenTopBar(
+    onCancel: () -> Unit,
+    onApply: () -> Unit,
+    onUndo: (() -> Unit)? = null,
+    canUndo: Boolean = false
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1699,8 +1714,20 @@ private fun SubScreenTopBar(onCancel: () -> Unit, onApply: () -> Unit) {
         IconButton(onClick = onCancel) {
             Icon(Icons.Default.Close, null, tint = SolariTheme.colors.secondary)
         }
-        IconButton(onClick = onApply) {
-            Icon(Icons.Default.Check, null, tint = SolariTheme.colors.primary)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (onUndo != null) {
+                IconButton(onClick = onUndo, enabled = canUndo) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Undo,
+                        null,
+                        tint = if (canUndo) SolariTheme.colors.primary else SolariTheme.colors.primary.copy(alpha = 0.38f)
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            IconButton(onClick = onApply) {
+                Icon(Icons.Default.Check, null, tint = SolariTheme.colors.primary)
+            }
         }
     }
 }
