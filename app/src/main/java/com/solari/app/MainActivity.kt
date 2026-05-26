@@ -1550,6 +1550,14 @@ private fun SolariApp(
                         },
                         onNavigateToCamera = { navigateToMainPage(0, replaceCurrent = true) },
                         onNavigateToFeed = { navigateToMainPage(1, replaceCurrent = true) },
+                        onNavigateToPost = { postId ->
+                            recordMainPage(1)
+                            navController.navigateToFeedPost(
+                                postId = postId,
+                                authorIds = emptySet(),
+                                sort = "default"
+                            )
+                        },
                         onNavigateToProfile = { navigateToMainPage(3, replaceCurrent = true) }
                     )
                 }

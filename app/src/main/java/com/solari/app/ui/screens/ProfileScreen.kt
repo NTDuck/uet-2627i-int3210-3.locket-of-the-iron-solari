@@ -106,6 +106,7 @@ import kotlinx.coroutines.withContext
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -158,29 +159,44 @@ fun ProfileScreen(
     var committedAvatarPreviewUri by remember { mutableStateOf<Uri?>(null) }
     val isGoogleLinked = viewModel.isSignedInWithGoogle
 
+    fun isNotificationRuntimePermissionGranted(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    fun areSystemNotificationsEnabled(): Boolean {
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+
     // Notification permission state - re-checked on each resume (e.g. returning from OS settings)
     var notificationsEnabled by remember {
-        mutableStateOf(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                ContextCompat.checkSelfPermission(
-                    context, Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
-            } else {
-                true
-            }
-        )
+        mutableStateOf(areSystemNotificationsEnabled())
     }
     var hasRequestedNotificationPermission by remember { mutableStateOf(false) }
+    var shouldUseNotificationSettingsForToggle by remember { mutableStateOf(false) }
     val lifecycleOwner = LocalLifecycleOwner.current
+
+    fun clearNotificationSettingsUsedForToggle() {
+        if (!shouldUseNotificationSettingsForToggle) return
+        shouldUseNotificationSettingsForToggle = false
+        coroutineScope.launch {
+            appContainer?.pushNotificationCoordinator?.clearNotificationSettingsUsedForToggle()
+        }
+    }
+
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                notificationsEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    ContextCompat.checkSelfPermission(
-                        context, Manifest.permission.POST_NOTIFICATIONS
-                    ) == PackageManager.PERMISSION_GRANTED
-                } else {
-                    true
+                val systemEnabled = areSystemNotificationsEnabled()
+                notificationsEnabled = systemEnabled
+                if (systemEnabled) {
+                    clearNotificationSettingsUsedForToggle()
                 }
             }
         }
@@ -190,8 +206,9 @@ fun ProfileScreen(
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
-        notificationsEnabled = granted
-        if (granted) {
+        val systemEnabled = areSystemNotificationsEnabled()
+        notificationsEnabled = granted && systemEnabled
+        if (granted && systemEnabled) {
             coroutineScope.launch {
                 appContainer?.pushNotificationCoordinator?.preparePushToken()
                 appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated()
@@ -200,13 +217,36 @@ fun ProfileScreen(
     }
 
     LaunchedEffect(appContainer) {
+        val pushNotificationCoordinator = appContainer?.pushNotificationCoordinator
         hasRequestedNotificationPermission =
-            appContainer?.pushNotificationCoordinator?.hasRequestedNotificationPermission() ?: false
+            pushNotificationCoordinator?.hasRequestedNotificationPermission() ?: false
+        shouldUseNotificationSettingsForToggle =
+            pushNotificationCoordinator?.shouldUseNotificationSettingsForToggle() ?: false
     }
 
     fun requestNotificationPermissionFromToggle() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        if (areSystemNotificationsEnabled()) {
             notificationsEnabled = true
+            clearNotificationSettingsUsedForToggle()
+            coroutineScope.launch {
+                appContainer?.pushNotificationCoordinator?.preparePushToken()
+                appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated()
+            }
+            return
+        }
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            context.openAppNotificationSettings()
+            return
+        }
+
+        if (shouldUseNotificationSettingsForToggle) {
+            context.openAppNotificationSettings()
+            return
+        }
+
+        if (isNotificationRuntimePermissionGranted()) {
+            context.openAppNotificationSettings()
             return
         }
 
@@ -225,6 +265,15 @@ fun ProfileScreen(
             hasRequestedNotificationPermission = true
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
+    }
+
+    fun disableNotificationsFromToggle() {
+        notificationsEnabled = areSystemNotificationsEnabled()
+        shouldUseNotificationSettingsForToggle = true
+        coroutineScope.launch {
+            appContainer?.pushNotificationCoordinator?.markNotificationSettingsUsedForToggle()
+        }
+        context.openAppNotificationSettings()
     }
 
     val avatarPicker = rememberLauncherForActivityResult(
@@ -716,10 +765,10 @@ fun ProfileScreen(
                 item {
                     SettingsRow(
                         icon = if (notificationsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
-                        title = if (notificationsEnabled) "Notifications Enabled" else "Notifications Disabled",
+                        title = "Notifications",
                         onClick = {
                             if (notificationsEnabled) {
-                                context.openAppNotificationSettings()
+                                disableNotificationsFromToggle()
                             } else {
                                 requestNotificationPermissionFromToggle()
                             }
@@ -731,7 +780,7 @@ fun ProfileScreen(
                                     if (enable) {
                                         requestNotificationPermissionFromToggle()
                                     } else {
-                                        context.openAppNotificationSettings()
+                                        disableNotificationsFromToggle()
                                     }
                                 },
                                 colors = SwitchDefaults.colors(

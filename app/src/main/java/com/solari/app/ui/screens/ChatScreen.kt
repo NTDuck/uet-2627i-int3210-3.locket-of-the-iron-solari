@@ -252,6 +252,7 @@ fun ChatScreen(
     onNavigateToSettings: (chatId: String, partner: User?) -> Unit,
     onNavigateToCamera: () -> Unit,
     onNavigateToFeed: () -> Unit,
+    onNavigateToPost: (postId: String) -> Unit,
     onNavigateToProfile: () -> Unit
 ) {
     val currentUser = viewModel.currentUser
@@ -430,7 +431,8 @@ fun ChatScreen(
                                                 chatMessageListState.pendingJumpToMessageId =
                                                     messageId
                                             }
-                                        }
+                                        },
+                                        onNavigateToPost = onNavigateToPost
                                     )
                                 }
                             }
@@ -1276,7 +1278,8 @@ private fun ChatMessageRow(
     onUnsendMessage: (Message) -> Unit,
     onReactToMessage: (Message, String) -> Unit,
     onReplyToMessage: (Message) -> Unit,
-    onJumpToMessage: (String) -> Unit
+    onJumpToMessage: (String) -> Unit,
+    onNavigateToPost: (String) -> Unit
 ) {
     val message = item.message
 
@@ -1299,7 +1302,8 @@ private fun ChatMessageRow(
                 onUnsendMessage = onUnsendMessage,
                 onReactToMessage = onReactToMessage,
                 onReplyToMessage = onReplyToMessage,
-                onJumpToMessage = onJumpToMessage
+                onJumpToMessage = onJumpToMessage,
+                onNavigateToPost = onNavigateToPost
             )
 
             if (item.showDeliveryFooter) {
@@ -1353,7 +1357,8 @@ private fun ChatMessageRow(
                 onUnsendMessage = onUnsendMessage,
                 onReactToMessage = onReactToMessage,
                 onReplyToMessage = onReplyToMessage,
-                onJumpToMessage = onJumpToMessage
+                onJumpToMessage = onJumpToMessage,
+                onNavigateToPost = onNavigateToPost
             )
         }
     }
@@ -1375,7 +1380,8 @@ private fun ChatBubble(
     onUnsendMessage: (Message) -> Unit,
     onReactToMessage: (Message, String) -> Unit,
     onReplyToMessage: (Message) -> Unit,
-    onJumpToMessage: (String) -> Unit
+    onJumpToMessage: (String) -> Unit,
+    onNavigateToPost: (String) -> Unit
 ) {
     var isActionMenuExpanded by remember { mutableStateOf(false) }
     var isEmojiPickerExpanded by remember { mutableStateOf(false) }
@@ -1515,7 +1521,8 @@ private fun ChatBubble(
                             contentColor = bubbleContentColor,
                             accentColor = bubbleAccentColor,
                             isClickEnabled = areActionsEnabled,
-                            onReplyPreviewClick = onJumpToMessage
+                            onReplyPreviewClick = onJumpToMessage,
+                            onPostPreviewClick = onNavigateToPost
                         )
                     }
 
@@ -1614,7 +1621,8 @@ private fun MessageContextPreview(
     contentColor: Color,
     accentColor: Color,
     isClickEnabled: Boolean,
-    onReplyPreviewClick: (String) -> Unit
+    onReplyPreviewClick: (String) -> Unit,
+    onPostPreviewClick: (String) -> Unit
 ) {
     val hasReferencedPost = message.referencedPostId != null
     val replyPreview = message.repliedMessagePreview
@@ -1638,7 +1646,18 @@ private fun MessageContextPreview(
     ) {
         if (hasReferencedPost) {
             Row(
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .then(
+                        if (isClickEnabled) {
+                            Modifier.clickable {
+                                message.referencedPostId?.let(onPostPreviewClick)
+                            }
+                        } else {
+                            Modifier
+                        }
+                    )
             ) {
                 Box(
                     modifier = Modifier

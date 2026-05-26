@@ -24,6 +24,18 @@ class PushNotificationCoordinator(
         pushNotificationStore.markNotificationPermissionRequested()
     }
 
+    suspend fun shouldUseNotificationSettingsForToggle(): Boolean {
+        return pushNotificationStore.shouldUseNotificationSettingsForToggle()
+    }
+
+    suspend fun markNotificationSettingsUsedForToggle() {
+        pushNotificationStore.markNotificationSettingsUsedForToggle()
+    }
+
+    suspend fun clearNotificationSettingsUsedForToggle() {
+        pushNotificationStore.clearNotificationSettingsUsedForToggle()
+    }
+
     suspend fun preparePushToken(): String? {
         val existingToken = pushNotificationStore.getCurrentDeviceToken()
         if (!existingToken.isNullOrBlank()) {
