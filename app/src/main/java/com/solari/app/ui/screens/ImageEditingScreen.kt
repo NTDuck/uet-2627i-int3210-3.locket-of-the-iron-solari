@@ -189,7 +189,7 @@ fun ImageEditingScreen(
 
     var drawColor by remember { mutableStateOf(Color.Red) }
     var drawTool by remember { mutableStateOf(DrawTool.Brush) }
-    var selectedEraserSize by remember { mutableFloatStateOf(30f) }
+    var selectedBrushSize by remember { mutableFloatStateOf(15f) }
 
     var textColor by remember { mutableStateOf(Color.Red) }
 
@@ -327,8 +327,8 @@ fun ImageEditingScreen(
                         onColorSelected = { drawColor = it },
                         selectedTool = drawTool,
                         onToolSelected = { drawTool = it },
-                        selectedEraserSize = selectedEraserSize,
-                        onEraserSizeSelected = { selectedEraserSize = it }
+                        selectedBrushSize = selectedBrushSize,
+                        onBrushSizeSelected = { selectedBrushSize = it }
                     )
 
                     EditMode.Text -> TextBottomRow(
@@ -401,7 +401,7 @@ fun ImageEditingScreen(
                                     initialPaths = viewModel.drawingPaths,
                                     selectedColor = drawColor,
                                     selectedTool = drawTool,
-                                    selectedEraserSize = selectedEraserSize,
+                                    selectedBrushSize = selectedBrushSize,
                                     applyTrigger = applyTrigger,
                                     onApply = { _, finalPaths ->
                                         viewModel.updateDrawingPaths(finalPaths)
@@ -995,7 +995,7 @@ private fun DrawWorkspace(
     initialPaths: List<DrawPath>,
     selectedColor: Color,
     selectedTool: DrawTool,
-    selectedEraserSize: Float,
+    selectedBrushSize: Float,
     applyTrigger: Boolean,
     onApply: (Bitmap, List<DrawPath>) -> Unit
 ) {
@@ -1017,7 +1017,7 @@ private fun DrawWorkspace(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(selectedColor, selectedTool, selectedEraserSize) {
+            .pointerInput(selectedColor, selectedTool, selectedBrushSize) {
                 val canvasWidth = size.width.toFloat()
                 val canvasHeight = size.height.toFloat()
                 val screenScale = if (canvasWidth > 0) min(
@@ -1050,7 +1050,7 @@ private fun DrawWorkspace(
                                 DrawPath(
                                     it,
                                     selectedColor,
-                                    (if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f) / screenScale,
+                                    selectedBrushSize / screenScale,
                                     selectedTool == DrawTool.Eraser
                                 )
                             )
@@ -1125,8 +1125,7 @@ private fun DrawWorkspace(
                     }
 
                     currentPath?.let { path ->
-                        paint.strokeWidth =
-                            (if (selectedTool == DrawTool.Eraser) selectedEraserSize else 10f)
+                        paint.strokeWidth = selectedBrushSize
                         if (selectedTool == DrawTool.Eraser) {
                             paint.xfermode =
                                 android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
@@ -1152,9 +1151,8 @@ private fun DrawWorkspace(
             }
 
             eraserCursorPosition
-                ?.takeIf { selectedTool == DrawTool.Eraser }
                 ?.let { cursorPosition ->
-                    val radius = selectedEraserSize / 2f
+                    val radius = selectedBrushSize / 2f
                     drawCircle(
                         color = Color.White.copy(alpha = 0.18f),
                         radius = radius,
@@ -1177,13 +1175,13 @@ private fun DrawBottomRow(
     onColorSelected: (Color) -> Unit,
     selectedTool: DrawTool,
     onToolSelected: (DrawTool) -> Unit,
-    selectedEraserSize: Float,
-    onEraserSizeSelected: (Float) -> Unit
+    selectedBrushSize: Float,
+    onBrushSizeSelected: (Float) -> Unit
 ) {
-    val eraserSizes = listOf(
-        "Small" to 30f,
-        "Medium" to 60f,
-        "Large" to 120f
+    val brushSizes = listOf(
+        "Small" to 15f,
+        "Medium" to 40f,
+        "Large" to 80f
     )
 
     Column(
@@ -1192,34 +1190,32 @@ private fun DrawBottomRow(
             .navigationBarsPadding()
     ) {
         Spacer(modifier = Modifier.height(16.dp))
-        if (selectedTool == DrawTool.Eraser) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                eraserSizes.forEach { (label, size) ->
-                    val isSelected = selectedEraserSize == size
-                    val pillShape = RoundedCornerShape(20.dp)
-                    Surface(
-                        onClick = { onEraserSizeSelected(size) },
-                        shape = pillShape,
-                        color = if (isSelected) SolariTheme.colors.primary.copy(alpha = 0.2f) else Color.Transparent,
-                        border = if (isSelected) androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            SolariTheme.colors.primary
-                        ) else null
-                    ) {
-                        Box(modifier = Modifier.padding(12.dp, 6.dp, 12.dp, 6.dp)) {
-                            Text(
-                                text = label,
-                                color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                fontFamily = PlusJakartaSans
-                            )
-                        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            brushSizes.forEach { (label, size) ->
+                val isSelected = selectedBrushSize == size
+                val pillShape = RoundedCornerShape(20.dp)
+                Surface(
+                    onClick = { onBrushSizeSelected(size) },
+                    shape = pillShape,
+                    color = if (isSelected) SolariTheme.colors.primary.copy(alpha = 0.2f) else Color.Transparent,
+                    border = if (isSelected) androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        SolariTheme.colors.primary
+                    ) else null
+                ) {
+                    Box(modifier = Modifier.padding(12.dp, 6.dp, 12.dp, 6.dp)) {
+                        Text(
+                            text = label,
+                            color = if (isSelected) SolariTheme.colors.primary else SolariTheme.colors.onBackground,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = PlusJakartaSans
+                        )
                     }
                 }
             }
