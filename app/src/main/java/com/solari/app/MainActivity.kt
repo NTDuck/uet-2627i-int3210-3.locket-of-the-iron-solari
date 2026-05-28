@@ -30,10 +30,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -67,6 +64,7 @@ import com.solari.app.ui.components.ProfileDialog
 import com.solari.app.ui.components.SolariBottomNavBar
 import com.solari.app.ui.components.SolariConfirmationDialog
 import com.solari.app.ui.components.SolariFeedbackPill
+import com.solari.app.ui.components.SolariInfoDialog
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.CapturedMediaSource
 import com.solari.app.ui.models.Conversation
@@ -1801,29 +1799,11 @@ private fun SolariApp(
         }
 
         authState.sessionInvalidationMessage?.let { message ->
-            AlertDialog(
-                onDismissRequest = {},
-                containerColor = SolariTheme.colors.surface,
-                title = {
-                    Text(
-                        text = "Sign in again",
-                        color = SolariTheme.colors.onSurface
-                    )
-                },
-                text = {
-                    Text(
-                        text = message,
-                        color = SolariTheme.colors.tertiary
-                    )
-                },
-                confirmButton = {
-                    TextButton(onClick = ::acknowledgeSessionInvalidation) {
-                        Text(
-                            text = "OK",
-                            color = SolariTheme.colors.primary
-                        )
-                    }
-                }
+            SolariInfoDialog(
+                title = "Sign in again",
+                message = message,
+                dismissOnBackOrOutside = false,
+                onDismiss = ::acknowledgeSessionInvalidation
             )
         }
     }

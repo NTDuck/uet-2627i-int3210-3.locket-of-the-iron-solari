@@ -47,7 +47,6 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Widgets
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -57,7 +56,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -80,6 +78,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -91,6 +90,7 @@ import com.solari.app.ui.auth.GoogleIdTokenResult
 import com.solari.app.ui.auth.requestGoogleIdToken
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
+import com.solari.app.ui.components.SolariInfoDialog
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.compressAvatarForUpload
@@ -995,29 +995,15 @@ fun ProfileScreen(
     }
 
     if (showAddWidgetDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddWidgetDialog = false },
-            containerColor = SolariTheme.colors.surface,
-            title = {
-                Text(
-                    text = "Add widget",
-                    color = SolariTheme.colors.onSurface
-                )
-            },
-            text = {
-                Text(
-                    text = "Long press your home screen, choose Widgets, then place the Solari widget.",
-                    color = SolariTheme.colors.tertiary
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { showAddWidgetDialog = false }) {
-                    Text(
-                        text = "OK",
-                        color = SolariTheme.colors.primary
-                    )
-                }
-            }
+        SolariInfoDialog(
+            title = "Add widget",
+            message = "1. Touch and hold an empty area on your home screen.\n" +
+                    "2. Tap Widgets.\n" +
+                    "3. Find Solari in the widget list.\n" +
+                    "4. Touch and hold the Solari widget, then drag it onto your home screen.\n" +
+                    "5. Release it where you want it to stay.",
+            messageTextAlign = TextAlign.Start,
+            onDismiss = { showAddWidgetDialog = false }
         )
     }
 
