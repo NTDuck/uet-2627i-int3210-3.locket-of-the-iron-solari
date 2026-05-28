@@ -514,6 +514,7 @@ private fun SolariApp(
         )
     }
     var shouldRequestNotificationAfterInitialCameraPrompt by remember { mutableStateOf(false) }
+    var initialCameraPromptCompletedEventId by remember { mutableIntStateOf(0) }
     var pendingInitialNotificationPermissionRequest by remember { mutableStateOf(false) }
     var wasAuthenticatedAtStartup by remember { mutableStateOf(false) }
     var isStartupPermissionChecked by remember { mutableStateOf(false) }
@@ -559,7 +560,7 @@ private fun SolariApp(
         cameraPermissionGranted = granted
         if (shouldRequestNotificationAfterInitialCameraPrompt) {
             shouldRequestNotificationAfterInitialCameraPrompt = false
-            pendingInitialNotificationPermissionRequest = true
+            initialCameraPromptCompletedEventId += 1
         }
     }
 
@@ -890,6 +891,16 @@ private fun SolariApp(
         } else if (shouldRequestNotification) {
             pendingInitialNotificationPermissionRequest = true
         }
+    }
+
+    LaunchedEffect(initialCameraPromptCompletedEventId) {
+        if (initialCameraPromptCompletedEventId == 0) {
+            return@LaunchedEffect
+        }
+
+        // Let Android finish dismissing the camera permission sheet before opening the next one.
+        delay(300)
+        pendingInitialNotificationPermissionRequest = true
     }
 
     LaunchedEffect(pendingInitialNotificationPermissionRequest) {
