@@ -3,6 +3,7 @@ package com.solari.app.data.feed
 import com.solari.app.data.network.ApiResult
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.PostActivityEntry
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 
 data class PaginatedFeed(
@@ -10,8 +11,17 @@ data class PaginatedFeed(
     val nextCursor: String?
 )
 
+data class PaginatedPostActivityEntries(
+    val activities: List<PostActivityEntry>,
+    val nextCursor: String?
+)
+
 interface FeedRepository {
     val deletedPostIds: StateFlow<Set<String>>
+    val newlyPublishedPosts: SharedFlow<Post>
+
+    suspend fun emitNewlyPublishedPost(postId: String)
+    suspend fun emitNewlyPublishedPost(post: Post)
 
     suspend fun getFeed(
         authorIds: Set<String> = emptySet(),
@@ -26,7 +36,19 @@ interface FeedRepository {
 
     suspend fun getPostViewers(postId: String): ApiResult<List<PostActivityEntry>>
 
+    suspend fun getPostViewersPage(
+        postId: String,
+        limit: Int,
+        cursor: String? = null
+    ): ApiResult<PaginatedPostActivityEntries>
+
     suspend fun getPostReactions(postId: String): ApiResult<List<PostActivityEntry>>
+
+    suspend fun getPostReactionsPage(
+        postId: String,
+        limit: Int,
+        cursor: String? = null
+    ): ApiResult<PaginatedPostActivityEntries>
 
     suspend fun registerPostView(postId: String): ApiResult<Unit>
 

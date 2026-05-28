@@ -21,6 +21,7 @@ import com.solari.app.ui.models.User
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
@@ -39,8 +40,25 @@ class DefaultFeedRepository(
     private val uploadLogTag = "SolariUpload"
     private val latencyLogTag = "SolariApiLatency"
     private val _deletedPostIds = MutableStateFlow<Set<String>>(emptySet())
+    private val _newlyPublishedPosts = kotlinx.coroutines.flow.MutableSharedFlow<Post>()
 
     override val deletedPostIds: StateFlow<Set<String>> = _deletedPostIds.asStateFlow()
+    override val newlyPublishedPosts: kotlinx.coroutines.flow.SharedFlow<Post> = _newlyPublishedPosts.asSharedFlow()
+
+    override suspend fun emitNewlyPublishedPost(postId: String) {
+        when (val result = getPost(postId)) {
+            is ApiResult.Success -> {
+                _newlyPublishedPosts.emit(result.data)
+            }
+            is ApiResult.Failure -> {
+                Log.e("SolariFCM", "Failed to fetch newly published post $postId: ${result.message}")
+            }
+        }
+    }
+
+    override suspend fun emitNewlyPublishedPost(post: Post) {
+        _newlyPublishedPosts.emit(post)
+    }
 
     override suspend fun getFeed(
         authorIds: Set<String>,
@@ -86,17 +104,64 @@ class DefaultFeedRepository(
     }
 
     override suspend fun getPostViewers(postId: String): ApiResult<List<PostActivityEntry>> {
-        return when (val result = apiExecutor.execute { feedApi.getPostViewers(postId = postId) }) {
+        return when (val result = getPostViewersPage(postId = postId, limit = 50)) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiActivityEntry() })
+            is ApiResult.Success -> ApiResult.Success(result.data.activities)
+        }
+    }
+
+    override suspend fun getPostViewersPage(
+        postId: String,
+        limit: Int,
+        cursor: String?
+    ): ApiResult<PaginatedPostActivityEntries> {
+        return when (
+            val result = apiExecutor.execute {
+                feedApi.getPostViewers(
+                    postId = postId,
+                    limit = limit,
+                    cursor = cursor
+                )
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(
+                PaginatedPostActivityEntries(
+                    activities = result.data.items.map { it.toUiActivityEntry() },
+                    nextCursor = result.data.nextCursor
+                )
+            )
         }
     }
 
     override suspend fun getPostReactions(postId: String): ApiResult<List<PostActivityEntry>> {
-        return when (val result =
-            apiExecutor.execute { feedApi.getPostReactions(postId = postId) }) {
+        return when (val result = getPostReactionsPage(postId = postId, limit = 100)) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiActivityEntry() })
+            is ApiResult.Success -> ApiResult.Success(result.data.activities)
+        }
+    }
+
+    override suspend fun getPostReactionsPage(
+        postId: String,
+        limit: Int,
+        cursor: String?
+    ): ApiResult<PaginatedPostActivityEntries> {
+        return when (
+            val result = apiExecutor.execute {
+                feedApi.getPostReactions(
+                    postId = postId,
+                    limit = limit,
+                    cursor = cursor
+                )
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(
+                PaginatedPostActivityEntries(
+                    activities = result.data.items.map { it.toUiActivityEntry() },
+                    nextCursor = result.data.nextCursor
+                )
+            )
         }
     }
 

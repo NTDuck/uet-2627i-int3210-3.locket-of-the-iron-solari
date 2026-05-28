@@ -264,6 +264,10 @@ class PostUploadCoordinator(
                 }
             }
         }
+
+        if (remotePost != null) {
+            feedRepository.emitNewlyPublishedPost(remotePost)
+        }
     }
 
     private fun bindServerPostId(localId: String, serverPostId: String) {

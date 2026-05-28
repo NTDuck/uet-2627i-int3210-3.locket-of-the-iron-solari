@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
@@ -45,6 +46,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -109,7 +111,8 @@ fun FriendManagementScreen(
     onNavigateToFeed: () -> Unit,
     onNavigateToChat: () -> Unit,
     onNavigateToConversation: (Conversation) -> Unit,
-    onNavigateToProfile: () -> Unit
+    onNavigateToProfile: () -> Unit,
+    onShowProfile: (User) -> Unit
 ) {
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -129,6 +132,33 @@ fun FriendManagementScreen(
     val friends = viewModel.friends
     val feedbackMessage = viewModel.successMessage ?: viewModel.errorMessage
     val isSuccessFeedback = viewModel.successMessage != null
+    val listState = rememberLazyListState()
+    val shouldLoadMoreFriends by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val lastVisibleItemIndex = layoutInfo.visibleItemsInfo.lastOrNull()?.index
+                ?: return@derivedStateOf false
+            layoutInfo.totalItemsCount > 0 &&
+                lastVisibleItemIndex >= layoutInfo.totalItemsCount - 1
+        }
+    }
+
+    LaunchedEffect(
+        shouldLoadMoreFriends,
+        viewModel.canLoadMoreFriends,
+        viewModel.isLoadingMoreFriends,
+        viewModel.isLoading,
+        friends.size
+    ) {
+        if (
+            shouldLoadMoreFriends &&
+            viewModel.canLoadMoreFriends &&
+            !viewModel.isLoadingMoreFriends &&
+            !viewModel.isLoading
+        ) {
+            viewModel.loadMoreFriends()
+        }
+    }
 
     LaunchedEffect(feedbackMessage, isSuccessFeedback) {
         if (feedbackMessage != null) {
@@ -153,7 +183,7 @@ fun FriendManagementScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize().navigationBarsPadding().padding(top = 24.dp, bottom = 59.dp)) {
+    Box(modifier = Modifier.fillMaxSize().navigationBarsPadding().padding(top = 24.dp, bottom = 60.dp)) {
         PullToRefreshBox(
                 isRefreshing = isUserRefreshing,
                 onRefresh = {
@@ -166,6 +196,7 @@ fun FriendManagementScreen(
                     .statusBarsPadding()
             ) {
                 LazyColumn(
+                    state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 19.dp),
@@ -345,7 +376,7 @@ fun FriendManagementScreen(
                             ) {
                                 Text(
                                     text = "View blocked accounts",
-                                    color = SolariTheme.colors.onBackground,
+                                    color = SolariTheme.colors.tertiary,
                                     fontSize = 13.sp,
                                     fontFamily = PlusJakartaSans,
                                     fontWeight = FontWeight.Bold
@@ -369,7 +400,7 @@ fun FriendManagementScreen(
                                     sortSelection = selection
                                     viewModel.loadFriends(selection.apiValue)
                                 },
-                                iconTint = SolariTheme.colors.onSurface,
+                                iconTint = SolariTheme.colors.secondary,
                                 modifier = Modifier.size(28.dp),
                                 iconSize = 17
                             )
@@ -420,13 +451,32 @@ fun FriendManagementScreen(
                                 onMessage = { friend ->
                                     viewModel.openConversation(friend, onNavigateToConversation)
                                 },
+                                onShowProfile = onShowProfile,
                                 messagingFriendIds = viewModel.messagingFriendIds,
                                 onUnfriend = { friendPendingUnfriend = it },
                                 onBlock = { friendPendingBlock = it },
                                 modifier = Modifier.animateItem()
                             )
                         }
-                }
+
+                        if (viewModel.isLoadingMoreFriends) {
+                            item {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 12.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator(
+                                        color = SolariTheme.colors.primary,
+                                        trackColor = SolariTheme.colors.surface,
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
             }
         }
 
@@ -537,7 +587,7 @@ private fun FriendManagementFeedbackPill(
 
             Text(
                 text = message,
-                color = SolariTheme.colors.onBackground,
+                color = Color(0xFFE7E7E7),
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
@@ -617,6 +667,7 @@ private fun FriendListItem(
     onUpdateNickname: (User) -> Unit,
     onRemoveNickname: (User) -> Unit,
     onMessage: (User) -> Unit,
+    onShowProfile: (User) -> Unit,
     messagingFriendIds: Set<String>,
     onUnfriend: (User) -> Unit,
     onBlock: (User) -> Unit,
@@ -630,6 +681,7 @@ private fun FriendListItem(
     val menuOffsetY = with(density) { 30.dp.roundToPx() }
     val handle = "@${friend.username}"
     val hasNickname = !friend.nickname.isNullOrBlank()
+    val isOpeningMessage = friend.id in messagingFriendIds
 
     Row(
         modifier = modifier
@@ -637,6 +689,12 @@ private fun FriendListItem(
             .height(64.dp)
             .clip(RoundedCornerShape(8.dp))
             .background(SolariTheme.colors.surface)
+            .scaledClickable(
+                pressedScale = 0.98f,
+                enabled = !isOpeningMessage
+            ) {
+                onMessage(friend)
+            }
             .padding(horizontal = 13.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -736,8 +794,15 @@ private fun FriendListItem(
                                 )
                             }
                     ) {
-                        val isOpeningMessage = friend.id in messagingFriendIds
                         val actions = buildList {
+                            add(
+                                FriendActionMenuEntry(
+                                    text = "View profile",
+                                    color = SolariTheme.colors.onBackground,
+                                    enabled = true,
+                                    onClick = { onShowProfile(friend) }
+                                )
+                            )
                             add(
                                 FriendActionMenuEntry(
                                     text = if (isOpeningMessage) "Opening..." else "Message",

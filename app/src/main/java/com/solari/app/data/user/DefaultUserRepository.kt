@@ -125,6 +125,46 @@ class DefaultUserRepository(
         }
     }
 
+    override suspend fun unregisterDevice(deviceToken: String): ApiResult<Unit> {
+        val normalizedDeviceToken = deviceToken.trim()
+        if (normalizedDeviceToken.isEmpty()) {
+            return ApiResult.Failure(
+                statusCode = null,
+                type = "MISSING_DEVICE_TOKEN",
+                message = "Device token is required."
+            )
+        }
+
+        return when (
+            val result = apiExecutor.execute {
+                userApi.unregisterDevice(normalizedDeviceToken)
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(Unit)
+        }
+    }
+
+    override suspend fun getDeviceNotificationStatus(deviceToken: String): ApiResult<Boolean> {
+        val normalizedDeviceToken = deviceToken.trim()
+        if (normalizedDeviceToken.isEmpty()) {
+            return ApiResult.Failure(
+                statusCode = null,
+                type = "MISSING_DEVICE_TOKEN",
+                message = "Device token is required."
+            )
+        }
+
+        return when (
+            val result = apiExecutor.execute {
+                userApi.getDeviceNotificationStatus(normalizedDeviceToken)
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(result.data.isEnabled)
+        }
+    }
+
     override suspend fun blockUser(userId: String): ApiResult<Unit> {
         return when (val result = apiExecutor.execute { userApi.blockUser(userId) }) {
             is ApiResult.Failure -> result
@@ -140,9 +180,33 @@ class DefaultUserRepository(
     }
 
     override suspend fun getBlockedUsers(sort: String): ApiResult<List<BlockedUser>> {
-        return when (val result = apiExecutor.execute { userApi.getBlockedUsers(sort = sort) }) {
+        return when (val result = getBlockedUsersPage(sort = sort)) {
             is ApiResult.Failure -> result
-            is ApiResult.Success -> ApiResult.Success(result.data.items.map { it.toUiBlockedUser() })
+            is ApiResult.Success -> ApiResult.Success(result.data.items)
+        }
+    }
+
+    override suspend fun getBlockedUsersPage(
+        limit: Int,
+        sort: String,
+        cursor: String?
+    ): ApiResult<BlockedUsersPage> {
+        return when (
+            val result = apiExecutor.execute {
+                userApi.getBlockedUsers(
+                    limit = limit,
+                    sort = sort,
+                    cursor = cursor
+                )
+            }
+        ) {
+            is ApiResult.Failure -> result
+            is ApiResult.Success -> ApiResult.Success(
+                BlockedUsersPage(
+                    items = result.data.items.map { it.toUiBlockedUser() },
+                    nextCursor = result.data.nextCursor
+                )
+            )
         }
     }
 

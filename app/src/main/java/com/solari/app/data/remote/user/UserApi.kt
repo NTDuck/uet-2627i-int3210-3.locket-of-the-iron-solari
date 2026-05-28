@@ -52,6 +52,16 @@ interface UserApi {
         @Body request: RegisterDeviceRequestDto
     ): Response<MessageResponseDto>
 
+    @DELETE("users/me/devices/{deviceToken}")
+    suspend fun unregisterDevice(
+        @Path("deviceToken") deviceToken: String
+    ): Response<MessageResponseDto>
+
+    @GET("users/me/devices/{deviceToken}/status")
+    suspend fun getDeviceNotificationStatus(
+        @Path("deviceToken") deviceToken: String
+    ): Response<DeviceNotificationStatusDto>
+
     @POST("users/{targetId}/block")
     suspend fun blockUser(
         @Path("targetId") targetId: String

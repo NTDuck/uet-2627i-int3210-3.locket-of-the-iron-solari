@@ -15,6 +15,7 @@ import coil.transform.CircleCropTransformation
 import com.solari.app.R
 import com.solari.app.SolariApplication
 import com.solari.app.data.network.ApiResult
+import com.solari.app.navigation.SolariLaunchIntent
 import com.solari.app.ui.models.Post
 import com.solari.app.ui.models.CaptionMetadata
 import kotlinx.coroutines.CoroutineScope
@@ -58,12 +59,9 @@ class SolariWidgetProvider : AppWidgetProvider() {
         val views = RemoteViews(context.packageName, R.layout.solari_widget_layout)
 
         // Set up click intent first so widget is interactive even while loading
-        val intent = Intent(context, com.solari.app.MainActivity::class.java)
-        val pendingIntent = android.app.PendingIntent.getActivity(
-            context, 0, intent,
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-        )
-        views.setOnClickPendingIntent(R.id.widget_post_image, pendingIntent)
+        val defaultPendingIntent = buildWidgetPendingIntent(context, null)
+        views.setOnClickPendingIntent(R.id.widget_root, defaultPendingIntent)
+        views.setOnClickPendingIntent(R.id.widget_post_image, defaultPendingIntent)
 
         try {
             val appContainer = (context.applicationContext as SolariApplication).appContainer
@@ -146,6 +144,9 @@ class SolariWidgetProvider : AppWidgetProvider() {
                     "SolariWidget",
                     "Found latest post: ${latestPost.id} from ${latestPost.author.username}"
                 )
+                val postPendingIntent = buildWidgetPendingIntent(context, latestPost.id)
+                views.setOnClickPendingIntent(R.id.widget_root, postPendingIntent)
+                views.setOnClickPendingIntent(R.id.widget_post_image, postPendingIntent)
                 val metadata = latestPost.captionMetadata
                 if (metadata != null && metadata !is CaptionMetadata.Text) {
                     views.setViewVisibility(R.id.widget_caption_container, android.view.View.VISIBLE)
@@ -272,6 +273,25 @@ class SolariWidgetProvider : AppWidgetProvider() {
         }
 
         appWidgetManager.updateAppWidget(appWidgetId, views)
+    }
+
+    private fun buildWidgetPendingIntent(
+        context: Context,
+        postId: String?
+    ): android.app.PendingIntent {
+        val intent = Intent(context, com.solari.app.MainActivity::class.java).apply {
+            action = SolariLaunchIntent.ACTION_OPEN_WIDGET_POST
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            if (!postId.isNullOrBlank()) {
+                putExtra(SolariLaunchIntent.EXTRA_POST_ID, postId)
+            }
+        }
+        return android.app.PendingIntent.getActivity(
+            context,
+            postId?.hashCode() ?: 0,
+            intent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
     }
 
     private fun createDefaultAvatarBitmap(letter: String): Bitmap {

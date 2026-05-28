@@ -8,14 +8,18 @@ import androidx.lifecycle.viewModelScope
 import com.solari.app.data.feed.PostUploadCoordinator
 import com.solari.app.data.friend.FriendRepository
 import com.solari.app.data.network.ApiResult
+import com.solari.app.data.preferences.UserPreferencesStore
 import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.models.User
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
 
 class HomepageAfterCapturingViewModel(
     private val friendRepository: FriendRepository,
-    private val postUploadCoordinator: PostUploadCoordinator
+    private val postUploadCoordinator: PostUploadCoordinator,
+    private val userPreferencesStore: UserPreferencesStore
 ) : ViewModel() {
     var friends by mutableStateOf<List<User>>(emptyList())
         private set
@@ -38,8 +42,16 @@ class HomepageAfterCapturingViewModel(
     var successMessage by mutableStateOf<String?>(null)
         private set
 
+    var hasRequestedLocationPermission by mutableStateOf(false)
+        private set
+
     init {
         loadFriends()
+        userPreferencesStore.userPreferencesFlow
+            .onEach { preferences ->
+                hasRequestedLocationPermission = preferences.hasRequestedLocationPermission
+            }
+            .launchIn(viewModelScope)
     }
 
     fun updateCapturedMedia(media: CapturedMedia?) {
@@ -88,5 +100,11 @@ class HomepageAfterCapturingViewModel(
     fun clearMessages() {
         errorMessage = null
         successMessage = null
+    }
+
+    fun markLocationPermissionRequested() {
+        viewModelScope.launch {
+            userPreferencesStore.markLocationPermissionRequested()
+        }
     }
 }

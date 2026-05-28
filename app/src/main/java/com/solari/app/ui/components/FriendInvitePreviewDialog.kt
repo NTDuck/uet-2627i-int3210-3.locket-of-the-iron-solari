@@ -31,9 +31,10 @@ import com.solari.app.ui.viewmodels.FriendInvitePreviewState
 import com.solari.app.ui.viewmodels.FriendInviteRelationship
 
 @Composable
-fun FriendInvitePreviewDialog(
+fun ProfileDialog(
     state: FriendInvitePreviewState,
     onPrimaryAction: () -> Unit,
+    onRejectIncomingRequest: () -> Unit = {},
     onCancel: () -> Unit
 ) {
     Dialog(onDismissRequest = onCancel) {
@@ -47,13 +48,30 @@ fun FriendInvitePreviewDialog(
                 FriendInvitePreviewContent(state = state)
 
                 if (state.user != null && state.relationship != FriendInviteRelationship.Self) {
-                    FriendInviteActionRow(
-                        text = state.primaryButtonText(),
-                        textColor = state.primaryButtonColor(),
-                        enabled = true,
-                        shape = RoundedCornerShape(0.dp),
-                        onClick = onPrimaryAction
-                    )
+                    if (state.relationship == FriendInviteRelationship.PendingIncoming) {
+                        FriendInviteActionRow(
+                            text = "Accept",
+                            textColor = SolariTheme.colors.primary,
+                            enabled = true,
+                            shape = RoundedCornerShape(0.dp),
+                            onClick = onPrimaryAction
+                        )
+                        FriendInviteActionRow(
+                            text = "Reject",
+                            textColor = SolariTheme.colors.error,
+                            enabled = true,
+                            shape = RoundedCornerShape(0.dp),
+                            onClick = onRejectIncomingRequest
+                        )
+                    } else {
+                        FriendInviteActionRow(
+                            text = state.primaryButtonText(),
+                            textColor = state.primaryButtonColor(),
+                            enabled = true,
+                            shape = RoundedCornerShape(0.dp),
+                            onClick = onPrimaryAction
+                        )
+                    }
                 }
                 FriendInviteActionRow(
                     text = "Cancel",
@@ -66,6 +84,21 @@ fun FriendInvitePreviewDialog(
             }
         }
     }
+}
+
+@Composable
+fun FriendInvitePreviewDialog(
+    state: FriendInvitePreviewState,
+    onPrimaryAction: () -> Unit,
+    onRejectIncomingRequest: () -> Unit = {},
+    onCancel: () -> Unit
+) {
+    ProfileDialog(
+        state = state,
+        onPrimaryAction = onPrimaryAction,
+        onRejectIncomingRequest = onRejectIncomingRequest,
+        onCancel = onCancel
+    )
 }
 
 @Composable
@@ -199,8 +232,9 @@ private fun FriendInvitePreviewState.relationshipLabel(): String? {
     return when (relationship) {
         FriendInviteRelationship.Self -> "This is you!"
         FriendInviteRelationship.None -> null
+        FriendInviteRelationship.PendingIncoming -> "This user sent you a friend request"
         FriendInviteRelationship.PendingOutgoing -> "You already sent a friend request to this user"
-        FriendInviteRelationship.Friend -> "You are already friends with this user"
+        FriendInviteRelationship.Friend -> null
         FriendInviteRelationship.Blocked -> "You have blocked this user"
     }
 }
@@ -209,6 +243,7 @@ private fun FriendInvitePreviewState.primaryButtonText(): String {
     return when (relationship) {
         FriendInviteRelationship.Self -> "Cancel"
         FriendInviteRelationship.None -> "Send Friend Request"
+        FriendInviteRelationship.PendingIncoming -> "Accept"
         FriendInviteRelationship.PendingOutgoing -> "Unsend request"
         FriendInviteRelationship.Friend -> "Unfriend"
         FriendInviteRelationship.Blocked -> "Unblock"
@@ -220,6 +255,7 @@ private fun FriendInvitePreviewState.primaryButtonColor(): Color {
     return when (relationship) {
         FriendInviteRelationship.Self,
         FriendInviteRelationship.None,
+        FriendInviteRelationship.PendingIncoming,
         FriendInviteRelationship.PendingOutgoing,
         FriendInviteRelationship.Blocked -> SolariTheme.colors.primary
 

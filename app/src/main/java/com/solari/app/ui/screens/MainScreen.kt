@@ -24,6 +24,7 @@ import com.solari.app.ui.models.CapturedMedia
 import com.solari.app.ui.models.Conversation
 import com.solari.app.ui.models.OptimisticPostDraft
 import com.solari.app.ui.models.Post
+import com.solari.app.ui.models.User
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.viewmodels.ConversationViewModel
 import com.solari.app.ui.viewmodels.FeedViewModel
@@ -31,6 +32,8 @@ import com.solari.app.ui.viewmodels.HomepageBeforeCapturingViewModel
 import com.solari.app.ui.viewmodels.ProfileViewModel
 import com.solari.app.ui.viewmodels.SettingsViewModel
 import kotlinx.coroutines.launch
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(
     ExperimentalFoundationApi::class,
@@ -60,13 +63,15 @@ fun MainScreen(
     onNavigateToChangePassword: () -> Unit,
     onNavigateToChangeTheme: () -> Unit,
     onNavigateToFeedBrowse: (String?) -> Unit,
+    onShowProfile: (User) -> Unit,
     onNavigateBackFromFeedPost: () -> Unit = {},
     optimisticPostDraft: OptimisticPostDraft? = null,
     onOptimisticPostDraftConsumed: (String) -> Unit = {},
     onCapture: (CapturedMedia) -> Unit,
     onLogout: () -> Unit,
     onProfileFeedbackConsumed: () -> Unit = {},
-    onConversationFeedbackConsumed: () -> Unit = {}
+    onConversationFeedbackConsumed: () -> Unit = {},
+    onChatsBadgeChanged: (Boolean) -> Unit = {}
 ) {
     val pagerState = rememberPagerState(initialPage = initialPage) { 4 }
 
@@ -79,10 +84,21 @@ fun MainScreen(
         }
     }
 
+    val conversationViewModel: ConversationViewModel = viewModel(factory = viewModelFactory)
+
+    LaunchedEffect(conversationViewModel) {
+        snapshotFlow { conversationViewModel.hasUnreadActivity }
+            .distinctUntilChanged()
+            .collect { onChatsBadgeChanged(it) }
+    }
+
     LaunchedEffect(pagerState.currentPage) {
         onCurrentPageChange(pagerState.currentPage)
         if (pageHistory.lastOrNull() != pagerState.currentPage) {
             onPageHistoryChange(pageHistory + pagerState.currentPage)
+        }
+        if (pagerState.currentPage == 2) {
+            conversationViewModel.markFriendRequestsAsSeen()
         }
     }
 
@@ -161,13 +177,13 @@ fun MainScreen(
                 }
 
                 2 -> {
-                    val viewModel: ConversationViewModel = viewModel(factory = viewModelFactory)
                     ConversationScreen(
-                        viewModel = viewModel,
+                        viewModel = conversationViewModel,
                         externalFeedbackMessage = conversationFeedbackMessage,
                         onExternalFeedbackConsumed = onConversationFeedbackConsumed,
                         onNavigateToChat = onNavigateToChat,
-                        onNavigateToManageFriends = onNavigateToManageFriends
+                        onNavigateToManageFriends = onNavigateToManageFriends,
+                        onShowProfile = onShowProfile
                     )
                 }
 

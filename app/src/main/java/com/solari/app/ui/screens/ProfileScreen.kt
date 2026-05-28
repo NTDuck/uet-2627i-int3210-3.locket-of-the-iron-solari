@@ -41,6 +41,8 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Warning
@@ -76,19 +78,24 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.credentials.CredentialManager
 import com.solari.app.BuildConfig
+import com.solari.app.SolariApplication
 import com.solari.app.ui.auth.GoogleIdTokenResult
 import com.solari.app.ui.auth.requestGoogleIdToken
 import com.solari.app.ui.components.SolariAvatar
 import com.solari.app.ui.components.SolariConfirmationDialog
+import com.solari.app.ui.components.SolariInfoDialog
 import com.solari.app.ui.theme.PlusJakartaSans
 import com.solari.app.ui.theme.SolariTheme
 import com.solari.app.ui.util.compressAvatarForUpload
+import com.solari.app.ui.util.findActivity
+import com.solari.app.ui.util.openAppNotificationSettings
 import com.solari.app.ui.util.scaledClickable
 import com.solari.app.ui.viewmodels.ProfileViewModel
 import com.solari.app.ui.viewmodels.SettingsViewModel
@@ -96,6 +103,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -111,6 +126,9 @@ fun ProfileScreen(
 ) {
     val user = viewModel.user
     val context = LocalContext.current
+    val appContainer = remember(context) {
+        (context.applicationContext as? SolariApplication)?.appContainer
+    }
     val credentialManager = remember(context) { CredentialManager.create(context) }
     val focusManager = LocalFocusManager.current
     val outsideEditClickSource = remember { MutableInteractionSource() }
@@ -135,10 +153,183 @@ fun ProfileScreen(
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var showRemoveAvatarConfirm by remember { mutableStateOf(false) }
     var showRemoveDisplayNameConfirm by remember { mutableStateOf(false) }
+    var showAddWidgetDialog by remember { mutableStateOf(false) }
     var deletePassword by remember { mutableStateOf("") }
     var selectedAvatarUri by remember { mutableStateOf<Uri?>(null) }
     var committedAvatarPreviewUri by remember { mutableStateOf<Uri?>(null) }
     val isGoogleLinked = viewModel.isSignedInWithGoogle
+
+    fun isNotificationRuntimePermissionGranted(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
+    fun areSystemNotificationsEnabled(): Boolean {
+        return NotificationManagerCompat.from(context).areNotificationsEnabled()
+    }
+
+    // Notification state: derived from BOTH system permission AND backend registration
+    var systemNotificationsEnabled by remember {
+        mutableStateOf(areSystemNotificationsEnabled())
+    }
+    var backendRegistered by remember { mutableStateOf(false) }
+    var isNotificationStatusLoading by remember { mutableStateOf(true) }
+    var isNotificationToggling by remember { mutableStateOf(false) }
+    var isNotificationsEnabled by remember {
+        mutableStateOf(areSystemNotificationsEnabled() && backendRegistered)
+    }
+    var hasRequestedNotificationPermission by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    // Sync isNotificationsEnabled with real status unless toggling
+    LaunchedEffect(systemNotificationsEnabled, backendRegistered) {
+        if (!isNotificationToggling) {
+            isNotificationsEnabled = systemNotificationsEnabled && backendRegistered
+        }
+    }
+
+    // Fetch backend registration status on screen entry
+    LaunchedEffect(appContainer) {
+        val pushNotificationCoordinator = appContainer?.pushNotificationCoordinator
+        hasRequestedNotificationPermission =
+            pushNotificationCoordinator?.hasRequestedNotificationPermission() ?: false
+        systemNotificationsEnabled = areSystemNotificationsEnabled()
+        backendRegistered =
+            pushNotificationCoordinator?.getDeviceNotificationStatus() ?: false
+        isNotificationsEnabled = systemNotificationsEnabled && backendRegistered
+        isNotificationStatusLoading = false
+    }
+
+    // Re-check system permission on resume (e.g. returning from OS settings)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val previousSystemEnabled = systemNotificationsEnabled
+                val currentSystemEnabled = areSystemNotificationsEnabled()
+                systemNotificationsEnabled = currentSystemEnabled
+
+                // If system permission just got enabled (e.g. user returned from settings),
+                // register with backend automatically
+                if (!previousSystemEnabled && currentSystemEnabled) {
+                    coroutineScope.launch {
+                        isNotificationToggling = true
+                        appContainer?.pushNotificationCoordinator?.preparePushToken()
+                        appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated()
+                        backendRegistered =
+                            appContainer?.pushNotificationCoordinator?.getDeviceNotificationStatus() ?: false
+                        isNotificationsEnabled = currentSystemEnabled && backendRegistered
+                        isNotificationToggling = false
+                    }
+                } else {
+                    isNotificationsEnabled = currentSystemEnabled && backendRegistered
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        val currentSystemEnabled = areSystemNotificationsEnabled()
+        systemNotificationsEnabled = granted && currentSystemEnabled
+        if (granted && currentSystemEnabled) {
+            isNotificationsEnabled = true
+            coroutineScope.launch {
+                isNotificationToggling = true
+                appContainer?.pushNotificationCoordinator?.preparePushToken()
+                val success = appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated() ?: false
+                if (success) {
+                    backendRegistered = true
+                } else {
+                    isNotificationsEnabled = false
+                }
+                isNotificationToggling = false
+            }
+        } else {
+            isNotificationsEnabled = false
+            val activity = context.findActivity()
+            if (activity != null && activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)) {
+                coroutineScope.launch {
+                    appContainer?.pushNotificationCoordinator?.markNotificationPermissionRequested()
+                    hasRequestedNotificationPermission = true
+                }
+            }
+        }
+    }
+
+    fun enableNotificationsFromToggle() {
+        if (isNotificationToggling) return
+
+        if (areSystemNotificationsEnabled()) {
+            // System notifications are ON but backend is not registered -> register
+            isNotificationsEnabled = true
+            coroutineScope.launch {
+                isNotificationToggling = true
+                appContainer?.pushNotificationCoordinator?.preparePushToken()
+                val success = appContainer?.pushNotificationCoordinator?.registerStoredDeviceIfAuthenticated() ?: false
+                if (success) {
+                    backendRegistered = true
+                } else {
+                    isNotificationsEnabled = false
+                }
+                isNotificationToggling = false
+            }
+            return
+        }
+
+        // System notifications are OFF -> need to prompt for permission
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            return
+        }
+
+        if (isNotificationRuntimePermissionGranted()) {
+            return
+        }
+
+        val activity = context.findActivity()
+        val shouldOpenSettings = hasRequestedNotificationPermission &&
+                activity != null &&
+                !activity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+
+        if (shouldOpenSettings) {
+            context.openAppNotificationSettings()
+            return
+        }
+
+        // Launch runtime permission dialog directly
+        coroutineScope.launch {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    fun disableNotificationsFromToggle() {
+        if (isNotificationToggling) return
+
+        // Optimistic update
+        isNotificationsEnabled = false
+
+        // Unregister from backend only, keep system notifications enabled
+        coroutineScope.launch {
+            isNotificationToggling = true
+            val success = appContainer?.pushNotificationCoordinator?.unregisterDevice() ?: false
+            if (success) {
+                backendRegistered = false
+                systemNotificationsEnabled = areSystemNotificationsEnabled()
+            } else {
+                isNotificationsEnabled = true
+            }
+            isNotificationToggling = false
+        }
+    }
+
     val avatarPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
@@ -627,32 +818,52 @@ fun ProfileScreen(
 
                 item {
                     SettingsRow(
-                        icon = Icons.Default.Widgets,
-                        title = "Add the Widget",
+                        icon = if (isNotificationsEnabled) Icons.Default.Notifications else Icons.Default.NotificationsOff,
+                        title = "Notifications",
                         onClick = {
-                            val appWidgetManager =
-                                android.appwidget.AppWidgetManager.getInstance(context)
-                            val myProvider = android.content.ComponentName(
-                                context,
-                                com.solari.app.widget.SolariWidgetProvider::class.java
-                            )
-
-                            if (appWidgetManager.isRequestPinAppWidgetSupported) {
-                                val successCallback = android.app.PendingIntent.getBroadcast(
-                                    context,
-                                    0,
-                                    android.content.Intent(
-                                        context,
-                                        com.solari.app.widget.WidgetPinReceiver::class.java
-                                    ),
-                                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                            if (!isNotificationStatusLoading) {
+                                if (isNotificationsEnabled) {
+                                    disableNotificationsFromToggle()
+                                } else {
+                                    enableNotificationsFromToggle()
+                                }
+                            }
+                        },
+                        trailing = {
+                            if (isNotificationStatusLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(24.dp),
+                                    color = SolariTheme.colors.primary,
+                                    strokeWidth = 2.dp
                                 )
-                                appWidgetManager.requestPinAppWidget(
-                                    myProvider,
-                                    null,
-                                    successCallback
+                            } else {
+                                Switch(
+                                    checked = isNotificationsEnabled,
+                                    onCheckedChange = { enable ->
+                                        if (enable) {
+                                            enableNotificationsFromToggle()
+                                        } else {
+                                            disableNotificationsFromToggle()
+                                        }
+                                    },
+                                    colors = SwitchDefaults.colors(
+                                        checkedThumbColor = SolariTheme.colors.onPrimary,
+                                        checkedTrackColor = SolariTheme.colors.primary
+                                    )
                                 )
                             }
+                        }
+                    )
+                }
+
+                item { Spacer(modifier = Modifier.height(8.dp)) }
+
+                item {
+                    SettingsRow(
+                        icon = Icons.Default.Widgets,
+                        title = "Add Widget",
+                        onClick = {
+                            showAddWidgetDialog = true
                         },
                         trailing = {
                             Icon(
@@ -780,6 +991,19 @@ fun ProfileScreen(
                 deleteAccountWithGoogleVerification()
             },
             onDismiss = { showGoogleDeleteConfirm = false }
+        )
+    }
+
+    if (showAddWidgetDialog) {
+        SolariInfoDialog(
+            title = "Add widget",
+            message = "1. Touch and hold an empty area on your home screen.\n" +
+                    "2. Tap Widgets.\n" +
+                    "3. Find Solari in the widget list.\n" +
+                    "4. Touch and hold the Solari widget, then drag it onto your home screen.\n" +
+                    "5. Release it where you want it to stay.",
+            messageTextAlign = TextAlign.Start,
+            onDismiss = { showAddWidgetDialog = false }
         )
     }
 
@@ -1060,7 +1284,7 @@ private fun ProfileFeedbackPill(
 
             Text(
                 text = message,
-                color = SolariTheme.colors.onBackground,
+                color = Color(0xFFE7E7E7),
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Medium,
                 fontSize = 14.sp,
@@ -1204,7 +1428,10 @@ fun SettingsRow(
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .padding(horizontal = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {

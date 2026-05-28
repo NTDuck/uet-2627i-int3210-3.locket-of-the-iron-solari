@@ -12,12 +12,20 @@ data class ConversationMessagesPage(
     val partnerLastReadAt: Long?
 )
 
+data class ConversationsPage(
+    val conversations: List<Conversation>,
+    val nextCursor: String?
+)
+
 interface ConversationRepository {
     val clearedConversationIds: StateFlow<Set<String>>
 
     suspend fun createConversation(targetUserId: String): ApiResult<String>
 
-    suspend fun getConversations(): ApiResult<List<Conversation>>
+    suspend fun getConversations(
+        limit: Int = 100,
+        cursor: String? = null
+    ): ApiResult<ConversationsPage>
 
     suspend fun getConversation(conversationId: String): ApiResult<Conversation>
 

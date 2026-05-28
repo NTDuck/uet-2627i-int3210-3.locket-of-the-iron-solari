@@ -10,6 +10,11 @@ data class ProfileAvatarUpload(
     @Suppress("ArrayInDataClass") val bytes: ByteArray
 )
 
+data class BlockedUsersPage(
+    val items: List<BlockedUser>,
+    val nextCursor: String?
+)
+
 sealed interface DeleteAccountVerification {
     data class Password(val password: String) : DeleteAccountVerification
     data class GoogleIdToken(val idToken: String) : DeleteAccountVerification
@@ -36,9 +41,19 @@ interface UserRepository {
 
     suspend fun getBlockedUsers(sort: String = "newest"): ApiResult<List<BlockedUser>>
 
+    suspend fun getBlockedUsersPage(
+        limit: Int = 100,
+        sort: String = "newest",
+        cursor: String? = null
+    ): ApiResult<BlockedUsersPage>
+
     suspend fun updatePassword(oldPassword: String, newPassword: String): ApiResult<Unit>
 
     suspend fun registerDevice(deviceToken: String, platform: String = "android"): ApiResult<Unit>
+
+    suspend fun unregisterDevice(deviceToken: String): ApiResult<Unit>
+
+    suspend fun getDeviceNotificationStatus(deviceToken: String): ApiResult<Boolean>
 
     suspend fun deleteAccount(verification: DeleteAccountVerification): ApiResult<Unit>
 }

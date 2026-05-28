@@ -18,8 +18,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
-private const val FriendRequestPageSize = 4
-private const val CollapsedFriendRequestCount = 3
+private const val FriendRequestPageSize = 3
+private const val ConversationPageSize = 30
 
 class ConversationViewModel(
     private val conversationRepository: ConversationRepository,
@@ -27,9 +27,6 @@ class ConversationViewModel(
     private val webSocketManager: WebSocketManager
 ) : ViewModel() {
     var friendRequests by mutableStateOf<List<FriendRequest>>(emptyList())
-        private set
-
-    var isFriendRequestsExpanded by mutableStateOf(false)
         private set
 
     var isLoadingMoreFriendRequests by mutableStateOf(false)
@@ -53,21 +50,32 @@ class ConversationViewModel(
     var successMessage by mutableStateOf<String?>(null)
         private set
 
+    var hasNewFriendRequestActivity by mutableStateOf(false)
+        private set
+
+    /** True when any conversation has unread messages or a new friend request activity exists. Drives the navbar badge. */
+    val hasUnreadActivity: Boolean
+        get() = conversations.any { it.isUnread } || hasNewFriendRequestActivity
+
+    fun markFriendRequestsAsSeen() {
+        hasNewFriendRequestActivity = false
+    }
+
     private var friendRequestsNextCursor by mutableStateOf<String?>(null)
     private var consumedClearedConversationIds: Set<String> = emptySet()
 
+    var isFetchingMoreConversations by mutableStateOf(false)
+        private set
+    var canViewMoreConversations by mutableStateOf(false)
+        private set
+    private var conversationsNextCursor by mutableStateOf<String?>(null)
+    private val preFetchedConversations = mutableListOf<Conversation>()
+
     val visibleFriendRequests: List<FriendRequest>
-        get() = if (isFriendRequestsExpanded) {
-            friendRequests
-        } else {
-            friendRequests.take(CollapsedFriendRequestCount)
-        }
+        get() = friendRequests
 
     val canViewMoreFriendRequests: Boolean
-        get() = !isFriendRequestsExpanded && (friendRequests.size > CollapsedFriendRequestCount || friendRequestsNextCursor != null)
-
-    val canViewLessFriendRequests: Boolean
-        get() = isFriendRequestsExpanded && friendRequests.size > CollapsedFriendRequestCount
+        get() = friendRequestsNextCursor != null
 
     init {
         refresh()
@@ -81,6 +89,7 @@ class ConversationViewModel(
                 val newClearedIds = clearedIds - consumedClearedConversationIds
                 if (newClearedIds.isNotEmpty()) {
                     conversations = conversations.filterNot { it.id in newClearedIds }
+                    preFetchedConversations.removeAll { it.id in newClearedIds }
                     consumedClearedConversationIds += newClearedIds
                 }
             }
@@ -125,13 +134,13 @@ class ConversationViewModel(
             }
 
             is WebSocketEvent.NewFriendRequest -> {
+                hasNewFriendRequestActivity = true
                 refreshFriendRequestsFromRealtime()
             }
 
             is WebSocketEvent.FriendRequestAccepted -> {
                 val acceptedRequest = friendRequests.firstOrNull { it.id == event.requestId }
                 friendRequests = friendRequests.filterNot { it.id == event.requestId }
-                checkAndResetExpandedState()
                 acceptedRequest?.user?.id?.let { partnerId ->
                     updateConversationFriendshipStatus(partnerId = partnerId, isFriend = true)
                 }
@@ -141,7 +150,6 @@ class ConversationViewModel(
 
             is WebSocketEvent.FriendRequestRemoved -> {
                 friendRequests = friendRequests.filterNot { it.id == event.requestId }
-                checkAndResetExpandedState()
                 refreshFriendRequestsFromRealtime()
             }
 
@@ -152,7 +160,6 @@ class ConversationViewModel(
                 )
                 if (!event.isFriend) {
                     friendRequests = friendRequests.filterNot { it.user.id == event.partnerId }
-                    checkAndResetExpandedState()
                 }
                 refreshConversationsFromRealtime()
             }
@@ -187,11 +194,7 @@ class ConversationViewModel(
     private fun refreshFriendRequestsFromRealtime() {
         viewModelScope.launch {
             try {
-                val limit = if (isFriendRequestsExpanded) {
-                    friendRequests.size.coerceAtLeast(FriendRequestPageSize)
-                } else {
-                    FriendRequestPageSize
-                }
+                val limit = friendRequests.size.coerceAtLeast(FriendRequestPageSize)
                 when (
                     val result = friendRepository.getFriendRequests(
                         limit = limit,
@@ -201,7 +204,6 @@ class ConversationViewModel(
                     is ApiResult.Success -> {
                         friendRequests = result.data.items
                         friendRequestsNextCursor = result.data.nextCursor
-                        checkAndResetExpandedState()
                     }
 
                     is ApiResult.Failure -> errorMessage = result.message
@@ -213,13 +215,89 @@ class ConversationViewModel(
         }
     }
 
+    private suspend fun fetchAndBufferVisibleConversations(targetBufferCount: Int) {
+        var cursor = conversationsNextCursor
+        var endOfListReached = false
+        var iterations = 0
+
+        while (preFetchedConversations.size < targetBufferCount && !endOfListReached && iterations < 10) {
+            iterations++
+            val limit = (targetBufferCount - preFetchedConversations.size).coerceAtLeast(ConversationPageSize)
+            when (val result = conversationRepository.getConversations(limit = limit, cursor = cursor)) {
+                is ApiResult.Success -> {
+                    val page = result.data
+                    val newConversations = page.conversations.filter { it.lastMessage.isNotBlank() }
+
+                    val existingIds = (conversations.map { it.id } + preFetchedConversations.map { it.id }).toSet()
+                    val uniqueNewConversations = newConversations.filter { it.id !in existingIds }
+
+                    preFetchedConversations.addAll(uniqueNewConversations)
+                    cursor = page.nextCursor
+
+                    if (page.conversations.size < limit || cursor == null) {
+                        endOfListReached = true
+                        cursor = null
+                    }
+                }
+                is ApiResult.Failure -> {
+                    errorMessage = result.message
+                    endOfListReached = true
+                }
+            }
+        }
+        conversationsNextCursor = cursor
+        canViewMoreConversations = preFetchedConversations.isNotEmpty()
+    }
+
     private fun refreshConversationsFromRealtime() {
         viewModelScope.launch {
             try {
-                when (val result = conversationRepository.getConversations()) {
-                    is ApiResult.Success -> conversations = result.data
-                    is ApiResult.Failure -> errorMessage = result.message
+                val currentDisplayedCount = conversations.size.coerceAtLeast(ConversationPageSize)
+                val targetCount = currentDisplayedCount + ConversationPageSize
+
+                val allFetched = mutableListOf<Conversation>()
+                var cursor: String? = null
+                var endOfListReached = false
+                var iterations = 0
+
+                while (allFetched.size < targetCount && !endOfListReached && iterations < 15) {
+                    iterations++
+                    val limit = (targetCount - allFetched.size).coerceAtLeast(ConversationPageSize)
+                    when (val result = conversationRepository.getConversations(limit = limit, cursor = cursor)) {
+                        is ApiResult.Success -> {
+                            val page = result.data
+                            val newConversations = page.conversations.filter { it.lastMessage.isNotBlank() }
+
+                            val existingIds = allFetched.map { it.id }.toSet()
+                            val uniqueNewConversations = newConversations.filter { it.id !in existingIds }
+
+                            allFetched.addAll(uniqueNewConversations)
+                            cursor = page.nextCursor
+
+                            if (page.conversations.size < limit || cursor == null) {
+                                endOfListReached = true
+                                cursor = null
+                            }
+                        }
+                        is ApiResult.Failure -> {
+                            endOfListReached = true
+                        }
+                    }
                 }
+
+                if (allFetched.isNotEmpty()) {
+                    val displayedCount = conversations.size.coerceAtLeast(ConversationPageSize)
+                    conversations = allFetched.take(displayedCount)
+
+                    preFetchedConversations.clear()
+                    preFetchedConversations.addAll(allFetched.drop(displayedCount))
+                } else {
+                    conversations = emptyList()
+                    preFetchedConversations.clear()
+                }
+
+                conversationsNextCursor = cursor
+                canViewMoreConversations = preFetchedConversations.isNotEmpty()
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 errorMessage = throwable.message ?: "Failed to refresh conversations"
@@ -243,16 +321,10 @@ class ConversationViewModel(
 
             val requestsJob = async {
                 isLoadingFriendRequests = true
-                isFriendRequestsExpanded = false
                 try {
-                    val limit = if (isFriendRequestsExpanded) {
-                        friendRequests.size.coerceAtLeast(FriendRequestPageSize)
-                    } else {
-                        FriendRequestPageSize
-                    }
                     when (
                         val requestsResult = friendRepository.getFriendRequests(
-                            limit = limit,
+                            limit = FriendRequestPageSize,
                             cursor = null
                         )
                     ) {
@@ -273,12 +345,22 @@ class ConversationViewModel(
 
             val conversationsJob = async {
                 isLoadingConversations = true
+                conversationsNextCursor = null
+                canViewMoreConversations = false
+                preFetchedConversations.clear()
+                conversations = emptyList()
                 try {
-                    when (val conversationsResult = conversationRepository.getConversations()) {
-                        is ApiResult.Success -> conversations = conversationsResult.data
-                        is ApiResult.Failure -> if (errorMessage == null) errorMessage =
-                            conversationsResult.message
+                    fetchAndBufferVisibleConversations(targetBufferCount = ConversationPageSize * 2)
+
+                    if (preFetchedConversations.isNotEmpty()) {
+                        val firstPage = preFetchedConversations.take(ConversationPageSize)
+                        conversations = firstPage
+
+                        val remaining = preFetchedConversations.drop(firstPage.size)
+                        preFetchedConversations.clear()
+                        preFetchedConversations.addAll(remaining)
                     }
+                    canViewMoreConversations = preFetchedConversations.isNotEmpty()
                 } catch (throwable: Throwable) {
                     if (throwable is CancellationException) throw throwable
                     errorMessage = throwable.message ?: "Failed to load conversations"
@@ -292,17 +374,7 @@ class ConversationViewModel(
         }
     }
 
-    fun expandFriendRequests() {
-        if (isFriendRequestsExpanded) return
-        isFriendRequestsExpanded = true
-        loadMoreFriendRequests()
-    }
-
-    fun collapseFriendRequests() {
-        isFriendRequestsExpanded = false
-    }
-
-    private fun loadMoreFriendRequests() {
+    fun loadMoreFriendRequests() {
         val cursor = friendRequestsNextCursor ?: return
         if (isLoadingMoreFriendRequests) return
 
@@ -334,11 +406,49 @@ class ConversationViewModel(
         }
     }
 
+    fun loadMoreConversations() {
+        if (isFetchingMoreConversations) return
+
+        val toMove = preFetchedConversations.take(ConversationPageSize)
+        if (toMove.isNotEmpty()) {
+            val existingIds = conversations.mapTo(mutableSetOf()) { it.id }
+            conversations = conversations + toMove.filter { existingIds.add(it.id) }
+
+            val remaining = preFetchedConversations.drop(toMove.size)
+            preFetchedConversations.clear()
+            preFetchedConversations.addAll(remaining)
+        }
+
+        if (toMove.size < ConversationPageSize) {
+            preFetchedConversations.clear()
+            conversationsNextCursor = null
+            canViewMoreConversations = false
+            return
+        }
+
+        val cursor = conversationsNextCursor
+        if (cursor == null) {
+            canViewMoreConversations = preFetchedConversations.isNotEmpty()
+            return
+        }
+
+        viewModelScope.launch {
+            isFetchingMoreConversations = true
+            try {
+                fetchAndBufferVisibleConversations(targetBufferCount = ConversationPageSize)
+            } catch (throwable: Throwable) {
+                if (throwable is CancellationException) throw throwable
+                errorMessage = throwable.message ?: "Failed to load more conversations"
+            } finally {
+                isFetchingMoreConversations = false
+            }
+        }
+    }
+
     fun acceptFriendRequest(requestId: String) {
         val previousRequests = friendRequests
         if (previousRequests.none { it.id == requestId }) return
         friendRequests = previousRequests.filterNot { it.id == requestId }
-        checkAndResetExpandedState()
 
         viewModelScope.launch {
             try {
@@ -352,14 +462,12 @@ class ConversationViewModel(
                     is ApiResult.Failure -> {
                         friendRequests = previousRequests
                         errorMessage = result.message
-                        checkAndResetExpandedState()
                     }
                 }
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 friendRequests = previousRequests
                 errorMessage = throwable.message ?: "Failed to accept friend request"
-                checkAndResetExpandedState()
             }
         }
     }
@@ -388,7 +496,6 @@ class ConversationViewModel(
         val previousRequests = friendRequests
         if (previousRequests.none { it.id == requestId }) return
         friendRequests = previousRequests.filterNot { it.id == requestId }
-        checkAndResetExpandedState()
 
         viewModelScope.launch {
             try {
@@ -399,21 +506,13 @@ class ConversationViewModel(
                     is ApiResult.Failure -> {
                         friendRequests = previousRequests
                         errorMessage = result.message
-                        checkAndResetExpandedState()
                     }
                 }
             } catch (throwable: Throwable) {
                 if (throwable is CancellationException) throw throwable
                 friendRequests = previousRequests
                 errorMessage = throwable.message ?: fallbackErrorMessage
-                checkAndResetExpandedState()
             }
-        }
-    }
-
-    private fun checkAndResetExpandedState() {
-        if (isFriendRequestsExpanded && friendRequests.size <= CollapsedFriendRequestCount) {
-            isFriendRequestsExpanded = false
         }
     }
 

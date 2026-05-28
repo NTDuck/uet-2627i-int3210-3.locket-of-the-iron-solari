@@ -4,14 +4,20 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChatBubble
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.PersonOutline
 import androidx.compose.material.icons.outlined.PhotoCamera
@@ -38,17 +44,35 @@ import com.solari.app.ui.theme.SolariTheme
 fun SolariBottomNavBar(
     selectedRoute: String,
     onNavigate: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showChatsBadge: Boolean = false
 ) {
     val items = listOf(
-        NavNavItem(SolariRoute.Screen.CameraBefore.name, "Camera", imageVector = Icons.Outlined.PhotoCamera),
-        NavNavItem(SolariRoute.Screen.Feed.name, "Feed", drawableRes = R.drawable.grid),
         NavNavItem(
-            SolariRoute.Screen.Conversations.name,
-            "Chats",
-            imageVector = Icons.Outlined.ChatBubbleOutline
+            route = SolariRoute.Screen.CameraBefore.name,
+            label = "Camera",
+            selectedImageVector = Icons.Filled.PhotoCamera,
+            unselectedImageVector = Icons.Outlined.PhotoCamera
         ),
-        NavNavItem(SolariRoute.Screen.Profile.name, "Profile", imageVector = Icons.Outlined.PersonOutline)
+        NavNavItem(
+            route = SolariRoute.Screen.Feed.name,
+            label = "Feed",
+            selectedDrawableRes = R.drawable.grid_filled,
+            unselectedDrawableRes = R.drawable.grid
+        ),
+        NavNavItem(
+            route = SolariRoute.Screen.Conversations.name,
+            label = "Chats",
+            selectedImageVector = Icons.Filled.ChatBubble,
+            unselectedImageVector = Icons.Outlined.ChatBubbleOutline,
+            showBadge = showChatsBadge
+        ),
+        NavNavItem(
+            route = SolariRoute.Screen.Profile.name,
+            label = "Profile",
+            selectedImageVector = Icons.Filled.Person,
+            unselectedImageVector = Icons.Outlined.PersonOutline
+        )
     )
 
     val normalizedSelectedRoute = when {
@@ -78,6 +102,8 @@ fun SolariBottomNavBar(
         items.forEach { item ->
             val isSelected = normalizedSelectedRoute == item.route
             val tint = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray
+            val drawableRes = if (isSelected) item.selectedDrawableRes else item.unselectedDrawableRes
+            val imageVector = if (isSelected) item.selectedImageVector else item.unselectedImageVector
             CompositionLocalProvider(LocalContentColor provides Color.White) {
                 Column(
                     modifier = Modifier
@@ -88,20 +114,32 @@ fun SolariBottomNavBar(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    if (item.drawableRes != null) {
-                        Icon(
-                            painter = painterResource(id = item.drawableRes),
-                            contentDescription = item.label,
-                            tint = tint,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    } else if (item.imageVector != null) {
-                        Icon(
-                            imageVector = item.imageVector,
-                            contentDescription = item.label,
-                            tint = tint,
-                            modifier = Modifier.size(24.dp)
-                        )
+                    Box {
+                        if (drawableRes != null) {
+                            Icon(
+                                painter = painterResource(id = drawableRes),
+                                contentDescription = item.label,
+                                tint = tint,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        } else if (imageVector != null) {
+                            Icon(
+                                imageVector = imageVector,
+                                contentDescription = item.label,
+                                tint = tint,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                        if (item.showBadge) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 2.dp, y = (-1).dp)
+                                    .clip(CircleShape)
+                                    .background(SolariTheme.colors.primary)
+                            )
+                        }
                     }
                     Text(
                         text = item.label,
@@ -119,6 +157,9 @@ fun SolariBottomNavBar(
 private data class NavNavItem(
     val route: String,
     val label: String,
-    val imageVector: ImageVector? = null,
-    @param:DrawableRes val drawableRes: Int? = null
+    val selectedImageVector: ImageVector? = null,
+    val unselectedImageVector: ImageVector? = null,
+    @param:DrawableRes val selectedDrawableRes: Int? = null,
+    @param:DrawableRes val unselectedDrawableRes: Int? = null,
+    val showBadge: Boolean = false
 )
