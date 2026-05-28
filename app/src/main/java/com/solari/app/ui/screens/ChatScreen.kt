@@ -412,6 +412,7 @@ fun ChatScreen(
                                         item = item,
                                         currentUser = currentUser,
                                         partner = visiblePartner,
+                                        profilePartner = if (isReadOnly) null else partner,
                                         currentUserId = currentUserId,
                                         partnerLastReadAt = currentConversation?.partnerLastReadAt,
                                         highlightedMessageId = chatMessageListState.highlightedMessageId,
@@ -433,7 +434,8 @@ fun ChatScreen(
                                                     messageId
                                             }
                                         },
-                                        onNavigateToPost = onNavigateToPost
+                                        onNavigateToPost = onNavigateToPost,
+                                        onShowPartnerProfile = onShowPartnerProfile
                                     )
                                 }
                             }
@@ -443,9 +445,11 @@ fun ChatScreen(
                             item(key = TypingIndicatorItemKey) {
                                 TypingIndicatorRow(
                                     partner = visiblePartner,
+                                    profilePartner = if (isReadOnly) null else partner,
                                     partnerName = displayPartnerName,
                                     partnerUsername = displayPartnerUsername,
-                                    partnerAvatarUrl = displayPartnerAvatarUrl
+                                    partnerAvatarUrl = displayPartnerAvatarUrl,
+                                    onShowPartnerProfile = onShowPartnerProfile
                                 )
                             }
                         }
@@ -1176,9 +1180,11 @@ private fun ChatHeaderBar(
 @Composable
 private fun TypingIndicatorRow(
     partner: User?,
+    profilePartner: User?,
     partnerName: String,
     partnerUsername: String,
-    partnerAvatarUrl: String?
+    partnerAvatarUrl: String?,
+    onShowPartnerProfile: (User) -> Unit
 ) {
     AnimatedVisibility(
         visible = true,
@@ -1197,7 +1203,13 @@ private fun TypingIndicatorRow(
                 contentDescription = "${partnerName.ifBlank { "Someone" }} avatar",
                 modifier = Modifier
                     .size(32.dp)
-                    .clip(CircleShape),
+                    .clip(CircleShape)
+                    .scaledClickable(
+                        pressedScale = 1.08f,
+                        enabled = profilePartner != null
+                    ) {
+                        profilePartner?.let(onShowPartnerProfile)
+                    },
                 fontSize = 12.sp
             )
 
@@ -1278,6 +1290,7 @@ private fun ChatMessageRow(
     item: ChatMessageItem,
     currentUser: User?,
     partner: User?,
+    profilePartner: User?,
     currentUserId: String?,
     partnerLastReadAt: Long?,
     highlightedMessageId: String?,
@@ -1288,7 +1301,8 @@ private fun ChatMessageRow(
     onReactToMessage: (Message, String) -> Unit,
     onReplyToMessage: (Message) -> Unit,
     onJumpToMessage: (String) -> Unit,
-    onNavigateToPost: (String) -> Unit
+    onNavigateToPost: (String) -> Unit,
+    onShowPartnerProfile: (User) -> Unit
 ) {
     val message = item.message
 
@@ -1339,7 +1353,13 @@ private fun ChatMessageRow(
                     contentDescription = partner?.let { "${it.displayName} avatar" },
                     modifier = Modifier
                         .size(36.dp)
-                        .clip(CircleShape),
+                        .clip(CircleShape)
+                        .scaledClickable(
+                            pressedScale = 1.08f,
+                            enabled = profilePartner != null
+                        ) {
+                            profilePartner?.let(onShowPartnerProfile)
+                        },
                     fontSize = 14.sp
                 )
             } else {
