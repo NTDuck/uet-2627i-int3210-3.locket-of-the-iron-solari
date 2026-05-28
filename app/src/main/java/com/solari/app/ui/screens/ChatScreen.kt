@@ -1570,11 +1570,7 @@ private fun ChatBubble(
             if (hasReactions) {
                 MessageReactionPill(
                     reactions = message.reactions,
-                    backgroundColor = if (usesOutgoingContrast) {
-                        outgoingContentColor.copy(alpha = 0.18f)
-                    } else {
-                        ChatReactionSurface
-                    },
+                    backgroundColor = ChatReactionSurface,
                     contentColor = if (usesOutgoingContrast) outgoingContentColor else ChatText,
                     onClick = { isReactionSheetExpanded = true },
                     modifier = Modifier
