@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -73,10 +74,12 @@ fun ChangePasswordScreen(
     val confirmPasswordFocusRequester = remember { FocusRequester() }
     var showConfirmation by remember { mutableStateOf(false) }
     var showSuccessDialog by remember { mutableStateOf(false) }
+    var navigateAfterSuccessDialogDismiss by remember { mutableStateOf(false) }
     var errorPillVisible by remember { mutableStateOf(false) }
     var errorEventId by remember { mutableIntStateOf(0) }
     var oldPasswordVisible by remember { mutableStateOf(false) }
     var newPasswordVisible by remember { mutableStateOf(false) }
+    val currentOnResetComplete by rememberUpdatedState(onResetComplete)
 
     fun closeKeyboardAndFocus() {
         focusManager.clearFocus(force = true)
@@ -113,6 +116,13 @@ fun ChangePasswordScreen(
         if (viewModel.successMessage != null) {
             viewModel.clearSuccess()
             showSuccessDialog = true
+        }
+    }
+
+    LaunchedEffect(navigateAfterSuccessDialogDismiss, showSuccessDialog) {
+        if (navigateAfterSuccessDialogDismiss && !showSuccessDialog) {
+            navigateAfterSuccessDialogDismiss = false
+            currentOnResetComplete()
         }
     }
 
@@ -253,7 +263,10 @@ fun ChangePasswordScreen(
             title = "Password updated",
             message = "Password updated successfully. Please sign in again.",
             dismissOnBackOrOutside = false,
-            onDismiss = onResetComplete
+            onDismiss = {
+                showSuccessDialog = false
+                navigateAfterSuccessDialogDismiss = true
+            }
         )
     }
 }
