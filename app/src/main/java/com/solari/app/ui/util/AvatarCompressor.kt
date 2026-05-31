@@ -16,7 +16,19 @@ private const val AvatarMaxDimensionPx = 512
 private const val AvatarCompressionQuality = 85
 
 fun compressAvatarForUpload(context: Context, uri: Uri): ProfileAvatarUpload {
-    val source = ImageDecoder.createSource(context.contentResolver, uri)
+    val contentResolver = context.contentResolver
+    val mimeType = contentResolver.getType(uri)
+    if (mimeType == "image/gif") {
+        val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw IllegalArgumentException("Failed to read GIF content")
+        return ProfileAvatarUpload(
+            fileName = "avatar_${System.currentTimeMillis()}.gif",
+            mimeType = "image/gif",
+            bytes = bytes
+        )
+    }
+
+    val source = ImageDecoder.createSource(contentResolver, uri)
     val decodedBitmap = ImageDecoder.decodeBitmap(source) { decoder, info, _ ->
         val scale = minOf(
             AvatarMaxDimensionPx.toFloat() / info.size.width,
