@@ -477,8 +477,13 @@ fun FeedScreen(
         lastInputOverlayKeyboardBottom = 0
     }
 
-    LaunchedEffect(activeInputOverlay, feedScreenDensity) {
+    LaunchedEffect(activeInputOverlay, feedScreenDensity, showEmojiPicker) {
         if (activeInputOverlay == null) return@LaunchedEffect
+        if (showEmojiPicker) {
+            hasInputOverlayKeyboardOpened = false
+            lastInputOverlayKeyboardBottom = 0
+            return@LaunchedEffect
+        }
 
         snapshotFlow { imeInsets.getBottom(feedScreenDensity) }
             .collect { keyboardBottom ->

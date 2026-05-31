@@ -215,6 +215,11 @@ fun ImageEditingScreen(
     val activeDrawPaths = remember { mutableStateListOf<DrawPath>() }
 
     LaunchedEffect(currentMode) {
+        if (currentMode != EditMode.Crop) {
+            cropRotation = 0f
+            cropFlipH = 1f
+            cropFlipV = 1f
+        }
         if (currentMode == EditMode.Draw) {
             activeDrawPaths.clear()
             activeDrawPaths.addAll(viewModel.drawingPaths)
