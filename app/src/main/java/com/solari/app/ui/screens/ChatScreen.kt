@@ -982,14 +982,10 @@ private fun rememberChatContentPaddingState(
 
         val isClosed = (targetContentBottomPadding - scaffoldBottomPadding) <= 1.dp
         if (isClosed) {
-            val paddingChanged = previousTargetContentBottomPadding != scaffoldBottomPadding
             previousTargetContentBottomPadding = scaffoldBottomPadding
             displayedContentBottomPadding = scaffoldBottomPadding
             keyboardRestoreAnchor = null
             hasUserDraggedSinceKeyboardOpen = false
-            if (paddingChanged && state.shouldKeepChatPinnedToBottom && lastListItemIndex >= 0) {
-                state.listState.scrollToMessageBottom(lastListItemIndex)
-            }
             return@LaunchedEffect
         }
 
@@ -2834,7 +2830,7 @@ private fun sentFooterText(timestamp: Long): String {
 private suspend fun LazyListState.scrollToMessageBottom(itemIndex: Int) {
     scrollToItem(itemIndex)
 
-    repeat(MaxScrollToBottomPasses) { pass ->
+    repeat(MaxScrollToBottomPasses) {
         withFrameNanos { }
 
         val viewportHeight = layoutInfo.viewportSize.height
@@ -2844,7 +2840,7 @@ private suspend fun LazyListState.scrollToMessageBottom(itemIndex: Int) {
             10_000f
         }
         val consumed = scrollBy(scrollDelta)
-        if (consumed == 0f && pass > 3) return
+        if (consumed == 0f) return
     }
 }
 
